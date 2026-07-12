@@ -1,0 +1,17 @@
+import { z } from "zod";
+
+export const gameSpecSchema = z.object({
+  title: z.string().trim().min(1).max(80),
+  genre: z.enum(["arcade", "platformer", "puzzle", "shooter", "strategy"]),
+  objective: z.string().trim().min(10).max(500),
+  controls: z.array(z.string().trim().min(1)).min(1).max(12),
+  winCondition: z.string().trim().min(5).max(300),
+  loseCondition: z.string().trim().min(5).max(300),
+  targetDurationSeconds: z.number().int().min(30).max(1800),
+});
+
+export type GameSpec = z.infer<typeof gameSpecSchema>;
+
+export function validateGameSpec(input: unknown): GameSpec {
+  return gameSpecSchema.parse(input);
+}

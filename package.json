@@ -1,0 +1,22 @@
+{
+  "name": "gameforge-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A CodeArts-powered agent workspace for end-to-end TypeScript game engineering.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "check": "npm run build --workspace @gameforge/contracts && npm run check --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "dev:game": "npm run dev --workspace @gameforge/game",
+    "dev:mcp": "npm run dev --workspace @gameforge/mcp-server"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
