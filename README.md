@@ -15,11 +15,19 @@
 ├── AGENTS.md                         # CodeArts/Codex 共享项目规则
 ├── .codeartsdoer/skills/             # CodeArts项目级Skills
 ├── apps/game/                         # Phaser + Vite示例游戏
+├── apps/workbench/                    # React + Vite Agent工作台
 ├── packages/contracts/               # 需求与游戏规格Schema
+├── packages/generator/               # 固定模板的安全项目生成器
+├── packages/game-verifier/           # Playwright可玩性、诊断与截图验收
 ├── packages/mcp-server/              # CodeArts可调用的MCP工具
+├── packages/providers/               # 国产模型与媒体Provider适配器
+├── packages/run-relay/               # RunEvent回放与SSE中继
 ├── docs/
 │   ├── codearts-quickstart.md         # 安装与首次验证
-│   └── comparison.md                 # 三种代码智能体对比
+│   ├── comparison.md                 # 三种代码智能体对比
+│   ├── model-media-strategy.md       # 国产模型、生图、TTS与音效策略
+│   ├── game-generation-runtime.md    # 项目生成器与事件服务
+│   └── open-source-references.md      # 可借鉴的游戏Agent与前端开源项目
 └── experiments/                      # 后续基准任务与实验记录
 ```
 
@@ -44,11 +52,92 @@
 ## 快速开始
 
 ```bash
-npm install
-npm run build
-npm test
-npm run dev:game
+bun install --frozen-lockfile
+bun run build
+bun run test
+bun run audit
+bun run dev:local
 ```
+
+`dev:local` 通过 Bun 并行启动示例游戏（5173）、Workbench（4173）和 Run Relay（8787）。仅在 Vite 开发模式且未显式配置时，Workbench 默认连接 `http://127.0.0.1:8787/`；生产构建仍要求设置 `VITE_AGENT_BASE_URL`。MCP 是 stdio 子进程，应由 CodeArts 启动，不包含在该并行命令中。生产式本地联调先执行 `bun run build`，再使用 `bun run start:relay`；CodeArts MCP 配置见 [CodeArts 快速开始](docs/codearts-quickstart.md)。
+
+仓库统一使用 Bun 1.3.14 或更高版本和 `bun.lock`；仓库级 `.npmrc` 固定 npm 官方 registry，以确保 Phaser 4.2.1 与安全审计元数据可复现。不要再生成或提交 npm、pnpm、Yarn 的并行锁文件。
+
+启用阿里云百炼 Qwen 的结构化 GameSpec 草拟工具时，在启动 MCP 服务的进程环境中设置：
+
+```text
+DASHSCOPE_API_KEY=<阿里云百炼 API key>
+GAMEFORGE_SPEC_MODEL=qwen3.6-flash
+```
+
+`GAMEFORGE_SPEC_MODEL` 可省略，默认使用 `qwen3.6-flash`。只有设置 `DASHSCOPE_API_KEY` 时，MCP 才注册 `draft_game_spec`；该工具通过百炼官方 OpenAI 兼容接口发起一次非流式请求，要求严格 JSON Schema 输出，并再次按仓库 `GameSpec` Schema 校验。密钥只从服务端环境读取，不进入工具参数、日志或仓库。
+
+`get_gameforge_capabilities` 始终注册，返回本次 MCP 进程实际可用的国产模型、媒体和工程能力布尔快照，不返回密钥、Token、主机白名单或本机路径。CodeArts 将它发布为 `capabilities.ready` 后，Workbench 才把对应 Provider 标记为“本次 MCP 已配置”；未收到事件时显示等待，完整依赖链缺一项时显示未配置。
+
+启用许可证过滤的音效搜索工具时，在启动MCP服务的进程环境中设置：
+
+```text
+FREESOUND_API_KEY=<Freesound API v2 token>
+FREESOUND_API_USAGE=non-commercial
+```
+
+`FREESOUND_API_USAGE`也可以设为`commercial-agreement`，但仅应在项目已与Freesound取得商业API使用协议后使用。未设置密钥时，MCP服务不会注册`search_sound_asset`，也不会在工具参数中接收密钥。
+
+启用确定性项目生成工具时设置服务端绝对输出目录：
+
+```text
+GAMEFORGE_PROJECT_OUTPUT_ROOT=D:\GameForgeGenerated
+```
+
+配置输出目录后同时注册 `verify_game_project`、`start_game_preview` 和 `stop_game_preview`。预览工具只为生成器托管项目启动随机端口的 loopback Vite 服务，不执行目标项目的 `vite.config.ts`；相同项目的并发启动会合并为一个会话。验收工具默认调用系统 Chrome；如果运行环境无法通过 Playwright 的 `chrome` channel 找到浏览器，可显式设置：
+
+```text
+GAMEFORGE_CHROME_EXECUTABLE=C:\Program Files\Google\Chrome\Application\chrome.exe
+```
+
+验收工具只处理生成器托管的项目，动作脚本最多 100 步；运行时阻断外部网络，捕获控制台错误、页面异常和失败请求，读取 `window.__GAMEFORGE_TEST__` 并把截图写入项目的 `.gameforge/verification/`。CodeArts 将验收摘要发布为 `verification.ready`，Workbench 显示胜负状态、诊断计数和项目内证据路径；绝对路径与诊断全文不进入浏览器事件流。CodeArts 可将 `start_game_preview` 返回的 URL 原样发布为 `preview.ready` RunEvent；Workbench 收到后自动切换预览。事件 URL 只接受 HTTPS 或 loopback HTTP，iframe 使用受限 sandbox。
+
+启用 Run Relay 生命周期工具：
+
+```text
+GAMEFORGE_RUN_RELAY_URL=http://127.0.0.1:8787/
+```
+
+Run Relay 默认仍使用内存状态。需要让 Task、RunEvent 和游标跨正常进程重启恢复时，在启动 Relay 的进程环境中设置绝对状态文件路径：
+
+```text
+GAMEFORGE_RUN_RELAY_STATE_FILE=D:\GameForgeState\relay-state.json
+```
+
+Relay 对每次成功变更串行写入严格 Schema 快照，使用同目录临时文件、文件同步和原子 rename；启动时拒绝相对路径、符号链接、超限或 Task/Run 终态不一致的快照。状态文件含用户 Prompt 与运行日志，应置于受限本地目录，不提交仓库。MCP 的 `GAMEFORGE_RUN_RELAY_URL` 与 Relay 的 `GAMEFORGE_RUN_RELAY_STATE_FILE` 属于两个不同进程的配置。
+
+启用 Seedream 生图并把结果写入已生成项目：
+
+```text
+VOLCENGINE_ARK_API_KEY=<方舟 API key>
+GAMEFORGE_IMAGE_MODEL=<控制台中已开通的模型 ID>
+GAMEFORGE_IMAGE_LICENSE=<当前账号与用途对应的输出许可说明>
+GAMEFORGE_IMAGE_REFERENCE_HOSTS=example-oss.cn-beijing.aliyuncs.com
+```
+
+只有同时设置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 和上述三个必填变量时，MCP 才注册 `request_image_asset`。Freesound 与输出目录均配置后，还会注册 `import_sound_asset`；它只下载搜索结果中的官方 preview，不把 Token 拼入 URL，也不替代需要 OAuth2 的原始文件下载接口。
+
+启用火山引擎异步长文本配音：
+
+```text
+VOLCENGINE_SPEECH_API_TOKEN=<豆包语音 API token>
+VOLCENGINE_SPEECH_APP_ID=<应用 ID>
+GAMEFORGE_TTS_LICENSE=<当前账号与用途对应的输出许可说明>
+GAMEFORGE_TTS_AUDIO_HOSTS=<控制台/真实 query 响应确认的音频 CDN 主机，多个用逗号分隔>
+```
+
+不要猜测 `GAMEFORGE_TTS_AUDIO_HOSTS`；以当前账号真实返回的 `audio_url` 主机为准，只填写主机名。配置完整后注册 `submit_voice_job`、`query_voice_job` 和 `materialize_voice_job`。作业句柄经过 HMAC 签名并绑定项目；MCP 不会自动轮询，完成音频只允许从服务端白名单中的 HTTPS 主机下载。
+
+工作台连接本地任务/RunEvent中继时设置`VITE_AGENT_BASE_URL=http://127.0.0.1:8787/`。配置后“提交给 CodeArts”会把当前 Prompt 写入受限任务收件箱，并原子创建对应 Run；MCP 同时注册 `list_game_tasks`、`get_game_task`、`claim_game_task`，供 CodeArts 读取和幂等认领。CodeArts 发布 `spec.ready`、`asset.ready`、`preview.ready` 后，Workbench 分别展示真实 GameSpec、已落盘资产及当前游戏预览；场景结构和地图视图由已验证 GameSpec 与资产清单确定性派生，明确标注真实绑定、程序化回退和“模板示意”边界。未收到事件时显示等待状态，不使用硬编码生产结果。Relay 不调用模型，也不自动执行任务。完整接口、安全边界和验证步骤见[确定性游戏生成与运行事件服务](docs/game-generation-runtime.md)。
+
+Task 创建以 Run ID 作为幂等键：网络响应丢失后，以完全相同的 Run ID、Prompt 和语言重试会返回原 Task 与原始 `run.started`，不会重复排队；同 Run ID 携带不同内容会返回稳定的 `task_run_conflict`。一个 Run ID 只代表一次不可变任务，完成新需求时应使用新的 Run ID。
+
+Workbench 会为每次页面会话准备唯一 Run ID；连接期间输入锁定。若提交响应不确定，直接保留当前 ID 重试；若要开始不同需求，先停止或等待当前 Run 终止，再点击“新任务”显式轮换 ID。不要手工修改已连接 Run 的 ID。
 
 先阅读 [CodeArts 快速开始](docs/codearts-quickstart.md)，然后在 CodeArts 智能体模式中输入：
 

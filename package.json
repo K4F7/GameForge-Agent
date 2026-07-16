@@ -5,18 +5,27 @@
   "description": "A CodeArts-powered agent workspace for end-to-end TypeScript game engineering.",
   "license": "MIT",
   "type": "module",
+  "packageManager": "bun@1.3.14",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "check": "npm run build --workspace @gameforge/contracts && npm run check --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "dev:game": "npm run dev --workspace @gameforge/game",
-    "dev:mcp": "npm run dev --workspace @gameforge/mcp-server"
+    "build:foundation": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/generator build && bun run --filter @gameforge/providers build && bun run --filter @gameforge/asset-store build && bun run --filter @gameforge/run-relay build && bun run --filter @gameforge/game-verifier build",
+    "build": "bun run build:foundation && bun run --filter @gameforge/game build && bun run --filter @gameforge/workbench build && bun run --filter @gameforge/mcp-server build",
+    "check": "bun run build:foundation && bun run --filter '*' check",
+    "test": "bun run build:foundation && bun run --filter '*' test",
+    "audit": "bun audit --prod",
+    "dev:game": "bun run --filter @gameforge/game dev",
+    "dev:workbench": "bun run --filter @gameforge/workbench dev",
+    "dev:mcp": "bun run --filter @gameforge/mcp-server dev",
+    "dev:relay": "bun run --filter @gameforge/run-relay dev",
+    "dev:local": "bun run --parallel dev:relay dev:game dev:workbench",
+    "start:mcp": "node packages/mcp-server/dist/index.js",
+    "start:relay": "node packages/run-relay/dist/index.js"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.12.0",
+    "bun": ">=1.3.14"
   }
 }

@@ -1,6 +1,6 @@
 # CodeArts Agent 快速开始
 
-更新日期：2026-07-13
+更新日期：2026-07-16
 
 ## 1. 选择使用形态
 
@@ -57,7 +57,59 @@ CodeArts项目级Skill位于：
 
 ## 6. 使用MCP
 
-在IDE的“设置 → MCP工具”中安装或配置MCP服务。首轮实验只启用必要工具，建议从一个浏览器自动化MCP开始。官方建议同时开启的MCP数量保持精简。
+华为云官方文档当前支持本地 stdio、SSE 和 Streamable HTTP 三类配置。本仓库使用官方 stdio 方式：MCP 由 CodeArts 启动，工具通过标准输入输出通信；Run Relay 则是独立 HTTP 服务。官方建议同时启用的 MCP 保持精简，启用 3 个可获得最优使用体验。
+
+先在仓库根目录执行：
+
+```text
+bun install --frozen-lockfile
+bun run build
+bun run dev:local
+```
+
+如需本地任务跨 Relay 重启恢复，先在启动 `dev:local` 的终端设置 `GAMEFORGE_RUN_RELAY_STATE_FILE` 为绝对路径。PowerShell 示例：
+
+```powershell
+$env:GAMEFORGE_RUN_RELAY_STATE_FILE="D:\GameForgeState\relay-state.json"
+bun run dev:local
+```
+
+`dev:local` 使用 Bun 并行启动示例游戏、Workbench 和 Run Relay，不启动 stdio MCP。然后在 CodeArts IDE 中依次进入“设置 → MCP工具 → 配置MCP”，打开官方 `mcp_settings.json`。根据官方 `mcpServers` 通用模板添加以下配置；把两个示例绝对路径替换为本机路径，Windows JSON 路径中的反斜杠必须写成 `\\`：
+
+```json
+{
+  "mcpServers": {
+    "gameforge": {
+      "command": "node",
+      "args": [
+        "D:\\path\\to\\GameForge-Agent\\packages\\mcp-server\\dist\\index.js"
+      ],
+      "env": {
+        "GAMEFORGE_PROJECT_OUTPUT_ROOT": "D:\\GameForgeGenerated",
+        "GAMEFORGE_RUN_RELAY_URL": "http://127.0.0.1:8787/"
+      }
+    }
+  }
+}
+```
+
+这里使用 Node 承载正式 MCP 和 Playwright Core；依赖安装、workspace 命令、检查和构建仍统一由 Bun 完成。官方配置要求 `command` 必填，`args` 和 `env` 可选，且所有环境变量值必须是字符串。保存后在“已安装”页签重启 `gameforge` MCP；官方文档明确指出修改环境变量后需要重启才能立即生效。
+
+此基础配置不包含任何密钥，会注册规格校验、项目生成、任务/Run、浏览器验收与预览工具。需要 Qwen、Seedream、Freesound 或火山 TTS 时，只在本机 `env` 中追加 README 所列变量；不要把填入真实值的 `mcp_settings.json` 提交到仓库。是否配置成功以 CodeArts 实际列出的工具为准，不以前端 Provider 标签为准。
+
+首次联调按以下顺序检查：
+
+1. 打开 `http://127.0.0.1:4173/`，提交一个 Prompt，记录 Task ID 与 Run ID；
+2. 在 CodeArts 中确认可见 `list_game_tasks`、`claim_game_task` 和 `replay_game_run`；
+3. 调用一次不带 status 的 `list_game_tasks`；若存在 `claimedBy: "codearts"` 的相关 Task，优先幂等恢复，否则认领刚创建的 queued Task；
+4. 按 `gameforge-build` Skill 完成规格、生成、验收和 `preview.ready`；
+5. 确认 Workbench 显示真实规格、素材和本次生成项目，而不是演示数据。
+
+官方 MCP 页面访问日期：2026-07-16。
+
+仓库已用真实 MCP SDK 客户端验证上述 `node + dist/index.js + env` stdio 方式可以握手并列出无密钥基础工具；`bun run dev:local` 也已取得游戏、Workbench 和 Relay 三个 HTTP 200。可复现记录见 `experiments/2026-07-16-local-bootstrap/`。
+
+Run Relay 的可选状态文件已通过真实生产进程两次重启验证；记录见 `experiments/2026-07-16-relay-persistence/`。
 
 ## 7. 第一次基准实验
 
@@ -84,4 +136,3 @@ CodeArts项目级Skill位于：
 - [Rules](https://support.huaweicloud.com/usermanual-codeartssnap/codeartsdoer_ug_0019.html)
 - [Skills](https://support.huaweicloud.com/usermanual-codeartssnap/codeartsdoer_ug_0024.html)
 - [MCP](https://support.huaweicloud.com/usermanual-codeartssnap/codeartsdoer_ug_0010.html)
-

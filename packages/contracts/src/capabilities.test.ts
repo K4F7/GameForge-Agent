@@ -1,0 +1,18 @@
+import { describe, expect, it } from "vitest";
+import { gameforgeCapabilitySnapshotSchema } from "./capabilities.js";
+
+describe("gameforgeCapabilitySnapshotSchema", () => {
+  it("accepts only the known secret-free capability shape", () => {
+    const snapshot = {
+      providers: {
+        spec: { provider: "bailian-qwen", ready: true },
+        image: { provider: "volcengine-ark", ready: false },
+        tts: { provider: "volcengine-speech", ready: false },
+        sound: { provider: "freesound", ready: true },
+      },
+      engineering: { generator: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+    } as const;
+    expect(gameforgeCapabilitySnapshotSchema.parse(snapshot)).toEqual(snapshot);
+    expect(gameforgeCapabilitySnapshotSchema.safeParse({ ...snapshot, apiKey: "secret" }).success).toBe(false);
+  });
+});

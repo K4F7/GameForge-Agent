@@ -1,0 +1,21 @@
+{
+  "name": "@gameforge/generator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit",
+    "test": "vitest run src --testTimeout=30000"
+  },
+  "dependencies": {
+    "@gameforge/contracts": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}
