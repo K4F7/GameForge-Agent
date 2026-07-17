@@ -36,6 +36,7 @@ describe("GameProjectGenerator", () => {
     expect(first).toEqual(second);
     expect(first.mode).toBe("dry-run");
     expect(first.plan.files.map((file) => file.path)).toContain("src/main.ts");
+    expect(first.plan.files.map((file) => file.path)).toContain("src/game.ts");
     expect(first.plan.files.map((file) => file.path)).toContain("public/assets/manifest.json");
     expect(first.plan.files.map((file) => file.path)).toContain(".npmrc");
     await expect(readFile(path.join(root, "safety-sprint", "game-spec.json"))).rejects.toMatchObject({ code: "ENOENT" });
@@ -81,12 +82,14 @@ describe("GameProjectGenerator", () => {
 
     await generator.execute({ projectId: "safe-output", spec: injected, mode: "apply" });
 
-    const source = await readFile(path.join(root, "safe-output", "src", "main.ts"), "utf8");
+    const source = await readFile(path.join(root, "safe-output", "src", "game.ts"), "utf8");
+    const loader = await readFile(path.join(root, "safe-output", "src", "main.ts"), "utf8");
     const storedSpec = await readFile(path.join(root, "safe-output", "game-spec.json"), "utf8");
     expect(source).not.toContain("globalThis.pwned");
     expect(storedSpec).toContain("globalThis.pwned");
     expect(source).toContain("telemetry: this.telemetry()");
     expect(source).toContain("this.ended = true;\n    this.updateHud();");
+    expect(loader).toContain('import("./game.js")');
   });
 
   it("plans a playable baseline for every supported genre", async () => {
@@ -111,7 +114,7 @@ describe("GameProjectGenerator", () => {
     await generator.execute({ projectId: "tuned-game", spec: tuned, mode: "apply" });
     expect(JSON.parse(await readFile(path.join(root, "tuned-game", "game-spec.json"), "utf8")))
       .toMatchObject({ gameplay: tuned.gameplay });
-    const source = await readFile(path.join(root, "tuned-game", "src", "main.ts"), "utf8");
+    const source = await readFile(path.join(root, "tuned-game", "src", "game.ts"), "utf8");
     expect(source).toContain("spec.gameplay?.collectibleCount");
     expect(source).toContain("slice(0, hazardCount)");
     expect(source).toContain("direction.x * movementSpeed");
@@ -121,7 +124,7 @@ describe("GameProjectGenerator", () => {
     const { generator, root } = await createGenerator();
     await generator.execute({ projectId: "media-game", spec, mode: "apply" });
 
-    const source = await readFile(path.join(root, "media-game", "src", "main.ts"), "utf8");
+    const source = await readFile(path.join(root, "media-game", "src", "game.ts"), "utf8");
     expect(source).toContain("function parseRuntimeAssets(value: unknown)");
     expect(source).toContain("assetPathPattern.test(path)");
     expect(source).toContain("roles.has(role as RuntimeAssetRole)");
@@ -133,7 +136,7 @@ describe("GameProjectGenerator", () => {
     const { generator, root } = await createGenerator();
     await generator.execute({ projectId: "image-sizing", spec, mode: "apply" });
 
-    const source = await readFile(path.join(root, "image-sizing", "src", "main.ts"), "utf8");
+    const source = await readFile(path.join(root, "image-sizing", "src", "game.ts"), "utf8");
     expect(source).toContain('this.createSizedSprite(120, height / 2, "player", 32, 32)');
     expect(source).toContain('(sprite.body as Phaser.Physics.Arcade.Body).setSize(displayWidth, displayHeight, true)');
     expect(source).toContain('collectible.setDisplaySize(24, 24)');
@@ -148,7 +151,7 @@ describe("GameProjectGenerator", () => {
       mode: "apply",
     });
 
-    const source = await readFile(path.join(root, "english-game", "src", "main.ts"), "utf8");
+    const source = await readFile(path.join(root, "english-game", "src", "game.ts"), "utf8");
     const html = await readFile(path.join(root, "english-game", "index.html"), "utf8");
     expect(source).toContain('const locale = spec.locale ?? "zh-CN"');
     expect(source).toContain('document.documentElement.lang = locale');

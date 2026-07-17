@@ -10,9 +10,9 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, lstat, open, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
-import { createIndexHtml, runtimeSource } from "./template.js";
+import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
 
-const GENERATOR_VERSION = "0.6.0";
+const GENERATOR_VERSION = "0.7.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 
 type GeneratedFile = { path: string; content: string; bytes: number; sha256: string };
@@ -121,7 +121,8 @@ function createGeneratedFiles(projectId: string, spec: GameSpec): {
       revision: 0,
       assets: [],
     }, null, 2)}\n`),
-    file("src/main.ts", runtimeSource),
+    file("src/main.ts", loaderSource),
+    file("src/game.ts", runtimeSource),
     file("tsconfig.json", `${JSON.stringify({
       compilerOptions: {
         target: "ES2023",
@@ -138,7 +139,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec): {
       },
       include: ["src", "vite.config.ts", "game-spec.json"],
     }, null, 2)}\n`),
-    file("vite.config.ts", 'import { defineConfig } from "vite";\n\nexport default defineConfig({ base: "./" });\n'),
+    file("vite.config.ts", 'import { defineConfig } from "vite";\n\nexport default defineConfig({ base: "./", build: { manifest: true } });\n'),
   ].sort((left, right) => left.path.localeCompare(right.path));
 
   const specSha256 = sha256(specContent);

@@ -88,6 +88,15 @@
         "vitest": "4.1.10",
       },
     },
+    "packages/bundle-budget": {
+      "name": "@gameforge/bundle-budget",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/node": "22.20.1",
+        "typescript": "7.0.2",
+        "vitest": "4.1.10",
+      },
+    },
     "packages/contracts": {
       "name": "@gameforge/contracts",
       "version": "0.1.0",
@@ -258,6 +267,8 @@
     "@gameforge/asset-store": ["@gameforge/asset-store@workspace:packages/asset-store"],
 
     "@gameforge/benchmark": ["@gameforge/benchmark@workspace:packages/benchmark"],
+
+    "@gameforge/bundle-budget": ["@gameforge/bundle-budget@workspace:packages/bundle-budget"],
 
     "@gameforge/contracts": ["@gameforge/contracts@workspace:packages/contracts"],
 

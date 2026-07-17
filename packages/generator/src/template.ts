@@ -460,6 +460,18 @@ new Phaser.Game({
 });
 `;
 
+export const loaderSource = String.raw`const host = document.querySelector<HTMLElement>("#game");
+if (host === null) throw new Error("Game host is missing.");
+host.dataset.state = "loading";
+
+import("./game.js").then(() => {
+  host.dataset.state = "ready";
+}).catch((error: unknown) => {
+  host.dataset.state = "failed";
+  host.textContent = error instanceof Error ? "Game failed to load: " + error.message : "Game failed to load.";
+});
+`;
+
 export function createIndexHtml(locale: "zh-CN" | "en-US" = "zh-CN"): string {
   const ariaLabel = locale === "en-US" ? "GameForge generated game" : "GameForge 生成的游戏";
   return String.raw`<!doctype html>
@@ -474,6 +486,8 @@ export function createIndexHtml(locale: "zh-CN" | "en-US" = "zh-CN"): string {
       html, body, #game { width: 100%; height: 100%; margin: 0; }
       body { overflow: hidden; background: #08111f; }
       canvas { display: block; margin: auto; }
+      #game[data-state="loading"]::before { content: "${locale === "en-US" ? "Loading game…" : "游戏加载中…"}"; color: #e2e8f0; font: 600 18px system-ui; position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); }
+      #game[data-state="failed"] { color: #fca5a5; display: grid; place-items: center; font: 600 16px system-ui; }
     </style>
   </head>
   <body>

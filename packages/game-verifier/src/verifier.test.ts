@@ -153,11 +153,16 @@ describe("GameVerifier", () => {
       }));
       expect(response.ok).toBe(true);
       expect(await response.text()).toContain("GameForge Generated Game");
-      const source = await stage("source", fetch(new URL("src/main.ts", server.url), {
+      const loader = await stage("loader", fetch(new URL("src/main.ts", server.url), {
         headers: { Connection: "close" },
         signal: AbortSignal.timeout(10_000),
       }));
-      expect(await source.text()).toContain("phaser.esm.js");
+      expect(await loader.text()).toContain('import("/src/game.ts")');
+      const game = await stage("game", fetch(new URL("src/game.ts", server.url), {
+        headers: { Connection: "close" },
+        signal: AbortSignal.timeout(10_000),
+      }));
+      expect(await game.text()).toContain("phaser.esm.js");
     } finally {
       await stage("close", server.close());
     }

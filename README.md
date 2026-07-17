@@ -61,6 +61,7 @@
 ```bash
 bun install --frozen-lockfile
 bun run build
+bun run bundle:check
 bun run test
 bun run audit
 bun run doctor
@@ -71,6 +72,8 @@ bun run tui -- list
 `bun run doctor` 会构建基础包与 MCP，然后用真实 Node stdio Client 检查运行时版本、Bun 单锁、生产入口、必需工具、本次 capability snapshot 及 ready 能力对应的条件工具。配置 Task Inbox 时还会执行一次 `{limit: 1}` 的只读 Relay 探测，因此不可达 URL 不会显示绿灯。它不调用云 API、不输出凭据；可在与 CodeArts 相同的环境变量下运行，以提前发现半配置和路径错误。
 
 `dev:local` 通过 Bun 并行启动示例游戏（5173）、Workbench（4173）和 Run Relay（8787）。仅在 Vite 开发模式且未显式配置时，Workbench 默认连接 `http://127.0.0.1:8787/`；生产构建仍要求设置 `VITE_AGENT_BASE_URL`。MCP 是 stdio 子进程，应由 CodeArts 启动，不包含在该并行命令中。生产式本地联调先执行 `bun run build`，再使用 `bun run start:relay`；CodeArts MCP 配置见 [CodeArts 快速开始](docs/codearts-quickstart.md)。
+
+示例游戏和生成模板先输出轻量加载壳，再异步加载 Phaser 游戏块；这会显著缩小首屏入口并改善首次绘制与长期缓存，但不会虚报 Phaser 总下载量减少。`bun run bundle:check` 根据 Vite manifest 分别约束初始、异步和总 raw/gzip 体积，预算超出时返回非零退出码。
 
 第二轮 Bun TUI MVP 位于 `apps/tui`，复用严格 Schema 的 Run Relay Client，不包含 Agent 循环。它支持提交/列出/查看 Task、回放/停止 Run，以及通过 SSE 实时观察连续 RunEvent；`--json` 在无 TTY 环境逐行输出可机器处理的 JSON。完整命令见 [TUI 使用说明](docs/tui.md)。
 
