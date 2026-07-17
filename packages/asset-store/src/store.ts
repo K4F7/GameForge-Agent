@@ -11,7 +11,7 @@ import {
   type RuntimeAssetRole,
 } from "@gameforge/contracts";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readFile, realpath, rename, rm, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, realpath, rename, rm, unlink, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 
@@ -53,13 +53,9 @@ export class ProjectAssetStore {
     if (manifest.projectId !== projectId) throw new Error("Runtime asset manifest project ID does not match.");
     for (const entry of manifest.assets) {
       const target = safeChild(publicDirectory, entry.path);
-      const info = await lstat(target).catch(() => undefined);
-      if (info === undefined || !info.isFile() || info.isSymbolicLink() || info.size !== entry.bytes) {
-        throw new Error(`Runtime asset file is missing or inconsistent: ${entry.assetId}`);
-      }
-      const realTarget = await realpath(target);
-      if (!realTarget.startsWith(`${publicDirectory}${path.sep}`)) {
-        throw new Error(`Runtime asset file escaped the project: ${entry.assetId}`);
+      const actualHash = await verifiedAssetHash(target, publicDirectory, entry.bytes, entry.assetId);
+      if (actualHash !== entry.sha256 || actualHash !== entry.provenance.sha256) {
+        throw new Error(`Runtime asset file hash is inconsistent: ${entry.assetId}`);
       }
     }
     return manifest;
@@ -259,6 +255,64 @@ function safeChild(root: string, relative: string): string {
 
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+async function verifiedAssetHash(
+  target: string,
+  publicDirectory: string,
+  expectedBytes: number,
+  assetId: string,
+): Promise<string> {
+  const handle = await open(target, "r").catch(() => undefined);
+  if (handle === undefined) throw new Error(`Runtime asset file is missing or inconsistent: ${assetId}`);
+  try {
+    const before = await handle.stat({ bigint: true });
+    await assertPathMatchesHandle(target, publicDirectory, before.dev, before.ino, expectedBytes, assetId);
+    const digest = await sha256Handle(handle);
+    const after = await handle.stat({ bigint: true });
+    if (
+      after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size ||
+      after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs
+    ) {
+      throw new Error(`Runtime asset file changed while being verified: ${assetId}`);
+    }
+    await assertPathMatchesHandle(target, publicDirectory, after.dev, after.ino, expectedBytes, assetId);
+    return digest;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function assertPathMatchesHandle(
+  target: string,
+  publicDirectory: string,
+  device: bigint,
+  inode: bigint,
+  expectedBytes: number,
+  assetId: string,
+): Promise<void> {
+  const info = await lstat(target, { bigint: true }).catch(() => undefined);
+  if (
+    info === undefined || !info.isFile() || info.isSymbolicLink() || info.size !== BigInt(expectedBytes) ||
+    info.dev !== device || info.ino !== inode
+  ) {
+    throw new Error(`Runtime asset file is missing or inconsistent: ${assetId}`);
+  }
+  const realTarget = await realpath(target);
+  if (!realTarget.startsWith(`${publicDirectory}${path.sep}`)) {
+    throw new Error(`Runtime asset file escaped the project: ${assetId}`);
+  }
+}
+
+async function sha256Handle(handle: FileHandle): Promise<string> {
+  const hash = createHash("sha256");
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  while (true) {
+    const { bytesRead } = await handle.read(buffer, 0, buffer.byteLength, null);
+    if (bytesRead === 0) break;
+    hash.update(buffer.subarray(0, bytesRead));
+  }
+  return hash.digest("hex");
 }
 
 function ascii(bytes: Uint8Array, start: number, end: number): string {

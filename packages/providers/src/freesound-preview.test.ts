@@ -45,4 +45,25 @@ describe("FreesoundPreviewProvider", () => {
       .rejects.toThrow("official");
     await expect(provider.execute(request)).rejects.toThrow("unsupported audio format");
   });
+
+  it("cancels a chunked preview as soon as it exceeds the byte limit", async () => {
+    let chunks = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        chunks += 1;
+        controller.enqueue(new Uint8Array(1024 * 1024));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const fetchMock = vi.fn<FreesoundFetchLike>(async () => new Response(body, { status: 200 }));
+
+    await expect(new FreesoundPreviewProvider({ fetch: fetchMock }).execute(request))
+      .rejects.toThrow("exceeds the byte limit");
+    expect(chunks).toBeGreaterThanOrEqual(17);
+    expect(chunks).toBeLessThanOrEqual(18);
+    expect(cancelled).toBe(true);
+  });
 });

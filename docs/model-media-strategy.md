@@ -191,7 +191,7 @@ type AssetProvenance = {
 ## 实际结果
 
 已完成官方资料调研、架构决策、Provider配置、运行事件和资产Manifest契约，并实现Seedream文生图与Freesound搜索适配器。Seedream适配器已通过模拟HTTP响应验证Bearer请求、Base64解码、图片格式识别、SHA-256和资产来源记录；同时限制官方API主机、参考图主机白名单和最大响应字节数。Freesound适配器已通过模拟响应验证Token Header、许可证查询、预览选择、非商业许可证拒绝、官方端点限制和错误脱敏。MCP仅在服务端同时配置API密钥与用途声明时注册`search_sound_asset`。
-此外已经实现 Freesound preview 素材化、安全资产存储，以及火山异步长文本 TTS 的提交、查询和素材化闭环。TTS 适配器测试覆盖官方 Header/URL/字段、签名句柄、跨项目拒绝、下载主机白名单、格式识别、哈希与凭据脱敏；当前仍未使用真实付费账号验证音色效果和实际 CDN 主机。
+此外已经实现 Freesound preview 素材化、安全资产存储，以及火山异步长文本 TTS 的提交、查询和素材化闭环。Freesound preview 下载按 16 MiB 上限流式读取，缺少或伪造 `Content-Length` 的 chunked 响应也会在越界时取消，不会先执行无界 `arrayBuffer()`。TTS 适配器测试覆盖官方 Header/URL/字段、签名句柄、跨项目拒绝、下载主机白名单、格式识别、哈希与凭据脱敏；当前仍未使用真实付费账号验证音色效果和实际 CDN 主机。
 
 工作台侧已经增加严格的Wire RunEvent契约、连续序列批次校验、轮询回放函数和SSE客户端边界；它会忽略重复事件，并在序列缺口时要求回补。仓库现在包含只负责保存和发布事件的本地Run Relay，配置`VITE_AGENT_BASE_URL`后工作台可以创建或连接真实运行。Relay不执行游戏生成任务，也不实现Agent循环；任务执行和工具编排仍由CodeArts负责。未配置Relay时界面继续明确显示“事件演示 · 未连接Agent”。
 

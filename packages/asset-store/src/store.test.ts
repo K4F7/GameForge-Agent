@@ -94,6 +94,32 @@ describe("ProjectAssetStore", () => {
     await expect(store.read("safety-sprint")).rejects.toThrow("missing or inconsistent");
   });
 
+  it("rejects same-size asset tampering during event recovery", async () => {
+    const { root, store } = await fixture();
+    const hash = createHash("sha256").update(jpeg).digest("hex");
+    await store.store({
+      projectId: "safety-sprint",
+      bytes: jpeg,
+      mimeType: "image/jpeg",
+      role: "player",
+      provenance: {
+        assetId: "images/hero.jpg",
+        kind: "image",
+        origin: "generated",
+        provider: "volcengine-ark",
+        model: "seedream",
+        prompt: "Hero",
+        license: "provider-terms",
+        sha256: hash,
+      },
+    });
+    const tampered = new Uint8Array(jpeg);
+    tampered[tampered.length - 1] = 0xda;
+    await writeFile(path.join(root, "safety-sprint", "public", "assets", "images", "hero.jpg"), tampered);
+
+    await expect(store.read("safety-sprint")).rejects.toThrow("hash is inconsistent");
+  });
+
   it("rejects hash mismatches, media spoofing, and duplicate assets", async () => {
     const { store } = await fixture();
     const provenance = {

@@ -47,10 +47,7 @@ export class FreesoundPreviewProvider {
     if (Number.isFinite(declaredLength) && declaredLength > MAX_PREVIEW_BYTES) {
       throw new Error("Freesound preview exceeds the byte limit.");
     }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength === 0 || bytes.byteLength > MAX_PREVIEW_BYTES) {
-      throw new Error("Freesound preview is empty or exceeds the byte limit.");
-    }
+    const bytes = await readBoundedBody(response, MAX_PREVIEW_BYTES);
     const mimeType = detectAudioMimeType(bytes);
     const license = `Freesound ${input.license}`;
     const attribution = `“${input.name}” by ${input.username} — ${input.license} — ${sourceUrl.href}`;
@@ -95,4 +92,35 @@ async function sha256(bytes: Uint8Array): Promise<string> {
   copy.set(bytes);
   const digest = await crypto.subtle.digest("SHA-256", copy.buffer);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function readBoundedBody(response: Response, limit: number): Promise<Uint8Array> {
+  if (response.body === null) throw new Error("Freesound preview is empty.");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  let completed = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        completed = true;
+        break;
+      }
+      length += value.byteLength;
+      if (length > limit) throw new Error("Freesound preview exceeds the byte limit.");
+      chunks.push(value);
+    }
+  } finally {
+    if (!completed) await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+  if (length === 0) throw new Error("Freesound preview is empty.");
+  const output = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return output;
 }

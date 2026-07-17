@@ -197,6 +197,8 @@ Workbench 页面加载时使用时间与浏览器 UUID 熵生成符合 `runIdSch
 
 `@gameforge/asset-store` 只接受已由生成器创建的项目，核验 `.gameforge/manifest.json`、项目 ID、真实目录、媒体魔数、大小、SHA-256、角色与 MIME 的对应关系。文件固定写入 `public/assets/`，清单使用互斥锁和临时文件更新；重复 asset ID、重复运行时角色、符号链接与路径越界都会被拒绝。
 
+CodeArts 重启后的 Manifest 恢复读取同样逐文件流式重算 SHA-256，并同时比对 Manifest entry 与 provenance 中的哈希；因此即使文件被替换为相同字节数，`get_project_assets` 也会拒绝恢复，而不会补发错误的 `asset.ready`。
+
 当前生成模板会在启动时读取 `public/assets/manifest.json`：存在 `player`、`collectible`、`hazard`、`background` 时加载图片；存在 `collect-sound` 和 `hit-sound` 时播放音频。浏览器运行时只接受契约内角色、同类型 MIME、`assets/` 内规范相对路径和唯一角色；损坏、重复或类型不匹配的条目被忽略。角色图片无论源分辨率如何，都会归一化显示尺寸和 Arcade Physics 碰撞体；背景仍按 960×540 场景缩放。清单缺失、为空或单项加载失败时继续使用程序化纹理与静音回退，因此媒体 Provider 不会成为玩法可运行性的硬依赖。
 
 存在 `voice` 角色时，模板会在玩家第一次点击或按键后播放配音，以遵守浏览器自动播放限制；存在 `bgm` 时，同一次用户手势会以 0.35 音量开始循环播放。Freesound 导入工具会把明确选择为 `bgm` 的预览记录为 `kind: "music"`，其他音效仍记录为 `kind: "sound"`，从而满足 Asset Store 的角色—来源一致性校验。解码失败时保持静音并继续游戏。
@@ -212,7 +214,7 @@ MCP 侧提供两个条件注册工具：
 
 两者均不重试、不修改玩法代码，也不实现 Agent 循环。
 
-项目输出根配置后还注册只读 `get_project_assets`。它重新验证生成项目边界、严格 Manifest、项目 ID，以及每个引用文件存在、非符号链接、仍位于 `public/` 内且字节数一致，然后返回当前 revision 和完整 entries。CodeArts 恢复 Run 时将它与已回放的 `asset.ready` 按 asset ID 对账，只为 Manifest 中缺少事件的 entry 补发当前 revision；这关闭了“媒体已落盘但事件发布前会话中断”的窗口，不会重复调用 Seedream、Freesound 或 TTS。
+项目输出根配置后还注册只读 `get_project_assets`。它重新验证生成项目边界、严格 Manifest、项目 ID，以及每个引用文件存在、非符号链接、仍位于 `public/` 内；字节数、已打开句柄与路径身份、entry/provenance SHA-256 也必须一致。CodeArts 恢复 Run 时将它与已回放的 `asset.ready` 按 asset ID 对账，只为 Manifest 中缺少事件的 entry 补发当前 revision；这关闭了“媒体已落盘但事件发布前会话中断”的窗口，不会重复调用 Seedream、Freesound 或 TTS。
 
 ## 官方依据
 
