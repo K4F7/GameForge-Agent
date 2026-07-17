@@ -43,8 +43,19 @@
 
 Windows 本地已使用真实 Relay 验证 `submit → watch(SSE) → stop → 自动退出`，并使用真实 CodeArts completed Run 验证英文规格、预览和 verification 摘要。详见 `experiments/2026-07-18-tui-mvp/`。
 
-## 第二轮后半：桌面 GUI 评估
+## 第二轮后半：桌面 GUI spike
 
 优先评估 Tauri 2 封装现有 React Workbench；Electron 作为生态成熟但体积更大的备选。渲染栈与桌面表面的决策、进入条件和验证要求已记录在 [ADR-0001](./decisions/0001-rendering-and-desktop-surfaces.md)。
 
 桌面 GUI 不改变协议边界：CodeArts 仍是主智能体，Relay 仍只协调状态，MCP 仍是确定性工具。若 TUI 的共享 controller 尚未稳定，不开始桌面打包。
+
+- [x] 新增 `apps/desktop`，复用 Workbench 的生产构建；
+- [x] 锁定仓库本地 Tauri CLI，并由 Bun 编排；
+- [x] capability 保持零权限，不注册 Tauri plugin、自定义 Rust command 或 invoke handler；
+- [x] 新增 `doctor:desktop`，检查 CSP、loopback dev URL、构建目录与最小权限边界；
+- [x] 在 Windows 11、MSVC 14.44、Rust/Cargo 1.88.0 和 WebView2 环境完成 `--no-bundle` release 构建；
+- [ ] 验证 macOS/Linux 原生构建与 WebView 行为；
+- [ ] 设计并验证安装包签名、更新公钥和发布流程；
+- [ ] 在明确需求与最小 scope 后才考虑文件选择器或系统通知 plugin。
+
+当前 spike 只证明“现有 Workbench 可被零 IPC 的 Tauri 壳编译为 Windows 可执行文件”，不等同于三平台发行就绪。详见 [桌面壳说明](./desktop.md) 与 `experiments/2026-07-18-tauri-desktop-spike/`。

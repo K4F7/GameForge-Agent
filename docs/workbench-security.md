@@ -34,7 +34,7 @@ CSP 不允许任意远程 frame。`connect-src` 只包含 self、loopback 和配
 
 Tauri 第一版不得新增 shell、任意文件系统、剪贴板、摄像头、麦克风、位置或下载权限。只允许加载打包后的 Workbench、连接明确 Relay origin、嵌入上述预览 allowlist。安装包签名、自动更新公钥和三平台 WebView CSP 行为必须另建实验验证；这些条件未满足前，本仓库仍以 Web Workbench 与 Bun TUI 为交付面。
 
-Tauri 实现时应把 CSP 写入 `tauri.conf.json` 的 `app.security.csp`，让构建过程为本地脚本和样式加入 nonce/hash；其他响应头写入 `app.security.headers`。不要把当前 Vite 开发服务器配置直接复制成桌面权限。
+Tauri 实现时应把 CSP 写入 `tauri.conf.json` 的 `app.security.csp`，让构建过程为本地脚本和样式加入 nonce/hash。项目锁定的 Tauri CLI 2.11.4 Schema 尚不接受 `app.security.headers`，因此 Permissions-Policy 等自定义协议响应头必须留到平台 WebView 验收阶段选择受支持机制；不能绕过 Schema 或把 Vite 开发服务器配置直接复制成桌面权限。
 
 ## 官方依据
 

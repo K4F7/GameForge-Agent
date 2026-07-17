@@ -8,5 +8,6 @@ coverage/
 .vite/
 *.tsbuildinfo
 *.log
+apps/desktop/src-tauri/target/
 .codeartsdoer/skills/ProjectSkillStatus.txt
 .DS_Store
