@@ -24,6 +24,13 @@ describe("RunStore", () => {
     expect(() => store.append("run-1", { runId: "run-1", after: 3, events: [] })).toThrow("terminal");
   });
 
+  it("retains a task language on the start event while preserving generic runs", () => {
+    const store = new RunStore();
+    expect(store.create("run-english", "en-US")).toMatchObject({ language: "en-US" });
+    expect(store.replay("run-english", 0).events[0]).toMatchObject({ language: "en-US" });
+    expect(store.create("run-generic")).not.toHaveProperty("language");
+  });
+
   it("rejects stale append cursors and client-created start events", () => {
     const store = new RunStore();
     store.create("run-1");

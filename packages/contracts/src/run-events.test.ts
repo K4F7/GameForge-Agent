@@ -45,6 +45,23 @@ describe("run event contracts", () => {
     }).success).toBe(false);
   });
 
+  it("preserves an optional task language on the authoritative start event", () => {
+    expect(toRunEvent(runEventSchema.parse({
+      type: "run.started",
+      runId: "run-english",
+      sequence: 1,
+      emittedAt,
+      language: "en-US",
+    }))).toMatchObject({ type: "run.started", language: "en-US" });
+    expect(runEventSchema.safeParse({
+      type: "run.started",
+      runId: "run-invalid",
+      sequence: 1,
+      emittedAt,
+      language: "fr-FR",
+    }).success).toBe(false);
+  });
+
   it("requires replay batches to be same-run and contiguous", () => {
     const result = runEventBatchSchema.safeParse({
       runId: "run-1",

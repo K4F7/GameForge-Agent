@@ -61,6 +61,7 @@ export function App(): React.JSX.Element {
   const [prompt, setPrompt] = useState(
     "制作一个90秒的俯视角安全训练小游戏：玩家收集5件防护装备，避开移动叉车，在倒计时结束前抵达出口。",
   );
+  const [taskLanguage, setTaskLanguage] = useState<"zh-CN" | "en-US">("zh-CN");
   const [previewKey, setPreviewKey] = useState(0);
   const [relayRunId, setRelayRunId] = useState(() => createWorkbenchRunId());
   const [relayState, setRelayState] = useState<"disconnected" | "connecting" | "connected" | "error">("disconnected");
@@ -69,6 +70,10 @@ export function App(): React.JSX.Element {
   const timerRef = useRef<number | null>(null);
   const disconnectRelayRef = useRef<(() => void) | null>(null);
   const relayCursorRef = useRef(0);
+
+  useEffect(() => {
+    if (runState.language !== null) setTaskLanguage(runState.language);
+  }, [runState.language]);
 
   const progress = useMemo(() => {
     const completed = runState.phases.filter((phase) => phase.status === "succeeded").length;
@@ -216,7 +221,7 @@ export function App(): React.JSX.Element {
         baseUrl: agentBaseUrl,
         runId: relayRunId,
         prompt,
-        language: "zh-CN",
+        language: taskLanguage,
       });
       setTaskId(created.task.taskId);
       dispatch(created.event);
@@ -313,6 +318,16 @@ export function App(): React.JSX.Element {
             <div className="panel-content spec-content">
               <label className="field-label" htmlFor="game-prompt">游戏需求</label>
               <textarea id="game-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={6} />
+              <label className="field-label language-label" htmlFor="task-language">生成语言</label>
+              <select
+                id="task-language"
+                value={taskLanguage}
+                disabled={relayState === "connecting" || relayState === "connected"}
+                onChange={(event) => setTaskLanguage(event.target.value === "en-US" ? "en-US" : "zh-CN")}
+              >
+                <option value="zh-CN">简体中文</option>
+                <option value="en-US">English (US)</option>
+              </select>
               {agentBaseUrl !== null && (
                 <div className={`relay-card ${relayState}`}>
                   <label htmlFor="relay-run-id">Run ID</label>
@@ -343,6 +358,7 @@ export function App(): React.JSX.Element {
                 <>
                   <dl className="spec-grid">
                     <div><dt>标题</dt><dd>{runState.spec.title}</dd></div>
+                    <div><dt>语言</dt><dd>{runState.spec.locale ?? "zh-CN"}</dd></div>
                     <div><dt>类型</dt><dd>{genreLabels[runState.spec.genre]}</dd></div>
                     <div><dt>时长</dt><dd>{runState.spec.targetDurationSeconds} 秒</dd></div>
                     <div><dt>引擎</dt><dd>Phaser</dd></div>

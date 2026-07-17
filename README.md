@@ -16,17 +16,23 @@
 ├── .codeartsdoer/skills/             # CodeArts项目级Skills
 ├── apps/game/                         # Phaser + Vite示例游戏
 ├── apps/workbench/                    # React + Vite Agent工作台
+├── apps/tui/                          # Bun终端任务与RunEvent客户端
 ├── packages/contracts/               # 需求与游戏规格Schema
 ├── packages/generator/               # 固定模板的安全项目生成器
 ├── packages/game-verifier/           # Playwright可玩性、诊断与截图验收
 ├── packages/mcp-server/              # CodeArts可调用的MCP工具
 ├── packages/providers/               # 国产模型与媒体Provider适配器
 ├── packages/run-relay/               # RunEvent回放与SSE中继
+├── packages/opencode-plugin/          # 可选薄插件：状态提示与通知
+├── integrations/codearts/             # CodeArts动态启动适配
+├── integrations/opencode/             # OpenCode动态启动适配
 ├── docs/
 │   ├── codearts-quickstart.md         # 安装与首次验证
 │   ├── comparison.md                 # 三种代码智能体对比
 │   ├── model-media-strategy.md       # 国产模型、生图、TTS与音效策略
 │   ├── game-generation-runtime.md    # 项目生成器与事件服务
+│   ├── roadmap.md                    # CodeArts 实验与第二轮 TUI/GUI 计划
+│   ├── codearts-opencode-analysis.md # CodeArts 与 OpenCode 官方资料研判
 │   └── open-source-references.md      # 可借鉴的游戏Agent与前端开源项目
 └── experiments/                      # 后续基准任务与实验记录
 ```
@@ -58,11 +64,26 @@ bun run test
 bun run audit
 bun run doctor
 bun run dev:local
+bun run tui -- list
 ```
 
 `bun run doctor` 会构建基础包与 MCP，然后用真实 Node stdio Client 检查运行时版本、Bun 单锁、生产入口、必需工具、本次 capability snapshot 及 ready 能力对应的条件工具。配置 Task Inbox 时还会执行一次 `{limit: 1}` 的只读 Relay 探测，因此不可达 URL 不会显示绿灯。它不调用云 API、不输出凭据；可在与 CodeArts 相同的环境变量下运行，以提前发现半配置和路径错误。
 
 `dev:local` 通过 Bun 并行启动示例游戏（5173）、Workbench（4173）和 Run Relay（8787）。仅在 Vite 开发模式且未显式配置时，Workbench 默认连接 `http://127.0.0.1:8787/`；生产构建仍要求设置 `VITE_AGENT_BASE_URL`。MCP 是 stdio 子进程，应由 CodeArts 启动，不包含在该并行命令中。生产式本地联调先执行 `bun run build`，再使用 `bun run start:relay`；CodeArts MCP 配置见 [CodeArts 快速开始](docs/codearts-quickstart.md)。
+
+第二轮 Bun TUI MVP 位于 `apps/tui`，复用严格 Schema 的 Run Relay Client，不包含 Agent 循环。它支持提交/列出/查看 Task、回放/停止 Run，以及通过 SSE 实时观察连续 RunEvent；`--json` 在无 TTY 环境逐行输出可机器处理的 JSON。完整命令见 [TUI 使用说明](docs/tui.md)。
+
+## 集成边界
+
+GameForge 核心不实现为 OpenCode Plugin。核心由客户端无关的 contracts、Provider 适配器、生成器、Asset Store、Verifier、Run Relay 和确定性 MCP 组成；CodeArts 与 OpenCode 只是可替换的主智能体/宿主。
+
+- `AGENTS.md`：规则；
+- `.codeartsdoer/skills/`：生产流程；
+- MCP：确定性工具；
+- Workbench/TUI：状态界面；
+- OpenCode Plugin：可选的可用性检测、会话提示、状态工具和通知。
+
+可提交的 [`opencode.json.example`](opencode.json.example) 不包含绝对路径或密钥。复制为本地配置前设置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 和 `GAMEFORGE_RUN_RELAY_URL`；权限默认让校验/查询类工具直接执行，让项目生成、资产导入、预览启停和 Run 终态操作请求确认。跨平台动态启动器见 `integrations/`。
 
 仓库统一使用 Bun 1.3.14 或更高版本和 `bun.lock`；仓库级 `.npmrc` 固定 npm 官方 registry，以确保 Phaser 4.2.1 与安全审计元数据可复现。不要再生成或提交 npm、pnpm、Yarn 的并行锁文件。
 
@@ -142,7 +163,13 @@ GAMEFORGE_TTS_AUDIO_HOSTS=<控制台/真实 query 响应确认的音频 CDN 主�
 
 Task 创建以 Run ID 作为幂等键：网络响应丢失后，以完全相同的 Run ID、Prompt 和语言重试会返回原 Task 与原始 `run.started`，不会重复排队；同 Run ID 携带不同内容会返回稳定的 `task_run_conflict`。一个 Run ID 只代表一次不可变任务，完成新需求时应使用新的 Run ID。
 
+Workbench 可选择 `zh-CN` 或 `en-US`。语言随 Task 进入权威 `run.started`，因此重连与事件回放可以恢复选择；CodeArts 必须把 Task 的 Prompt 与 language 原样传给 `draft_game_spec`。百炼返回的 `GameSpec.locale` 不匹配时会被拒绝，生成项目的静态 HTML `lang`、无障碍标签和 Phaser HUD/控制提示均随 locale 输出；旧规格缺少 locale 时仍默认中文。
+
 Workbench 会为每次页面会话准备唯一 Run ID；连接期间输入锁定。若提交响应不确定，直接保留当前 ID 重试；若要开始不同需求，先停止或等待当前 Run 终止，再点击“新任务”显式轮换 ID。不要手工修改已连接 Run 的 ID。
+
+当前机器已安装 CodeArts Agent 客户端；真实 CodeArts 端到端验收不能由本地 MCP Client 替代。可执行步骤、已通过证据与第二轮 TUI/GUI TODO 见 [路线图](docs/roadmap.md)。
+
+2026-07-18 已使用 CodeArts 26.6.2 OAuth TUI 和临时隔离配置完成首个真实闭环：CodeArts 启动 `gameforge` stdio MCP、认领 Workbench Task、发布 capability 与英文 GameSpec、生成并构建 Phaser 项目、取得真实 Chrome `won` 证据、发布 preview/verification 并完成 Run。云 Provider 均未配置也未调用。详见 [`2026-07-18-codearts-real-e2e`](experiments/2026-07-18-codearts-real-e2e/result.md)。
 
 先阅读 [CodeArts 快速开始](docs/codearts-quickstart.md)，然后在 CodeArts 智能体模式中输入：
 
@@ -156,3 +183,6 @@ Workbench 会为每次页面会话准备唯一 Run ID；连接期间输入锁定
 - [CodeArts Agent CLI](https://support.huaweicloud.com/usermanual-cli/codeartsagent_cli_0001.html)
 - [CodeArts Skills](https://support.huaweicloud.com/usermanual-codeartssnap/codeartsdoer_ug_0024.html)
 - [CodeArts MCP](https://support.huaweicloud.com/usermanual-codeartssnap/codeartsdoer_ug_0010.html)
+- [CodeArts 与 OpenCode 官方资料研判](docs/codearts-opencode-analysis.md)
+- [分层架构与 MCP 权限](docs/architecture-layers.md)
+- [CodeArts/OpenCode 动态启动器](integrations/README.md)

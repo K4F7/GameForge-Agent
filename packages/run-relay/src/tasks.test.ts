@@ -12,7 +12,12 @@ describe("TaskInbox", () => {
       language: "zh-CN",
     });
     expect(created.task).toMatchObject({ runId: "run-1", status: "queued" });
-    expect(created.event).toMatchObject({ type: "run.started", runId: "run-1", sequence: 1 });
+    expect(created.event).toMatchObject({
+      type: "run.started",
+      runId: "run-1",
+      sequence: 1,
+      language: "zh-CN",
+    });
     expect(runs.replay("run-1", 0).events).toHaveLength(1);
   });
 

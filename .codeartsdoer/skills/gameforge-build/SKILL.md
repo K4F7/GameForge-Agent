@@ -16,7 +16,7 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
 
 ## 工作流
 
-1. 使用已认领 Task 的 `prompt`（或当前直接用户需求）。若 `draft_game_spec` 已注册，优先用它转换为一次结构化 GameSpec 草案；随后始终调用 `validate_game_spec`。若工具未注册，CodeArts 自行整理 GameSpec；校验失败时由 CodeArts 修改输入后再次调用。验证成功后，将返回的规格原样发布为下一条连续的 `spec.ready` RunEvent，供 Workbench 展示；`draft_game_spec` 只发起一次百炼 Qwen 请求，不负责规划、重试或修复。
+1. 使用已认领 Task 的 `prompt` 和 `language`（或当前直接用户需求与明确语言）。若 `draft_game_spec` 已注册，优先把两者原样传入，转换为一次结构化 GameSpec 草案；Task 为 `zh-CN` 时 GameSpec `locale` 必须是 `zh-CN`，Task 为 `en-US` 时必须是 `en-US`。随后始终调用 `validate_game_spec`。若工具未注册，CodeArts 自行整理 GameSpec 并显式设置同一 `locale`；校验失败时由 CodeArts 修改输入后再次调用。验证成功后，将返回的规格原样发布为下一条连续的 `spec.ready` RunEvent，供 Workbench 展示；`draft_game_spec` 只发起一次百炼 Qwen 请求，不负责规划、重试或修复。
 2. 调用 `generate_game_project` 的 `dry-run`，审阅文件计划；确认目标为空且路径正确后再以 `apply` 执行。
 3. 默认使用 Phaser、Vite 与程序化占位素材。仅在工具已注册且需求需要时：
    - `request_image_asset`：一次 Seedream 官方 API 请求并安全落盘；只选择 `player`、`collectible`、`hazard` 或 `background` 图片角色，语音和音频角色不会进入该工具 Schema；

@@ -5,6 +5,7 @@ import type { FetchLike } from "./seedream.js";
 const apiKey = "test-bailian-key-never-log";
 const validSpec = {
   title: "安全冲刺",
+  locale: "zh-CN",
   genre: "arcade",
   objective: "在倒计时结束前收集所有安全装备。",
   controls: ["方向键移动"],
@@ -36,6 +37,11 @@ describe("BailianGameSpecProvider", () => {
     expect(body.response_format).toMatchObject({ type: "json_schema", json_schema: { strict: true } });
     expect(body.response_format.json_schema.schema.additionalProperties).toBe(false);
     expect(body.response_format.json_schema.schema.required).toContain("gameplay");
+    expect(body.response_format.json_schema.schema.required).toContain("locale");
+    expect(body.response_format.json_schema.schema.properties.locale).toEqual({
+      type: "string",
+      enum: ["zh-CN", "en-US"],
+    });
     expect(body.response_format.json_schema.schema.properties.gameplay).toMatchObject({
       additionalProperties: false,
       required: ["collectibleCount", "hazardCount", "startingLives", "movementSpeed"],
@@ -47,6 +53,14 @@ describe("BailianGameSpecProvider", () => {
     await expect(new BailianGameSpecProvider({ apiKey, fetch: fetchMock }).execute({
       prompt: "制作一个角色扮演安全训练小游戏。",
     })).rejects.toThrow();
+  });
+
+  it("rejects model output in a different locale than requested", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => response({ ...validSpec, locale: "zh-CN" }));
+    await expect(new BailianGameSpecProvider({ apiKey, fetch: fetchMock }).execute({
+      prompt: "Create a complete English safety-training browser game specification.",
+      language: "en-US",
+    })).rejects.toThrow("locale");
   });
 
   it("rejects an invalid model identifier reported by the upstream response", async () => {

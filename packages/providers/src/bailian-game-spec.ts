@@ -74,8 +74,12 @@ export class BailianGameSpecProvider implements LlmProvider<DraftGameSpecRequest
     let specInput: unknown;
     try { specInput = JSON.parse(content) as unknown; }
     catch { throw new Error("Bailian assistant content was not valid JSON."); }
+    const spec = gameSpecSchema.parse(specInput);
+    if (spec.locale !== input.language) {
+      throw new Error("Bailian GameSpec locale did not match the requested language.");
+    }
     return {
-      spec: gameSpecSchema.parse(specInput),
+      spec,
       model: modelIdSchema.parse(parsed.model ?? this.#model),
     };
   }
@@ -85,9 +89,10 @@ function gameSpecJsonSchema(): Record<string, unknown> {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["title", "genre", "objective", "controls", "winCondition", "loseCondition", "targetDurationSeconds", "gameplay"],
+    required: ["title", "locale", "genre", "objective", "controls", "winCondition", "loseCondition", "targetDurationSeconds", "gameplay"],
     properties: {
       title: { type: "string", minLength: 1, maxLength: 80 },
+      locale: { type: "string", enum: ["zh-CN", "en-US"] },
       genre: { type: "string", enum: ["arcade", "platformer", "puzzle", "shooter", "strategy"] },
       objective: { type: "string", minLength: 10, maxLength: 500 },
       controls: { type: "array", minItems: 1, maxItems: 12, items: { type: "string", minLength: 1 } },

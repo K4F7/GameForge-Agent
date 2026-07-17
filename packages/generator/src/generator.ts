@@ -10,9 +10,9 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, lstat, open, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
-import { indexHtml, runtimeSource } from "./template.js";
+import { createIndexHtml, runtimeSource } from "./template.js";
 
-const GENERATOR_VERSION = "0.5.0";
+const GENERATOR_VERSION = "0.6.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 
 type GeneratedFile = { path: string; content: string; bytes: number; sha256: string };
@@ -104,7 +104,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec): {
   const baseFiles = [
     file(".npmrc", "registry=https://registry.npmjs.org/\n"),
     file("game-spec.json", specContent),
-    file("index.html", indexHtml),
+    file("index.html", createIndexHtml(spec.locale)),
     file("package.json", `${JSON.stringify({
       name: `gameforge-${projectId}`,
       version: "0.1.0",

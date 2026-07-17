@@ -57,7 +57,7 @@ export class TaskInbox {
     if (this.#tasks.size >= this.#maxTasks) {
       throw new TaskInboxError(503, "task_capacity_reached", "Task inbox capacity has been reached.");
     }
-    const event = this.#runStore.create(request.runId);
+    const event = this.#runStore.create(request.runId, request.language);
     const task = gameTaskSchema.parse({
       taskId: `task-${randomUUID()}`,
       runId: request.runId,

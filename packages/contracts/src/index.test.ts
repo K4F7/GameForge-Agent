@@ -2,6 +2,21 @@ import { describe, expect, it } from "vitest";
 import { validateGameSpec } from "./index.js";
 
 describe("validateGameSpec", () => {
+  it("accepts supported locales while preserving legacy specifications", () => {
+    const base = {
+      title: "Safety Sprint",
+      genre: "arcade" as const,
+      objective: "Collect every safety item before time expires.",
+      controls: ["Arrow keys"],
+      winCondition: "Collect every item.",
+      loseCondition: "Time expires.",
+      targetDurationSeconds: 90,
+    };
+    expect(validateGameSpec(base).locale).toBeUndefined();
+    expect(validateGameSpec({ ...base, locale: "en-US" }).locale).toBe("en-US");
+    expect(() => validateGameSpec({ ...base, locale: "fr-FR" })).toThrow();
+  });
+
   it("accepts a complete game specification", () => {
     const result = validateGameSpec({
       title: "Safety Sprint",

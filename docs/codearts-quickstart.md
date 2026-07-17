@@ -108,6 +108,16 @@ bun run dev:local
 4. 按 `gameforge-build` Skill 完成规格、生成、验收和 `preview.ready`；
 5. 确认 Workbench 显示真实规格、素材和本次生成项目，而不是演示数据。
 
+双语验收时，在 Workbench 选择 `English (US)` 后提交新的 Run。CodeArts 读取 Task 后应把两个字段原样传递：
+
+```text
+draft_game_spec({ prompt: task.prompt, language: task.language })
+```
+
+确认 `spec.ready.spec.locale` 为 `en-US`、预览 HUD 显示 `Progress`/`Lives`，且浏览器 `document.documentElement.lang` 为 `en-US`。再用新 Run 做一次中文对照。Provider 会拒绝 locale 与请求 language 不一致的模型输出。
+
+本仓库的本地 MCP Client、Relay 和浏览器实验不能代替真实 CodeArts 使用。完成第一阶段前必须保存一份脱敏记录，至少证明：CodeArts 客户端版本、登录状态、已安装 `gameforge` MCP、Task ID/Run ID、`claim_game_task` 的 agent ID、实际工具调用摘要、最终 `run.completed` 与 Workbench 截图。当前机器已安装客户端，但尚未完成并记录该端到端实验，因此该项仍未通过。
+
 官方 MCP 页面访问日期：2026-07-16。
 
 仓库已用真实 MCP SDK 客户端验证上述 `node + dist/index.js + env` stdio 方式可以握手并列出无密钥基础工具；`bun run dev:local` 也已取得游戏、Workbench 和 Relay 三个 HTTP 200。可复现记录见 `experiments/2026-07-16-local-bootstrap/`。

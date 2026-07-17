@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { createInitialRunState, runReducer, type RunEvent } from "./run-state.js";
 
 describe("runReducer", () => {
+  it("restores the requested language from the authoritative start event", () => {
+    expect(runReducer(createInitialRunState(), {
+      type: "run.started",
+      runId: "run-english",
+      sequence: 1,
+      language: "en-US",
+    })).toMatchObject({ runId: "run-english", language: "en-US" });
+  });
+
   it("resets a terminal run before preparing a new task", () => {
     const stopped = runReducer(
       runReducer(createInitialRunState(), { type: "run.started", runId: "run-old", sequence: 1 }),

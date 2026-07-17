@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const gameSpecSchema = z.strictObject({
   title: z.string().trim().min(1).max(80),
+  locale: z.enum(["zh-CN", "en-US"]).optional(),
   genre: z.enum(["arcade", "platformer", "puzzle", "shooter", "strategy"]),
   objective: z.string().trim().min(10).max(500),
   controls: z.array(z.string().trim().min(1)).min(1).max(12),

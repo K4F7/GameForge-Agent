@@ -42,7 +42,7 @@ describe("run event client", () => {
           status: "queued",
           createdAt: emittedAt,
         },
-        event: { type: "run.started", runId: "run-1", sequence: 1, emittedAt },
+        event: { type: "run.started", runId: "run-1", sequence: 1, emittedAt, language: "zh-CN" },
       }), { status: 201, headers: { "Content-Type": "application/json" } }),
     );
     const result = await createGameTask({
@@ -51,7 +51,10 @@ describe("run event client", () => {
       prompt: "制作一个可以收集装备并避开危险的浏览器小游戏。",
       fetch: fetchMock,
     });
-    expect(result).toMatchObject({ task: { taskId, status: "queued" }, event: { type: "run.started" } });
+    expect(result).toMatchObject({
+      task: { taskId, status: "queued" },
+      event: { type: "run.started", language: "zh-CN" },
+    });
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://127.0.0.1:8787/tasks");
     expect(fetchMock.mock.calls[0]?.[1]?.body).toContain('"language":"zh-CN"');
   });

@@ -100,6 +100,20 @@ describe("run relay HTTP server", () => {
     await expect(relayClient.getTask(created.task.taskId)).resolves.toMatchObject({ status: "completed" });
   });
 
+  it("creates a task through the shared client without browser-only APIs", async () => {
+    const baseUrl = await startServer();
+    const client = new RunRelayClient({ baseUrl });
+    const created = await client.createTask({
+      runId: "run-client-task",
+      prompt: "Create a deterministic browser game from this terminal request.",
+      language: "en-US",
+    });
+    expect(created).toMatchObject({
+      task: { runId: "run-client-task", language: "en-US", status: "queued" },
+      event: { type: "run.started", language: "en-US", sequence: 1 },
+    });
+  });
+
   it("creates a run, appends events, and replays a validated batch", async () => {
     const baseUrl = await startServer();
     const created = await fetch(`${baseUrl}/runs`, {

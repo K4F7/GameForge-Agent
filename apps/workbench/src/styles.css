@@ -20,7 +20,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 1180px; min-height: 100vh; background: var(--bg); }
-button, input, textarea { font: inherit; }
+button, input, textarea, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 
 .workbench-shell {
@@ -98,6 +98,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .field-label, .section-title { color: #c9d4e6; font-size: 10px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; }
 textarea { width: 100%; margin-top: 8px; resize: vertical; color: #dce7f8; background: #0b1017; border: 1px solid var(--line); border-radius: 8px; padding: 11px; font-size: 11px; line-height: 1.6; outline: none; }
 textarea:focus { border-color: rgba(86,229,202,.55); box-shadow: 0 0 0 3px rgba(86,229,202,.06); }
+.language-label { display: block; margin-top: 12px; }
+select { width: 100%; margin-top: 8px; color: #dce7f8; background: #0b1017; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; outline: none; }
+select:focus { border-color: rgba(86,229,202,.55); box-shadow: 0 0 0 3px rgba(86,229,202,.06); }
 .relay-card { margin-top: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #0b1017; }
 .relay-card.connected { border-color: rgba(86,229,202,.35); }
 .relay-card.error { border-color: rgba(255,111,120,.35); }

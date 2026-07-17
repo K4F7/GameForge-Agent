@@ -8,11 +8,12 @@
   "packageManager": "bun@1.3.14",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "integrations"
   ],
   "scripts": {
     "build:foundation": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/generator build && bun run --filter @gameforge/providers build && bun run --filter @gameforge/asset-store build && bun run --filter @gameforge/run-relay build && bun run --filter @gameforge/game-verifier build",
-    "build": "bun run build:foundation && bun run --filter @gameforge/game build && bun run --filter @gameforge/workbench build && bun run --filter @gameforge/mcp-server build",
+    "build": "bun run build:foundation && bun run --filter @gameforge/game build && bun run --filter @gameforge/workbench build && bun run --filter @gameforge/tui build && bun run --filter @gameforge/opencode-plugin build && bun run --filter @gameforge/integrations build && bun run --filter @gameforge/mcp-server build",
     "check": "bun run build:foundation && bun run --filter '*' check",
     "test": "bun run build:foundation && bun run --filter '*' test",
     "audit": "bun audit --prod",
@@ -21,6 +22,11 @@
     "dev:workbench": "bun run --filter @gameforge/workbench dev",
     "dev:mcp": "bun run --filter @gameforge/mcp-server dev",
     "dev:relay": "bun run --filter @gameforge/run-relay dev",
+    "tui": "bun run --filter @gameforge/tui start",
+    "integrations:check": "bun run --filter @gameforge/integrations check",
+    "integrations:test": "bun run --filter @gameforge/integrations test",
+    "codearts": "bun integrations/codearts/launch.ts",
+    "opencode": "bun integrations/opencode/launch.ts",
     "dev:local": "bun run --parallel dev:relay dev:game dev:workbench",
     "start:mcp": "node packages/mcp-server/dist/index.js",
     "start:relay": "node packages/run-relay/dist/index.js"

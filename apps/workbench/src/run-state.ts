@@ -55,6 +55,7 @@ export type VerificationState = {
 
 export type RunState = {
   runId: string | null;
+  language: "zh-CN" | "en-US" | null;
   status: RunStatus;
   lastSequence: number;
   phases: ReadonlyArray<PhaseState>;
@@ -80,6 +81,7 @@ const phaseLabels: Record<RunPhase, string> = {
 export function createInitialRunState(): RunState {
   return {
     runId: null,
+    language: null,
     status: "idle",
     lastSequence: 0,
     phases: (Object.keys(phaseLabels) as RunPhase[]).map((id) => ({
@@ -122,6 +124,7 @@ export function runReducer(state: RunState, event: RunStateAction): RunState {
     return {
       ...createInitialRunState(),
       runId: event.runId,
+      language: event.language ?? null,
       status: "running",
       lastSequence: event.sequence,
     };

@@ -140,6 +140,31 @@ describe("GameProjectGenerator", () => {
     expect(source).toContain('(collectible.body as Phaser.Physics.Arcade.Body).setSize(24, 24, true)');
   });
 
+  it("localizes generated runtime chrome while preserving legacy Chinese defaults", async () => {
+    const { generator, root } = await createGenerator();
+    await generator.execute({
+      projectId: "english-game",
+      spec: { ...spec, locale: "en-US" },
+      mode: "apply",
+    });
+
+    const source = await readFile(path.join(root, "english-game", "src", "main.ts"), "utf8");
+    const html = await readFile(path.join(root, "english-game", "index.html"), "utf8");
+    expect(source).toContain('const locale = spec.locale ?? "zh-CN"');
+    expect(source).toContain('document.documentElement.lang = locale');
+    expect(source).toContain('won: "Mission Complete"');
+    expect(source).toContain('arcadeControls: "Arrow keys to move, collect targets, and avoid hazards"');
+    expect(source).toContain('won: "任务完成"');
+    expect(html).toContain('<html lang="en-US">');
+    expect(html).toContain('aria-label="GameForge generated game"');
+    expect(html).toContain('<link rel="icon" href="data:," />');
+
+    await generator.execute({ projectId: "legacy-game", spec, mode: "apply" });
+    const legacyHtml = await readFile(path.join(root, "legacy-game", "index.html"), "utf8");
+    expect(legacyHtml).toContain('<html lang="zh-CN">');
+    expect(legacyHtml).toContain('aria-label="GameForge 生成的游戏"');
+  });
+
   it("rejects relative output roots", () => {
     expect(() => new GameProjectGenerator({ outputRoot: "generated-games" })).toThrow("absolute");
   });

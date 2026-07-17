@@ -1,5 +1,7 @@
 import {
   claimGameTaskRequestSchema,
+  createGameTaskRequestSchema,
+  createGameTaskResponseSchema,
   gameTaskIdSchema,
   gameTaskSchema,
   listGameTasksRequestSchema,
@@ -11,6 +13,8 @@ import {
   type RunEventBatch,
   type ReplayRunEventsRequest,
   type ClaimGameTaskRequest,
+  type CreateGameTaskRequest,
+  type CreateGameTaskResponse,
   type GameTask,
   type ListGameTasksRequest,
   type WireRunEvent,
@@ -79,6 +83,24 @@ export class RunRelayClient {
       throw new RunRelayClientError("protocol", "Run relay returned an invalid create response.");
     }
     return parsed.data.event;
+  }
+
+  async createTask(input: CreateGameTaskRequest): Promise<CreateGameTaskResponse> {
+    const request = createGameTaskRequestSchema.parse(input);
+    const response = await this.#request("tasks", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+    const parsed = createGameTaskResponseSchema.safeParse(response);
+    if (
+      !parsed.success ||
+      parsed.data.task.runId !== request.runId ||
+      parsed.data.event.type !== "run.started" ||
+      parsed.data.event.runId !== request.runId
+    ) {
+      throw new RunRelayClientError("protocol", "Run relay returned an invalid task create response.");
+    }
+    return parsed.data;
   }
 
   async publishEvents(batchInput: RunEventBatch): Promise<{ accepted: number; lastSequence?: number }> {

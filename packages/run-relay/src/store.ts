@@ -55,7 +55,10 @@ export class RunStore {
     );
   }
 
-  create(runIdInput: string): Extract<WireRunEvent, { type: "run.started" }> {
+  create(
+    runIdInput: string,
+    language?: "zh-CN" | "en-US",
+  ): Extract<WireRunEvent, { type: "run.started" }> {
     const runId = runIdSchema.parse(runIdInput);
     if (this.#runs.has(runId)) {
       throw new RunStoreError(409, "run_exists", `Run already exists: ${runId}`);
@@ -69,6 +72,7 @@ export class RunStore {
       runId,
       sequence: 1,
       emittedAt: new Date().toISOString(),
+      ...(language === undefined ? {} : { language }),
     };
     this.#runs.set(runId, { events: [started], started, status: "running", subscribers: new Set() });
     return started;

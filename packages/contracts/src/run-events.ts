@@ -68,7 +68,11 @@ const eventBaseShape = {
 };
 
 export const runEventSchema = z.discriminatedUnion("type", [
-  z.strictObject({ ...eventBaseShape, type: z.literal("run.started") }),
+  z.strictObject({
+    ...eventBaseShape,
+    type: z.literal("run.started"),
+    language: z.enum(["zh-CN", "en-US"]).optional(),
+  }),
   z.strictObject({ ...eventBaseShape, type: z.literal("run.stopped") }),
   z.strictObject({ ...eventBaseShape, type: z.literal("run.completed") }),
   z.strictObject({

@@ -142,6 +142,8 @@ bun run dev:relay
 
 Task Prompt 长度为10至12000字符，语言只允许 `zh-CN`/`en-US`；未知字段（包括密钥）被拒绝。任务状态为 `queued`、`claimed`、`completed`、`failed`、`stopped`：未认领任务不能完成，停止可以发生在认领前，不可修复的阶段失败会同步为 `failed`；同一任务不能被不同 agent 重复认领。服务限制请求体为1 MiB、默认最多100个任务和100个运行、每个运行保留10000条事件、最多50个SSE客户端。浏览器来源默认只允许工作台的`localhost:4173`和`127.0.0.1:4173`，CLI请求可以不带Origin。
 
+Task 创建的权威 `run.started` 可携带可选 language。由 `/tasks` 创建时必定写入规范化后的任务语言；直接 `/runs` 创建的通用 Run 为兼容旧客户端可以不带 language。Workbench 从零回放后以该字段恢复语言选择，不依赖页面内存或猜测 Prompt。旧快照和旧事件仍可解析。
+
 `POST /tasks` 使用 Run ID 作为幂等键。相同 Run ID、规范化后完全相同的 Prompt 与语言会返回原 Task 和权威 `run.started`，包括跨快照恢复后的重试；该路径在容量已满时仍可读取原结果。相同 Run ID 但 Prompt 或语言不同则返回 HTTP 409 和 `task_run_conflict`。RunStore 为此在事件保留窗口之外单独保存权威 start event，并将其纳入快照；客户端不得通过复用 Run ID 创建新任务。
 
 默认状态仍仅在内存中。生产入口可设置 `GAMEFORGE_RUN_RELAY_STATE_FILE`（绝对路径）启用本地快照：每次 Task/Run 变更等待串行保存队列，快照经过严格 Schema、事件连续性和 Task/Run 终态一致性校验，并以临时文件同步后 rename。启动时恢复 Task、RunEvent、终态和游标，但不恢复 SSE 连接；Workbench 和 CodeArts 应按现有回放协议重连。文件包含 Prompt、事件和日志，应使用受限目录，不放入仓库或云同步目录。若磁盘写入失败，请求返回 500，但本进程内存可能已应用该次变更；此时应停止 Relay、处理磁盘问题并从最后成功快照恢复，再由 CodeArts 使用 `replay_game_run` 对账。本机制面向单机研究，不替代数据库事务、多实例一致性或高可用存储。
@@ -166,6 +168,16 @@ VITE_AGENT_BASE_URL=http://127.0.0.1:8787/
 ```
 
 配置后工作台显示 Run ID 和 Prompt，“提交给 CodeArts”调用 `/tasks`，展示返回的 Task ID，并从 `run.started` 游标立即连接对应 SSE。连接已有 Run 仍可独立使用。GameSpec 与资产面板分别只消费 `spec.ready` 和 `asset.ready`，新 Run 会清空旧产物；未收到时明确显示等待。收到序列缺口时会停止消费并要求重新连接回放，不会跳过事件继续显示错误状态。收到 `preview.ready` 后，预览 iframe 自动切换到事件中的项目 URL；iframe 仅开放脚本与 pointer lock，不发送 referrer。未收到事件时才使用 `VITE_GAME_PREVIEW_URL`（默认 `http://localhost:5173/`）作为回退。
+
+## 语言链路与生成运行时
+
+1. Workbench 在提交前选择 `zh-CN` 或 `en-US`，并把 language 与 Prompt 一起写入 Task；
+2. CodeArts 认领 Task 后必须调用 `draft_game_spec({ prompt: task.prompt, language: task.language })`；
+3. 百炼严格 JSON Schema 要求输出 `GameSpec.locale`，Provider 会拒绝与请求 language 不一致的结果；
+4. `generate_game_project` 将 locale 写入 `game-spec.json`，同时生成匹配的静态 `<html lang>` 与无障碍标签；
+5. Phaser 运行时使用同一 locale 选择 HUD、胜负、重启和控制提示文案，并再次设置 `document.documentElement.lang`。
+
+该链路只保证模板 chrome 的双语一致性，不会翻译用户 Prompt 中的标题、目标、胜负条件等内容。模型不可用时，CodeArts 手工构造 GameSpec 也必须显式写入与 Task 相同的 locale。历史 GameSpec 没有 locale 时按 `zh-CN` 处理。
 
 “场景结构”同样只消费已验证的 GameSpec 与资产状态，显示固定 Phaser Scene、玩法系统、控制/胜负条件，以及八种运行时角色当前是资产绑定还是程序化/静音回退。“地图视图”按五种 genre 显示固定模板布局，只用于解释生成器基线，并明确标注“模板示意 · 非关卡文件”。两者都是只读投影，不向 Relay 写事件，也不让模型直接操作画布。
 

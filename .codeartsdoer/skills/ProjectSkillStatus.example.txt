@@ -1,0 +1,4 @@
+# CodeArts may generate ProjectSkillStatus.txt as mutable local state.
+# Copy these stable skill names locally if the client requires the file.
+gameforge-build=true
+research-verify=true

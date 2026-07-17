@@ -4,6 +4,7 @@ import rawSpec from "../game-spec.json";
 type Genre = "arcade" | "platformer" | "puzzle" | "shooter" | "strategy";
 type GameSpec = {
   title: string;
+  locale?: "zh-CN" | "en-US";
   genre: Genre;
   objective: string;
   controls: string[];
@@ -19,6 +20,33 @@ type GameSpec = {
 };
 
 const spec = rawSpec as GameSpec;
+const locale = spec.locale ?? "zh-CN";
+document.documentElement.lang = locale;
+const ui = locale === "en-US" ? {
+  progress: "Progress",
+  lives: "Lives",
+  won: "Mission Complete",
+  lost: "Mission Failed",
+  restart: "Refresh the page to restart",
+  strategyMode: "Command mode changed: movement speed affects risk and time.",
+  platformerControls: "Arrow keys to move, ↑ to jump",
+  shooterControls: "Arrow keys to move, Space to fire",
+  puzzleControls: "Use arrow keys to move one grid cell and plan the route",
+  strategyControls: "Use arrow keys for movement orders, Space to switch strategy",
+  arcadeControls: "Arrow keys to move, collect targets, and avoid hazards",
+} : {
+  progress: "进度",
+  lives: "生命",
+  won: "任务完成",
+  lost: "任务失败",
+  restart: "刷新页面可重新开始",
+  strategyMode: "指令模式切换：移动速度会影响风险与时间。",
+  platformerControls: "方向键移动，↑ 跳跃",
+  shooterControls: "方向键移动，空格发射",
+  puzzleControls: "方向键逐格移动并规划路线",
+  strategyControls: "方向键下达移动指令，空格切换策略状态",
+  arcadeControls: "方向键移动，收集目标并避开危险",
+};
 type RuntimeAssetRole = "player" | "collectible" | "hazard" | "background" | "collect-sound" | "hit-sound" | "voice" | "bgm";
 type RuntimeAsset = { role: RuntimeAssetRole; path: string; mimeType: string };
 type VerificationState = {
@@ -187,7 +215,7 @@ class GameScene extends Phaser.Scene {
     }
     if (spec.genre === "strategy" && Phaser.Input.Keyboard.JustDown(this.actionKey)) {
       this.player.setTint(this.player.tintTopLeft === 0xffffff ? 0x22d3ee : 0xffffff);
-      this.statusText.setText("指令模式切换：移动速度会影响风险与时间。");
+      this.statusText.setText(ui.strategyMode);
     }
 
     this.updateHud();
@@ -344,13 +372,13 @@ class GameScene extends Phaser.Scene {
     window.dispatchEvent(new CustomEvent("gameforge:outcome", { detail: window.__GAMEFORGE_TEST__ }));
     this.physics.pause();
     this.add.rectangle(width / 2, height / 2, 640, 220, 0x020617, 0.94).setStrokeStyle(2, won ? 0x22d3ee : 0xef4444).setDepth(20);
-    this.add.text(width / 2, height / 2 - 48, won ? "任务完成" : "任务失败", {
+    this.add.text(width / 2, height / 2 - 48, won ? ui.won : ui.lost, {
       color: won ? "#67e8f9" : "#fca5a5", fontFamily: "system-ui", fontSize: "38px", fontStyle: "bold",
     }).setOrigin(0.5).setDepth(21);
     this.add.text(width / 2, height / 2 + 18, detail.slice(0, 120), {
       color: "#e2e8f0", fontFamily: "system-ui", fontSize: "17px", align: "center", wordWrap: { width: 540 },
     }).setOrigin(0.5).setDepth(21);
-    this.add.text(width / 2, height / 2 + 80, "刷新页面可重新开始", {
+    this.add.text(width / 2, height / 2 + 80, ui.restart, {
       color: "#94a3b8", fontFamily: "system-ui", fontSize: "14px",
     }).setOrigin(0.5).setDepth(21);
   }
@@ -365,7 +393,7 @@ class GameScene extends Phaser.Scene {
         telemetry: this.telemetry(),
       };
     }
-    this.scoreText.setText("进度 " + this.score + "/" + collectibleCount + "   生命 " + this.lives);
+    this.scoreText.setText(ui.progress + " " + this.score + "/" + collectibleCount + "   " + ui.lives + " " + this.lives);
     this.timerText.setText(Math.ceil(this.remainingSeconds) + "s");
   }
 
@@ -382,11 +410,11 @@ class GameScene extends Phaser.Scene {
   }
 
   private controlHint(): string {
-    if (spec.genre === "platformer") return "方向键移动，↑ 跳跃";
-    if (spec.genre === "shooter") return "方向键移动，空格发射";
-    if (spec.genre === "puzzle") return "方向键逐格移动并规划路线";
-    if (spec.genre === "strategy") return "方向键下达移动指令，空格切换策略状态";
-    return "方向键移动，收集目标并避开危险";
+    if (spec.genre === "platformer") return ui.platformerControls;
+    if (spec.genre === "shooter") return ui.shooterControls;
+    if (spec.genre === "puzzle") return ui.puzzleControls;
+    if (spec.genre === "strategy") return ui.strategyControls;
+    return ui.arcadeControls;
   }
 
   private playSound(key: string): void {
@@ -432,12 +460,15 @@ new Phaser.Game({
 });
 `;
 
-export const indexHtml = String.raw`<!doctype html>
-<html lang="zh-CN">
+export function createIndexHtml(locale: "zh-CN" | "en-US" = "zh-CN"): string {
+  const ariaLabel = locale === "en-US" ? "GameForge generated game" : "GameForge 生成的游戏";
+  return String.raw`<!doctype html>
+<html lang="${locale}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#08111f" />
+    <link rel="icon" href="data:," />
     <title>GameForge Generated Game</title>
     <style>
       html, body, #game { width: 100%; height: 100%; margin: 0; }
@@ -446,8 +477,9 @@ export const indexHtml = String.raw`<!doctype html>
     </style>
   </head>
   <body>
-    <main id="game" aria-label="GameForge generated game"></main>
+    <main id="game" aria-label="${ariaLabel}"></main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
 `;
+}

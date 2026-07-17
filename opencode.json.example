@@ -1,0 +1,43 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md",
+    ".codeartsdoer/skills/*/SKILL.md"
+  ],
+  "mcp": {
+    "gameforge": {
+      "type": "local",
+      "command": [
+        "node",
+        "packages/mcp-server/dist/index.js"
+      ],
+      "cwd": ".",
+      "environment": {
+        "GAMEFORGE_PROJECT_OUTPUT_ROOT": "{env:GAMEFORGE_PROJECT_OUTPUT_ROOT}",
+        "GAMEFORGE_RUN_RELAY_URL": "{env:GAMEFORGE_RUN_RELAY_URL}"
+      },
+      "enabled": true,
+      "timeout": 10000
+    }
+  },
+  "permission": {
+    "gameforge_*": "ask",
+    "gameforge_validate_*": "allow",
+    "gameforge_get_*": "allow",
+    "gameforge_list_*": "allow",
+    "gameforge_replay_*": "allow",
+    "gameforge_query_*": "allow",
+    "gameforge_generate_*": "ask",
+    "gameforge_import_*": "ask",
+    "gameforge_request_*": "ask",
+    "gameforge_start_*": "ask",
+    "gameforge_stop_*": "ask",
+    "gameforge_complete_*": "ask"
+  },
+  "command": {
+    "gameforge-status": {
+      "template": "Call the gameforge_status tool and summarize Relay and MCP readiness. Do not mutate projects or Runs.",
+      "description": "Show GameForge Relay and MCP status"
+    }
+  }
+}

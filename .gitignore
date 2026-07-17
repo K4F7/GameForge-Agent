@@ -8,4 +8,5 @@ coverage/
 .vite/
 *.tsbuildinfo
 *.log
+.codeartsdoer/skills/ProjectSkillStatus.txt
 .DS_Store
