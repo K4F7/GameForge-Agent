@@ -1,7 +1,7 @@
 import { projectIdSchema } from "@gameforge/contracts";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { lstat, mkdir, readFile, realpath } from "node:fs/promises";
+import { access, lstat, mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { createServer, type ViteDevServer } from "vite";
@@ -110,31 +110,41 @@ export class GameVerifier {
     const consoleErrors: string[] = [];
     const pageErrors: string[] = [];
     const failedRequests: string[] = [];
-    const server = await withTimeout(
-      this.#runtime.startServer(projectPath),
-      input.timeoutMs,
-      "Verifier server startup timed out.",
-    );
+    const remaining = (stage: string): number => {
+      const value = input.timeoutMs - (Date.now() - startedAt);
+      if (value <= 0) throw new Error(`Verifier ${stage} exceeded the total timeout.`);
+      return value;
+    };
+    let server: Awaited<ReturnType<VerificationRuntime["startServer"]>> | undefined;
     let session: VerificationSession | undefined;
     try {
+      server = await withTimeoutAndLateCleanup(
+        this.#runtime.startServer(projectPath),
+        remaining("server startup"),
+        "Verifier server startup timed out.",
+        (lateServer) => lateServer.close(),
+      );
       const origin = new URL(server.url).origin;
-      session = await withTimeout(
+      session = await withTimeoutAndLateCleanup(
         this.#runtime.startSession(origin),
-        input.timeoutMs,
+        remaining("browser startup"),
         "Verifier browser startup timed out.",
+        (lateSession) => lateSession.close(),
       );
       session.onConsoleError((message) => pushDiagnostic(consoleErrors, message));
       session.onPageError((message) => pushDiagnostic(pageErrors, message));
       session.onRequestFailed((message) => pushDiagnostic(failedRequests, message));
-      await session.goto(server.url, input.timeoutMs);
-      await session.waitUntilReady(input.timeoutMs);
-      for (const action of input.actions) await session.perform(action);
-      const state = verificationStateSchema.parse(await session.readState());
-      const canvas = await session.readCanvas();
+      await withTimeout(session.goto(server.url, remaining("navigation")), remaining("navigation"), "Verifier navigation timed out.");
+      await withTimeout(session.waitUntilReady(remaining("readiness")), remaining("readiness"), "Verifier readiness timed out.");
+      for (const action of input.actions) {
+        await withTimeout(session.perform(action), remaining("actions"), "Verifier actions exceeded the total timeout.");
+      }
+      const state = verificationStateSchema.parse(await withTimeout(session.readState(), remaining("state read"), "Verifier state read timed out."));
+      const canvas = await withTimeout(session.readCanvas(), remaining("canvas read"), "Verifier canvas read timed out.");
       if (canvas === null || canvas.width < 1 || canvas.height < 1) {
         throw new Error("Generated game did not expose a visible canvas.");
       }
-      await session.screenshot(screenshotPath);
+      await withTimeout(session.screenshot(screenshotPath), remaining("screenshot"), "Verifier screenshot timed out.");
       const passed = consoleErrors.length === 0 && pageErrors.length === 0 && failedRequests.length === 0 &&
         (input.expectedOutcome === undefined || state.status === input.expectedOutcome);
       return {
@@ -155,7 +165,7 @@ export class GameVerifier {
     } finally {
       await withTimeout(session?.close() ?? Promise.resolve(), 10_000, "Verifier browser cleanup timed out.")
         .catch(() => undefined);
-      await withTimeout(server.close(), 10_000, "Verifier server cleanup timed out.")
+      await withTimeout(server?.close() ?? Promise.resolve(), 10_000, "Verifier server cleanup timed out.")
         .catch(() => undefined);
     }
   }
@@ -172,24 +182,37 @@ export class GameVerifier {
 
 export class PlaywrightVerificationRuntime implements VerificationRuntime {
   readonly #chromeExecutablePath: string | undefined;
+  readonly #launch: typeof chromium.launch;
+  readonly #runtimeVersions: Readonly<Record<string, string | undefined>>;
 
-  constructor(chromeExecutablePath?: string) {
+  constructor(chromeExecutablePath?: string, options: {
+    launch?: typeof chromium.launch;
+    runtimeVersions?: Readonly<Record<string, string | undefined>>;
+  } = {}) {
     if (chromeExecutablePath !== undefined && !path.isAbsolute(chromeExecutablePath)) {
       throw new Error("Chrome executable path must be absolute.");
     }
     this.#chromeExecutablePath = chromeExecutablePath;
+    this.#launch = options.launch ?? chromium.launch.bind(chromium);
+    this.#runtimeVersions = options.runtimeVersions ?? process.versions;
   }
 
   async startServer(projectPath: string): Promise<{ url: string; close(): Promise<void> }> {
-    const server = await createServer({
-      root: projectPath,
-      configFile: false,
-      logLevel: "silent",
-      resolve: { alias: { phaser: PHASER_ENTRY } },
-      optimizeDeps: { noDiscovery: true, include: [] },
-      server: { host: "127.0.0.1", port: 0, strictPort: false },
-    });
-    await server.listen();
+    let server: ViteDevServer | undefined;
+    try {
+      server = await withTimeout(createServer({
+        root: projectPath,
+        configFile: false,
+        logLevel: "silent",
+        resolve: { alias: { phaser: PHASER_ENTRY } },
+        optimizeDeps: { noDiscovery: true, include: [] },
+        server: { host: "127.0.0.1", port: 0, strictPort: false },
+      }), 10_000, "Verifier Vite creation timed out.");
+      await withTimeout(server.listen(), 10_000, "Verifier Vite listen timed out.");
+    } catch (error) {
+      await (server === undefined ? Promise.resolve() : closeVite(server)).catch(() => undefined);
+      throw error;
+    }
     const address = server.httpServer?.address();
     if (address === undefined || address === null || typeof address === "string") {
       await server.close();
@@ -202,23 +225,50 @@ export class PlaywrightVerificationRuntime implements VerificationRuntime {
   }
 
   async startSession(allowedOrigin: string): Promise<VerificationSession> {
-    const browser = await chromium.launch({
-      headless: true,
-      ...(this.#chromeExecutablePath === undefined
-        ? { channel: "chrome" as const }
-        : { executablePath: this.#chromeExecutablePath }),
-    });
-    const context = await browser.newContext({
-      viewport: { width: 1_280, height: 800 },
-      serviceWorkers: "block",
-    });
-    const page = await context.newPage();
-    await page.route("**/*", async (route) => {
-      const url = new URL(route.request().url());
-      if (url.origin === allowedOrigin || url.protocol === "data:" || url.protocol === "blob:") await route.continue();
-      else await route.abort("blockedbyclient");
-    });
-    return new PlaywrightSession(browser, page);
+    assertSupportedPlaywrightRuntime(this.#runtimeVersions);
+    if (this.#chromeExecutablePath !== undefined) {
+      const executable = await lstat(this.#chromeExecutablePath).catch(() => undefined);
+      if (executable === undefined || !executable.isFile() || executable.isSymbolicLink()) {
+        throw new Error("Configured Chrome executable must be an accessible regular file.");
+      }
+      await access(this.#chromeExecutablePath).catch(() => {
+        throw new Error("Configured Chrome executable must be an accessible regular file.");
+      });
+    }
+    let browser: Browser | undefined;
+    try {
+      browser = await this.#launch({
+        headless: true,
+        timeout: 30_000,
+        ...(this.#chromeExecutablePath === undefined
+          ? { channel: "chrome" as const }
+          : { executablePath: this.#chromeExecutablePath }),
+      });
+      const context = await withTimeout(browser.newContext({
+        viewport: { width: 1_280, height: 800 },
+        serviceWorkers: "block",
+      }), 10_000, "Chrome context creation timed out.");
+      const page = await withTimeout(context.newPage(), 10_000, "Chrome page creation timed out.");
+      await withTimeout(page.route("**/*", async (route) => {
+        const url = new URL(route.request().url());
+        if (url.origin === allowedOrigin || url.protocol === "data:" || url.protocol === "blob:") await route.continue();
+        else await route.abort("blockedbyclient");
+      }), 10_000, "Chrome route setup timed out.");
+      return new PlaywrightSession(browser, page);
+    } catch (error) {
+      await browser?.close().catch(() => undefined);
+      const mode = this.#chromeExecutablePath === undefined ? "channel chrome" : "configured executable";
+      const cause = error instanceof Error ? error.message : String(error);
+      throw new Error(`Chrome session startup failed using ${mode}: ${cause}`);
+    }
+  }
+}
+
+export function assertSupportedPlaywrightRuntime(versions: Readonly<Record<string, string | undefined>>): void {
+  if (versions.bun !== undefined) {
+    throw new Error(
+      "System Chrome verification requires the Node runtime; build first and run the MCP/verifier entry with node, not bun.",
+    );
   }
 }
 
@@ -260,30 +310,10 @@ class PlaywrightSession implements VerificationSession {
           canvas === null || typeof state !== "object" || state === null ||
           !("telemetry" in state) || typeof state.telemetry !== "object" || state.telemetry === null
         ) return false;
-        const probe = document.createElement("canvas");
-        probe.width = 48;
-        probe.height = 27;
-        const context = probe.getContext("2d", { willReadFrequently: true });
-        if (context === null) return false;
-        try {
-          context.drawImage(canvas, 0, 0, probe.width, probe.height);
-          const pixels = context.getImageData(0, 0, probe.width, probe.height).data;
-          const red = pixels[0] ?? 0;
-          const green = pixels[1] ?? 0;
-          const blue = pixels[2] ?? 0;
-          const alpha = pixels[3] ?? 0;
-          for (let offset = 4; offset < pixels.length; offset += 4) {
-            if (
-              Math.abs((pixels[offset] ?? 0) - red) > 8 ||
-              Math.abs((pixels[offset + 1] ?? 0) - green) > 8 ||
-              Math.abs((pixels[offset + 2] ?? 0) - blue) > 8 ||
-              Math.abs((pixels[offset + 3] ?? 0) - alpha) > 8
-            ) return true;
-          }
-          return false;
-        } catch {
-          return false;
-        }
+        const bounds = canvas.getBoundingClientRect();
+        const style = getComputedStyle(canvas);
+        return canvas.width > 0 && canvas.height > 0 && bounds.width > 0 && bounds.height > 0 &&
+          style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || "1") > 0;
       },
       undefined,
       { timeout: timeoutMs },
@@ -390,5 +420,19 @@ async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, message:
     ]);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+export async function withTimeoutAndLateCleanup<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  message: string,
+  cleanup: (value: T) => Promise<void>,
+): Promise<T> {
+  try {
+    return await withTimeout(operation, timeoutMs, message);
+  } catch (error) {
+    void operation.then((value) => cleanup(value)).catch(() => undefined);
+    throw error;
   }
 }

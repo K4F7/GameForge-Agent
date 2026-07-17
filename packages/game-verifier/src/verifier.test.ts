@@ -2,10 +2,13 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GameProjectGenerator } from "@gameforge/generator";
-import { afterEach, describe, expect, it } from "vitest";
+import type { Browser, chromium } from "playwright-core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  assertSupportedPlaywrightRuntime,
   GameVerifier,
   PlaywrightVerificationRuntime,
+  withTimeoutAndLateCleanup,
   type VerificationAction,
   type VerificationRuntime,
   type VerificationSession,
@@ -79,6 +82,51 @@ afterEach(async () => {
 });
 
 describe("GameVerifier", () => {
+  it("cleans a resource that resolves after its timeout", async () => {
+    const cleanup = vi.fn(async () => undefined);
+    const operation = new Promise<{ close(): Promise<void> }>((resolve) => {
+      setTimeout(() => resolve({ close: async () => undefined }), 20);
+    });
+    await expect(withTimeoutAndLateCleanup(operation, 1, "late resource", cleanup)).rejects.toThrow("late resource");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+  it("rejects Bun before starting system Chrome", async () => {
+    expect(() => assertSupportedPlaywrightRuntime({ bun: "1.3.14" })).toThrow("requires the Node runtime");
+    const launch = vi.fn();
+    const runtime = new PlaywrightVerificationRuntime(undefined, {
+      launch: launch as unknown as typeof chromium.launch,
+      runtimeVersions: { bun: "1.3.14" },
+    });
+    await expect(runtime.startSession("http://127.0.0.1:4173")).rejects.toThrow("requires the Node runtime");
+    expect(launch).not.toHaveBeenCalled();
+  });
+
+  it("closes a launched browser when session setup fails", async () => {
+    const close = vi.fn(async () => undefined);
+    const launch = vi.fn(async () => ({
+      newContext: async () => { throw new Error("context failed"); },
+      close,
+    }) as unknown as Browser);
+    const runtime = new PlaywrightVerificationRuntime(undefined, {
+      launch: launch as unknown as typeof chromium.launch,
+      runtimeVersions: {},
+    });
+    await expect(runtime.startSession("http://127.0.0.1:4173")).rejects.toThrow("context failed");
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ channel: "chrome", timeout: 30_000 }));
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("reports an inaccessible configured Chrome path before launch", async () => {
+    const launch = vi.fn();
+    const missing = path.join(tmpdir(), `missing-chrome-${crypto.randomUUID()}.exe`);
+    const runtime = new PlaywrightVerificationRuntime(missing, {
+      launch: launch as unknown as typeof chromium.launch,
+      runtimeVersions: {},
+    });
+    await expect(runtime.startSession("http://127.0.0.1:4173")).rejects.toThrow("regular file");
+    expect(launch).not.toHaveBeenCalled();
+  });
   it("runs a bounded action script and returns deterministic evidence", async () => {
     const { runtime, verifier } = await fixture();
     const actions = [

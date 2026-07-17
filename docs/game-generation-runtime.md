@@ -84,7 +84,7 @@ bun run dev
 
 生成器 0.3.0 新增 GameSpec `gameplay` 调优。真实 Chrome 参数样例证明 2 个收集物、0 个危险物、1 条生命和 300 px/s 连续移动均进入运行时 telemetry；证据见 `experiments/2026-07-17-gameplay-tuning/`。0.4.0 进一步校验浏览器实际消费的 Manifest 条目，并补齐 `bgm` 运行时绑定。0.5.0 将玩家和危险物的显示与碰撞体固定为 32×32、收集物固定为 24×24，避免 Seedream 大尺寸源图直接改变玩法尺度。
 
-验收过程只允许访问本次本地 Vite origin，阻断其他网络请求；收集浏览器控制台错误、页面异常和失败请求。就绪条件不是“Canvas 节点已插入”，而是运行时已经发布 telemetry，且缩小采样后的 Canvas 至少存在两组有明显差异的像素；这避免 Phaser 尚未完成首帧时产生纯背景截图和假阳性。随后检查 Canvas 尺寸、读取 `window.__GAMEFORGE_TEST__`，并将 PNG 证据写入 `.gameforge/verification/`。报告只有在诊断为空且显式结果符合预期时才为 `passed: true`。报告同时返回项目内相对 `evidencePath`，CodeArts 将非敏感摘要发布为 `verification.ready`；事件记录 outcome、状态数值、Canvas、诊断计数、动作数、耗时和相对证据路径，不暴露绝对本机路径或诊断全文。工具不设计动作、不重试、不修改代码，动作规划与失败后的修复仍由 CodeArts 负责。
+验收过程只允许访问本次本地 Vite origin，阻断其他网络请求；收集浏览器控制台错误、页面异常和失败请求。就绪条件不是“Canvas 节点已插入”，而是运行时已经发布 telemetry，Canvas 同时具有内部尺寸、可见布局尺寸且未被 CSS 隐藏。Phaser WebGL 默认 framebuffer 在合成后可能无法通过 2D Canvas 稳定读回，因此不再把像素 readback 当作 ready 条件；随后仍检查结构化状态和 Canvas 尺寸，并强制将 PNG 证据写入 `.gameforge/verification/` 供视觉检查。报告只有在诊断为空且显式结果符合预期时才为 `passed: true`。报告同时返回项目内相对 `evidencePath`，CodeArts 将非敏感摘要发布为 `verification.ready`；事件记录 outcome、状态数值、Canvas、诊断计数、动作数、耗时和相对证据路径，不暴露绝对本机路径或诊断全文。工具不设计动作、不重试、不修改代码，动作规划与失败后的修复仍由 CodeArts 负责。
 
 实现依据（访问日期 2026-07-16）：Playwright 官方 [`BrowserType.launch`](https://playwright.dev/docs/api/class-browsertype#browser-type-launch) 文档确认可用 `channel: "chrome"` 调用品牌 Chrome；[Network](https://playwright.dev/docs/network) 文档提供 `page.route()` 与 `route.abort()` 拦截请求，并建议在需要完整路由可见性时阻止 Service Worker；[Screenshots](https://playwright.dev/docs/screenshots) 文档提供 `page.screenshot()` 与整页截图。依赖固定为 `playwright-core@1.61.1`，不在安装阶段下载浏览器。
 
