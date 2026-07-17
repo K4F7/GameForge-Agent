@@ -98,6 +98,7 @@ describe("GameForge MCP server", () => {
   it("registers project generation only when an output implementation is configured", async () => {
     const generated: ProjectGenerationResult = {
       mode: "dry-run",
+      operation: "create",
       plan: {
         generatorVersion: "0.1.0",
         projectId: "safety-sprint",

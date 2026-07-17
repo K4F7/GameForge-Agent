@@ -147,6 +147,7 @@ describe("validation tool handlers", () => {
   it("returns a deterministic project plan from an injected generator", async () => {
     const generated: ProjectGenerationResult = {
       mode: "dry-run",
+      operation: "create",
       plan: {
         generatorVersion: "0.1.0",
         projectId: "safety-sprint",

@@ -44,8 +44,9 @@ GameSpec 可选 `gameplay` 对象提供四个有界核心参数：`collectibleCo
 - `projectId`只能使用小写字母、数字、点、下划线和连字符，不能提供路径。
 - 输出根目录必须由MCP服务端通过绝对路径配置，GameSpec不能修改它。
 - 默认`dry-run`只返回排序后的文件列表、字节数和SHA-256。
-- `apply`只新建项目，存在同名目录时拒绝；没有覆盖、删除或`force`选项。
-- 写入先发生在输出根目录内的随机临时目录，文件使用排他创建并同步，最后同文件系统原子重命名。
+- 默认 create `apply` 只新建项目，存在同名目录时拒绝；没有 `force` 选项。
+- 显式 `operation: "update"` 会按旧 Manifest 哈希把路径分为 updated、unchanged、preserved、deleted 和 conflicts；运行时资产 Manifest、`bun.lock` 与未知文件保留，用户修改过的托管文件整批拒绝。
+- create 写入随机临时目录后原子重命名；update 必须携带 dry-run 返回的当前 plan SHA-256，取得 0600 owner lock 后逐文件备份/切换，并最后切换托管 Manifest，普通错误逆序回滚。
 - 输出根目录拒绝符号链接；固定文件路径再次经过根目录包含检查。
 - GameSpec文本只进入JSON数据文件，不插入可执行TypeScript源码。
 - `.gameforge/manifest.json`记录生成器版本、GameSpec哈希、计划哈希和每个托管文件哈希。
@@ -58,7 +59,7 @@ GameSpec 可选 `gameplay` 对象提供四个有界核心参数：`collectibleCo
 GAMEFORGE_PROJECT_OUTPUT_ROOT=D:\GameForgeGenerated
 ```
 
-未配置时不注册`generate_game_project`。建议先调用`mode: "dry-run"`审查计划，再以完全相同的`projectId`和GameSpec调用`mode: "apply"`。工具不会接受模型输出的任意文件内容。
+未配置时不注册`generate_game_project`。新建时建议先调用默认 create `mode: "dry-run"`，再以完全相同的`projectId`和GameSpec调用`mode: "apply"`。已有受管项目使用 `operation: "update"` dry-run，并把返回的 `currentPlanSha256` 作为 apply 的 `expectedPlanSha256`；冲突必须由 CodeArts 审阅，不得强制覆盖。工具不会接受模型输出的任意文件内容。
 
 同一配置还会注册 `start_game_preview` 和 `stop_game_preview`。预览管理器复用浏览器验收器的受控 Vite 配置，只绑定 `127.0.0.1` 随机端口、固定 Phaser 入口、关闭依赖自动发现，不读取或执行生成项目的 `vite.config.ts`。它先验证真实目录、符号链接边界和 `.gameforge/manifest.json`；默认最多保留 5 个会话，相同项目的并发启动会合并，启动与关闭均有超时。MCP 进程收到 SIGINT/SIGTERM 时关闭所有预览。
 
@@ -187,7 +188,7 @@ Workbench 页面加载时使用时间与浏览器 UUID 熵生成符合 `runIdSch
 
 ## 已验证结果
 
-- 生成器单元测试覆盖确定性、dry-run零写入、原子新建、拒绝覆盖、文本/源码隔离和五种genre。
+- 生成器单元测试覆盖确定性、dry-run 零写入、原子新建、拒绝覆盖、文本/源码隔离、五种 genre，以及受管 update 的资产/未知文件保留、修改冲突、plan CAS 和 stale owner lock。
 - 实际生成独立样例后，已对生成目录运行严格TypeScript检查和Vite生产构建。
 - Relay测试覆盖创建、追加、客户端 Schema 回放、连续回放、SSE、CORS拒绝、游标冲突、终态原子性和订阅通知。
 - Task 测试覆盖 Prompt/状态契约、原子创建 Task+Run、列表、读取、单 agent 幂等认领、认领冲突、未认领完成拒绝和终态同步。

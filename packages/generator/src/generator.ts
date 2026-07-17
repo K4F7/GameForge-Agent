@@ -1,14 +1,19 @@
 import {
   generatedProjectPlanSchema,
+  managedGeneratedProjectManifestSchema,
+  projectUpdateSummarySchema,
   projectGenerationRequestSchema,
   projectGenerationResultSchema,
   type GameSpec,
   type GeneratedProjectPlan,
   type ProjectGenerationRequest,
   type ProjectGenerationResult,
+  type ManagedGeneratedProjectManifest,
+  type ProjectUpdateSummary,
 } from "@gameforge/contracts";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, lstat, open, realpath, rename, rm } from "node:fs/promises";
+import { link, mkdir, lstat, open, readFile, realpath, rename, rm, unlink } from "node:fs/promises";
+import { hostname as systemHostname } from "node:os";
 import path from "node:path";
 import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
 
@@ -16,6 +21,16 @@ const GENERATOR_VERSION = "0.7.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 
 type GeneratedFile = { path: string; content: string; bytes: number; sha256: string };
+type UpdateInspection = {
+  target: string;
+  manifest: ManagedGeneratedProjectManifest;
+  summary: ProjectUpdateSummary;
+  manifestFileSha256: string;
+};
+
+const PRESERVED_UPDATE_PATHS = new Set(["public/assets/manifest.json"]);
+const UPDATE_LOCK_STALE_AFTER_MS = 10 * 60 * 1000;
+type OwnedUpdateLock = { handle: Awaited<ReturnType<typeof open>>; token: string };
 
 export type GameProjectGeneratorOptions = {
   outputRoot: string;
@@ -50,12 +65,37 @@ export class GameProjectGenerator {
       })),
     });
 
+    if (input.operation === "update") {
+      const inspection = await this.#inspectUpdate(input.projectId, generated.files);
+      if (input.mode === "dry-run") {
+        return projectGenerationResultSchema.parse({ mode: "dry-run", operation: "update", plan, update: inspection.summary });
+      }
+      if (input.expectedPlanSha256 === undefined) {
+        throw new Error("Project update apply requires expectedPlanSha256 from the latest dry-run.");
+      }
+      const applied = await this.#applyUpdate(
+        input.projectId,
+        generated.files,
+        input.expectedPlanSha256,
+      );
+      return projectGenerationResultSchema.parse({
+        mode: "apply",
+        operation: "update",
+        plan,
+        outputPath: applied.outputPath,
+        update: applied.update,
+      });
+    }
+
+    if (input.expectedPlanSha256 !== undefined) {
+      throw new Error("expectedPlanSha256 is only valid for project updates.");
+    }
     if (input.mode === "dry-run") {
-      return projectGenerationResultSchema.parse({ mode: "dry-run", plan });
+      return projectGenerationResultSchema.parse({ mode: "dry-run", operation: "create", plan });
     }
 
     const outputPath = await this.#apply(input.projectId, generated.files);
-    return projectGenerationResultSchema.parse({ mode: "apply", plan, outputPath });
+    return projectGenerationResultSchema.parse({ mode: "apply", operation: "create", plan, outputPath });
   }
 
   async #apply(projectId: string, files: ReadonlyArray<GeneratedFile>): Promise<string> {
@@ -91,6 +131,159 @@ export class GameProjectGenerator {
         await rm(temporary, { recursive: true, force: true });
       }
       throw error;
+    }
+  }
+
+  async #inspectUpdate(projectId: string, files: ReadonlyArray<GeneratedFile>): Promise<UpdateInspection> {
+    const root = await verifiedRoot(this.#outputRoot);
+    const target = safeChild(root, projectId);
+    const targetInfo = await lstat(target).catch(() => undefined);
+    if (targetInfo === undefined || !targetInfo.isDirectory() || targetInfo.isSymbolicLink()) {
+      throw new Error(`Generated project does not exist for update: ${projectId}`);
+    }
+    const realTarget = await realpath(target);
+    if (path.dirname(realTarget).toLowerCase() !== root.toLowerCase()) {
+      throw new Error("Generated project escaped the configured output root.");
+    }
+    const manifestText = await readManagedText(realTarget, ".gameforge/manifest.json");
+    const manifest = managedGeneratedProjectManifestSchema.parse(JSON.parse(manifestText) as unknown);
+    if (manifest.projectId !== projectId) throw new Error("Generated project manifest ID does not match.");
+    const desired = new Map(files.filter((file) => file.path !== ".gameforge/manifest.json").map((file) => [file.path, file]));
+    const current = new Map(manifest.files.map((file) => [file.path, file]));
+    const updatedPaths: string[] = [];
+    const unchangedPaths: string[] = [];
+    const preservedPaths: string[] = [];
+    const deletedPaths: string[] = [];
+    const conflicts: string[] = [];
+
+    for (const [filePath, currentFile] of current) {
+      if (PRESERVED_UPDATE_PATHS.has(filePath)) {
+        preservedPaths.push(filePath);
+        continue;
+      }
+      const actual = await managedFileHash(realTarget, filePath);
+      if (actual !== undefined && actual !== currentFile.sha256) {
+        conflicts.push(filePath);
+        continue;
+      }
+      const next = desired.get(filePath);
+      if (next === undefined) {
+        if (actual !== undefined) deletedPaths.push(filePath);
+        else unchangedPaths.push(filePath);
+      }
+      else if (actual === next.sha256) unchangedPaths.push(filePath);
+      else updatedPaths.push(filePath);
+    }
+    for (const [filePath] of desired) {
+      if (current.has(filePath) || PRESERVED_UPDATE_PATHS.has(filePath)) continue;
+      if (await managedFileHash(realTarget, filePath) !== undefined) conflicts.push(filePath);
+      else updatedPaths.push(filePath);
+    }
+    const summary = projectUpdateSummarySchema.parse({
+      currentPlanSha256: manifest.planSha256,
+      updatedPaths: sortedUnique(updatedPaths),
+      unchangedPaths: sortedUnique(unchangedPaths),
+      preservedPaths: sortedUnique(preservedPaths),
+      deletedPaths: sortedUnique(deletedPaths),
+      conflicts: sortedUnique(conflicts),
+    });
+    return { target: realTarget, manifest, summary, manifestFileSha256: sha256(manifestText) };
+  }
+
+  async #applyUpdate(
+    projectId: string,
+    files: ReadonlyArray<GeneratedFile>,
+    expectedPlanSha256: string,
+  ): Promise<{ outputPath: string; update: ProjectUpdateSummary }> {
+    const initial = await this.#inspectUpdate(projectId, files);
+    const lockPath = safeRelativeFile(initial.target, ".gameforge/update.lock");
+    const lock = await acquireUpdateLock(lockPath);
+    try {
+      const inspection = await this.#inspectUpdate(projectId, files);
+      if (inspection.manifest.planSha256 !== expectedPlanSha256) {
+        throw new Error(`Generated project plan conflict: expected ${expectedPlanSha256}, found ${inspection.manifest.planSha256}.`);
+      }
+      if (inspection.summary.conflicts.length > 0) {
+        throw new Error(`Generated project contains modified managed files: ${inspection.summary.conflicts.join(", ")}`);
+      }
+      const desired = new Map(files.map((file) => [file.path, file]));
+      const current = new Map(inspection.manifest.files.map((file) => [file.path, file]));
+      const transactionId = randomUUID();
+      const applied: Array<{ destination: string; backup?: string }> = [];
+      const temporaries: string[] = [];
+      try {
+        for (const filePath of inspection.summary.updatedPaths) {
+          const next = desired.get(filePath);
+          if (next === undefined) throw new Error(`Generated update file is missing from the plan: ${filePath}`);
+          const destination = await safeManagedDestination(inspection.target, filePath);
+          const currentFile = current.get(filePath);
+          const beforeHash = await managedFileHash(inspection.target, filePath);
+          if (currentFile === undefined ? beforeHash !== undefined : beforeHash !== currentFile.sha256) {
+            throw new Error(`Generated managed file changed during update: ${filePath}`);
+          }
+          const temporary = `${destination}.${transactionId}.tmp`;
+          temporaries.push(temporary);
+          await writeSynced(temporary, next.content);
+          const destinationInfo = await lstat(destination).catch(() => undefined);
+          let backup: string | undefined;
+          if (destinationInfo !== undefined) {
+            if (!destinationInfo.isFile() || destinationInfo.isSymbolicLink()) {
+              throw new Error(`Generated managed path is not a real file: ${filePath}`);
+            }
+            backup = `${destination}.${transactionId}.bak`;
+            await rename(destination, backup);
+            applied.push({ destination, backup });
+          }
+          await link(temporary, destination);
+          if (backup === undefined) applied.push({ destination });
+          await unlink(temporary);
+        }
+        for (const filePath of inspection.summary.deletedPaths) {
+          const destination = await safeManagedDestination(inspection.target, filePath);
+          const currentFile = current.get(filePath);
+          if (currentFile === undefined || await managedFileHash(inspection.target, filePath) !== currentFile.sha256) {
+            throw new Error(`Generated managed file changed during update: ${filePath}`);
+          }
+          const backup = `${destination}.${transactionId}.bak`;
+          await rename(destination, backup);
+          applied.push({ destination, backup });
+        }
+        const managedManifest = desired.get(".gameforge/manifest.json");
+        if (managedManifest === undefined) throw new Error("Generated update manifest is missing from the plan.");
+        const manifestDestination = await safeManagedDestination(inspection.target, managedManifest.path);
+        const manifestTemporary = `${manifestDestination}.${transactionId}.tmp`;
+        const manifestBackup = `${manifestDestination}.${transactionId}.bak`;
+        temporaries.push(manifestTemporary);
+        await writeSynced(manifestTemporary, managedManifest.content);
+        if (sha256(await readManagedText(inspection.target, managedManifest.path)) !== inspection.manifestFileSha256) {
+          throw new Error("Generated project manifest changed during update.");
+        }
+        await rename(manifestDestination, manifestBackup);
+        applied.push({ destination: manifestDestination, backup: manifestBackup });
+        await link(manifestTemporary, manifestDestination);
+        await unlink(manifestTemporary);
+      } catch (error) {
+        const rollbackErrors: unknown[] = [];
+        for (const temporary of temporaries) {
+          await rm(temporary, { force: true }).catch((cleanup: unknown) => rollbackErrors.push(cleanup));
+        }
+        for (const item of [...applied].reverse()) {
+          await rm(item.destination, { force: true }).catch((cleanup: unknown) => rollbackErrors.push(cleanup));
+          if (item.backup !== undefined) {
+            await rename(item.backup, item.destination).catch((cleanup: unknown) => rollbackErrors.push(cleanup));
+          }
+        }
+        if (rollbackErrors.length > 0) {
+          throw new AggregateError([error, ...rollbackErrors], "Generated project update failed and rollback encountered errors.");
+        }
+        throw error;
+      }
+      for (const item of applied) {
+        if (item.backup !== undefined) await rm(item.backup, { force: true }).catch(() => undefined);
+      }
+      return { outputPath: inspection.target, update: inspection.summary };
+    } finally {
+      await releaseUpdateLock(lockPath, lock);
     }
   }
 }
@@ -209,5 +402,184 @@ async function exists(target: string): Promise<boolean> {
       return false;
     }
     throw error;
+  }
+}
+
+async function verifiedRoot(outputRoot: string): Promise<string> {
+  await mkdir(outputRoot, { recursive: true });
+  const info = await lstat(outputRoot);
+  if (!info.isDirectory() || info.isSymbolicLink()) {
+    throw new Error("Game project output root must be a real directory, not a symbolic link.");
+  }
+  return realpath(outputRoot);
+}
+
+async function readManagedText(root: string, filePath: string): Promise<string> {
+  const target = safeRelativeFile(root, filePath);
+  const handle = await open(target, "r").catch(() => undefined);
+  if (handle === undefined) throw new Error(`Generated managed file is missing: ${filePath}`);
+  try {
+    const handleInfo = await handle.stat({ bigint: true });
+    const pathInfo = await lstat(target, { bigint: true }).catch(() => undefined);
+    if (
+      !handleInfo.isFile() || pathInfo === undefined || !pathInfo.isFile() || pathInfo.isSymbolicLink() ||
+      handleInfo.dev !== pathInfo.dev || handleInfo.ino !== pathInfo.ino
+    ) throw new Error(`Generated managed path is not a real file: ${filePath}`);
+    const realTarget = await realpath(target);
+    if (!isStrictChild(root, realTarget)) throw new Error(`Generated managed file escaped the project: ${filePath}`);
+    return handle.readFile("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
+async function managedFileHash(root: string, filePath: string): Promise<string | undefined> {
+  const target = safeRelativeFile(root, filePath);
+  const info = await lstat(target).catch((error: unknown) => {
+    if (isNodeError(error, "ENOENT")) return undefined;
+    throw error;
+  });
+  if (info === undefined) return undefined;
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error(`Generated managed path is not a real file: ${filePath}`);
+  return sha256(await readManagedText(root, filePath));
+}
+
+async function safeManagedDestination(root: string, filePath: string): Promise<string> {
+  const destination = safeRelativeFile(root, filePath);
+  const relativeDirectory = path.dirname(filePath.replaceAll("/", path.sep));
+  let directory = root;
+  if (relativeDirectory !== ".") {
+    for (const segment of relativeDirectory.split(path.sep)) {
+      directory = safeChild(directory, segment);
+      const info = await lstat(directory).catch((error: unknown) => {
+        if (isNodeError(error, "ENOENT")) return undefined;
+        throw error;
+      });
+      if (info === undefined) await mkdir(directory);
+      else if (!info.isDirectory() || info.isSymbolicLink()) {
+        throw new Error(`Generated managed path contains an unsafe directory: ${filePath}`);
+      }
+    }
+  }
+  return destination;
+}
+
+async function writeSynced(target: string, content: string): Promise<void> {
+  const handle = await open(target, "wx");
+  try {
+    await handle.writeFile(content, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+function sortedUnique(values: ReadonlyArray<string>): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+function isStrictChild(root: string, candidate: string): boolean {
+  const normalizedRoot = path.resolve(root).toLowerCase();
+  const normalizedCandidate = path.resolve(candidate).toLowerCase();
+  return normalizedCandidate.startsWith(`${normalizedRoot}${path.sep}`);
+}
+
+function isNodeError(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
+async function acquireUpdateLock(lockPath: string): Promise<OwnedUpdateLock> {
+  try {
+    return await createUpdateLock(lockPath);
+  } catch (error) {
+    if (!isNodeError(error, "EEXIST")) throw error;
+  }
+  const candidate = await readUpdateLock(lockPath);
+  if (candidate === undefined) throw new Error("Generated project update lock has invalid ownership metadata.");
+  if (candidate.hostname !== systemHostname()) throw new Error("Generated project update lock belongs to another host.");
+  const age = Date.now() - candidate.createdAtMs;
+  if (!Number.isSafeInteger(age) || age < UPDATE_LOCK_STALE_AFTER_MS || processIsAlive(candidate.pid)) {
+    throw new Error("Generated project update is already in progress.");
+  }
+  const current = await readUpdateLock(lockPath);
+  if (current?.token !== candidate.token) throw new Error("Generated project update lock changed during recovery.");
+  await unlink(lockPath);
+  try {
+    return await createUpdateLock(lockPath);
+  } catch (error) {
+    if (isNodeError(error, "EEXIST")) throw new Error("Generated project update was claimed by another process.");
+    throw error;
+  }
+}
+
+async function createUpdateLock(lockPath: string): Promise<OwnedUpdateLock> {
+  const handle = await open(lockPath, "wx", 0o600);
+  const token = randomUUID();
+  try {
+    await handle.writeFile(`${JSON.stringify({
+      version: 1,
+      token,
+      pid: process.pid,
+      hostname: systemHostname(),
+      createdAtMs: Date.now(),
+    })}\n`, "utf8");
+    await handle.sync();
+    return { handle, token };
+  } catch (error) {
+    await handle.close().catch(() => undefined);
+    await unlink(lockPath).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function readUpdateLock(lockPath: string): Promise<{
+  token: string;
+  pid: number;
+  hostname: string;
+  createdAtMs: number;
+} | undefined> {
+  const info = await lstat(lockPath).catch(() => undefined);
+  if (info === undefined || !info.isFile() || info.isSymbolicLink() || info.size < 1 || info.size > 4096) return undefined;
+  try {
+    const value = JSON.parse(await readFile(lockPath, "utf8")) as Record<string, unknown>;
+    if (
+      value.version !== 1 || typeof value.token !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.token) ||
+      typeof value.pid !== "number" || !Number.isSafeInteger(value.pid) || value.pid < 1 ||
+      typeof value.hostname !== "string" || value.hostname.trim().length < 1 || value.hostname.length > 255 ||
+      typeof value.createdAtMs !== "number" || !Number.isSafeInteger(value.createdAtMs) || value.createdAtMs < 0 ||
+      Object.keys(value).sort().join(",") !== "createdAtMs,hostname,pid,token,version"
+    ) return undefined;
+    return {
+      token: value.token,
+      pid: value.pid,
+      hostname: value.hostname,
+      createdAtMs: value.createdAtMs,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+async function releaseUpdateLock(lockPath: string, lock: OwnedUpdateLock): Promise<void> {
+  try {
+    const handleInfo = await lock.handle.stat({ bigint: true });
+    const pathInfo = await lstat(lockPath, { bigint: true }).catch(() => undefined);
+    const current = await readUpdateLock(lockPath);
+    if (
+      pathInfo !== undefined && pathInfo.isFile() && !pathInfo.isSymbolicLink() &&
+      pathInfo.dev === handleInfo.dev && pathInfo.ino === handleInfo.ino && current?.token === lock.token
+    ) await unlink(lockPath).catch((error: unknown) => { if (!isNodeError(error, "ENOENT")) throw error; });
+  } finally {
+    await lock.handle.close();
+  }
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !isNodeError(error, "ESRCH");
   }
 }

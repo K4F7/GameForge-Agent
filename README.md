@@ -78,6 +78,8 @@ bun run tui -- list
 
 `dev:local` 通过 Bun 并行启动示例游戏（5173）、Workbench（4173）和 Run Relay（8787）。仅在 Vite 开发模式且未显式配置时，Workbench 默认连接 `http://127.0.0.1:8787/`；生产构建仍要求设置 `VITE_AGENT_BASE_URL`。MCP 是 stdio 子进程，应由 CodeArts 启动，不包含在该并行命令中。生产式本地联调先执行 `bun run build`，再使用 `bun run start:relay`；CodeArts MCP 配置见 [CodeArts 快速开始](docs/codearts-quickstart.md)。
 
+`generate_game_project` 除安全新建外也支持受管更新。更新必须先 dry-run，再以返回的当前 plan SHA-256 做 apply CAS；只更新 Manifest 中哈希未变的生成器文件，运行时资产、`bun.lock`、未知文件和用户已修改代码都不会被覆盖。发生冲突时没有 force 开关，由 CodeArts 审阅并显式合并。
+
 示例游戏和生成模板先输出轻量加载壳，再异步加载 Phaser 游戏块；这会显著缩小首屏入口并改善首次绘制与长期缓存，但不会虚报 Phaser 总下载量减少。`bun run bundle:check` 根据 Vite manifest 分别约束初始、异步和总 raw/gzip 体积，预算超出时返回非零退出码。
 
 第二轮 Bun TUI MVP 位于 `apps/tui`，复用严格 Schema 的 Run Relay Client，不包含 Agent 循环。它支持提交/列出/查看 Task、回放/停止 Run，以及通过 SSE 实时观察连续 RunEvent；断线后从最后连续游标执行有限退避回放，终态自动退出。`--json` 在无 TTY 环境只向 stdout 逐行输出可机器处理的事件 JSON，恢复进度写入 stderr。完整命令见 [TUI 使用说明](docs/tui.md)。

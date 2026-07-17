@@ -19,7 +19,7 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
 资产事务恢复同时覆盖首次创建与替换；不得把 create 中断留下的哈希匹配孤儿当作可忽略文件，也不得绕过 `recover_project_assets` 手工删除。
 
 1. 使用已认领 Task 的 `prompt` 和 `language`（或当前直接用户需求与明确语言）。若 `draft_game_spec` 已注册，优先把两者原样传入，转换为一次结构化 GameSpec 草案；Task 为 `zh-CN` 时 GameSpec `locale` 必须是 `zh-CN`，Task 为 `en-US` 时必须是 `en-US`。随后始终调用 `validate_game_spec`。若工具未注册，CodeArts 自行整理 GameSpec 并显式设置同一 `locale`；校验失败时由 CodeArts 修改输入后再次调用。验证成功后，将返回的规格原样发布为下一条连续的 `spec.ready` RunEvent，供 Workbench 展示；`draft_game_spec` 只发起一次百炼 Qwen 请求，不负责规划、重试或修复。
-2. 调用 `generate_game_project` 的 `dry-run`，审阅文件计划；确认目标为空且路径正确后再以 `apply` 执行。
+2. 新项目先调用 `generate_game_project` 的默认 create `dry-run`，审阅文件计划；确认目标为空且路径正确后再以 `apply` 执行。已有受管项目需要根据新 GameSpec 重新生成模板时，设置 `operation: "update"` 做 dry-run，审阅 `updatedPaths`、`preservedPaths`、`deletedPaths` 和 `conflicts`；只有 conflicts 为空并经用户/客户端 `ask` 确认后，才以相同 spec、`mode: "apply"` 和 dry-run 返回的 `currentPlanSha256` 作为 `expectedPlanSha256` 执行。update 只覆盖旧 Manifest 拥有且哈希未变的文件，保留运行时资产 Manifest、`bun.lock` 和未知用户文件；不存在 force 模式。冲突时由 CodeArts 亲自审阅/合并用户代码，不绕过保护。
 3. 默认使用 Phaser、Vite 与程序化占位素材。仅在工具已注册且需求需要时：
    - `request_image_asset`：一次 Seedream 官方 API 请求并安全落盘；只选择 `player`、`collectible`、`hazard` 或 `background` 图片角色，语音和音频角色不会进入该工具 Schema；
    - `search_sound_asset`：一个 Freesound 官方搜索操作，默认 CC0；只读 HTTP 遇到明确瞬时故障时可做传输层有限退避；

@@ -16,7 +16,17 @@ describe("project generation contracts", () => {
     expect(projectGenerationRequestSchema.parse({ projectId: "safety-sprint", spec })).toMatchObject({
       projectId: "safety-sprint",
       mode: "dry-run",
+      operation: "create",
     });
+  });
+
+  it("accepts an explicit managed update CAS without a force mode", () => {
+    expect(projectGenerationRequestSchema.parse({
+      projectId: "safety-sprint", spec, operation: "update", mode: "apply", expectedPlanSha256: "a".repeat(64),
+    })).toMatchObject({ operation: "update", expectedPlanSha256: "a".repeat(64) });
+    expect(projectGenerationRequestSchema.safeParse({
+      projectId: "safety-sprint", spec, operation: "update", force: true,
+    }).success).toBe(false);
   });
 
   it("rejects path traversal and unknown GameSpec fields", () => {

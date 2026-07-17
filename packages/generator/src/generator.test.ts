@@ -1,5 +1,6 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { hostname } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { GameProjectGenerator } from "./generator.js";
@@ -71,6 +72,92 @@ describe("GameProjectGenerator", () => {
     await expect(
       generator.execute({ projectId: "safety-sprint", spec, mode: "apply" }),
     ).rejects.toThrow("already exists");
+  });
+
+  it("updates only clean generator-owned files and preserves assets and unknown files", async () => {
+    const { generator, root } = await createGenerator();
+    const created = await generator.execute({ projectId: "safety-sprint", spec, mode: "apply" });
+    const project = path.join(root, "safety-sprint");
+    const assetManifestPath = path.join(project, "public", "assets", "manifest.json");
+    const assetManifest = { schemaVersion: "1.0", projectId: "safety-sprint", revision: 1, assets: [] };
+    await writeFile(assetManifestPath, `${JSON.stringify(assetManifest, null, 2)}\n`);
+    await writeFile(path.join(project, "NOTES.md"), "user notes\n");
+    const revised = { ...spec, title: "Safety Sprint Revised", targetDurationSeconds: 120 };
+
+    const preview = await generator.execute({
+      projectId: "safety-sprint",
+      spec: revised,
+      operation: "update",
+    });
+    expect(preview.update).toMatchObject({
+      currentPlanSha256: created.plan.planSha256,
+      preservedPaths: ["public/assets/manifest.json"],
+      conflicts: [],
+    });
+    expect(preview.update?.updatedPaths).toContain("game-spec.json");
+    const currentPlanSha256 = preview.update?.currentPlanSha256;
+    if (currentPlanSha256 === undefined) throw new Error("Update preview did not return a current plan hash.");
+
+    const applied = await generator.execute({
+      projectId: "safety-sprint",
+      spec: revised,
+      operation: "update",
+      mode: "apply",
+      expectedPlanSha256: currentPlanSha256,
+    });
+    expect(applied.operation).toBe("update");
+    expect(JSON.parse(await readFile(path.join(project, "game-spec.json"), "utf8"))).toEqual(revised);
+    expect(JSON.parse(await readFile(assetManifestPath, "utf8"))).toEqual(assetManifest);
+    expect(await readFile(path.join(project, "NOTES.md"), "utf8")).toBe("user notes\n");
+  });
+
+  it("refuses update when a managed file was modified or the plan CAS is stale", async () => {
+    const { generator, root } = await createGenerator();
+    const created = await generator.execute({ projectId: "safety-sprint", spec, mode: "apply" });
+    const project = path.join(root, "safety-sprint");
+    const gameSourcePath = path.join(project, "src", "game.ts");
+    const originalGameSource = await readFile(gameSourcePath, "utf8");
+    await writeFile(gameSourcePath, "// user modification\n");
+    const revised = { ...spec, title: "Revised" };
+    const preview = await generator.execute({ projectId: "safety-sprint", spec: revised, operation: "update" });
+    expect(preview.update?.conflicts).toEqual(["src/game.ts"]);
+    await expect(generator.execute({
+      projectId: "safety-sprint",
+      spec: revised,
+      operation: "update",
+      mode: "apply",
+      expectedPlanSha256: created.plan.planSha256,
+    })).rejects.toThrow("modified managed files");
+
+    await writeFile(gameSourcePath, originalGameSource);
+    await expect(generator.execute({
+      projectId: "safety-sprint",
+      spec: revised,
+      operation: "update",
+      mode: "apply",
+      expectedPlanSha256: "0".repeat(64),
+    })).rejects.toThrow("plan conflict");
+  });
+
+  it("recovers only an old same-host update lock whose owner is dead", async () => {
+    const { generator, root } = await createGenerator();
+    const created = await generator.execute({ projectId: "safety-sprint", spec, mode: "apply" });
+    const lockPath = path.join(root, "safety-sprint", ".gameforge", "update.lock");
+    await writeFile(lockPath, `${JSON.stringify({
+      version: 1,
+      token: "00000000-0000-4000-8000-000000000077",
+      pid: 2_147_483_647,
+      hostname: hostname(),
+      createdAtMs: 0,
+    })}\n`);
+    await expect(generator.execute({
+      projectId: "safety-sprint",
+      spec: { ...spec, title: "Recovered Update" },
+      operation: "update",
+      mode: "apply",
+      expectedPlanSha256: created.plan.planSha256,
+    })).resolves.toMatchObject({ operation: "update" });
+    await expect(readFile(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("keeps untrusted GameSpec text out of executable source", async () => {
