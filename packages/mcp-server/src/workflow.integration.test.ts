@@ -362,6 +362,9 @@ describe("local CodeArts workflow boundary", () => {
         revision: 1,
         assets: [{ assetId: "player", role: "player" }],
       });
+      await expect(callJson(mcpClient, "recover_project_assets", {
+        projectId: "local-e2e",
+      })).resolves.toMatchObject({ revision: 1, assets: [{ assetId: "player" }] });
       await callJson(mcpClient, "publish_run_events", {
         runId: "run-local-e2e",
         after: 3,

@@ -222,7 +222,11 @@ MCP 侧提供两个条件注册工具：
 
 项目输出根配置后还注册只读 `get_project_assets`。它重新验证生成项目边界、严格 Manifest、项目 ID，以及每个引用文件存在、非符号链接、仍位于 `public/` 内；字节数、已打开句柄与路径身份、entry/provenance SHA-256 也必须一致。CodeArts 恢复 Run 时将它与已回放的 `asset.ready` 按 asset ID 对账，只为 Manifest 中缺少事件的 entry 补发当前 revision；这关闭了“媒体已落盘但事件发布前会话中断”的窗口，不会重复调用 Seedream、Freesound 或 TTS。
 
-替换提交先将新媒体与新 Manifest 写入同目录临时文件，再把旧媒体移到随机备份路径，以硬链接的 no-replace 语义发布新文件，最后原子替换 Manifest；普通异常会逆序恢复旧文件，清理失败会与原错误一起以 `AggregateError` 报告。成功后才清理备份。Node 没有跨文件事务：进程在文件切换与 Manifest 切换之间被强制终止时，仍可能遗留 `.bak`/`.tmp` 并需要后续事务日志恢复能力；当前不把这类 kill -9/断电场景写成已验收的崩溃原子性。
+替换提交先将新媒体与新 Manifest 写入同目录临时文件，再以 0600 文件写入严格事务日志，随后把旧媒体移到随机备份路径，以硬链接的 no-replace 语义发布新文件，最后原子替换 Manifest；普通异常会逆序恢复旧文件，清理失败会与原错误一起以 `AggregateError` 报告。成功后才清理备份与日志。
+
+`recover_project_assets` 是显式确定性恢复工具，不是 Agent 循环。它取得相同写锁后只接受单链接、非符号链接、32 KiB 内的 version 1 日志；日志不包含绝对路径，临时/备份路径由经过 Schema 验证的 entry 与 transaction UUID 在项目内重新推导。当前 Manifest 的规范 SHA-256、revision 和完整目标 entry 必须精确匹配日志旧状态或新状态：旧状态回滚，新状态完成清理，其他状态原样保留并报错。删除任何媒体前还会按打开句柄、路径 inode/device、字节数和双 SHA-256 重新验证。`get_project_assets` 保持纯只读，不会暗中触发恢复。
+
+该机制已覆盖 MCP 进程在各文件切换之间终止、随后显式恢复的本地文件系统场景。它没有目录 fsync 的跨平台一致保证，因此不把突然断电、存储控制器丢缓存、网络文件系统或多主机写入声明为已验收。
 
 ## 官方依据
 

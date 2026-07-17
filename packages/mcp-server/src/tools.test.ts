@@ -7,6 +7,7 @@ import type { VerifyGameRequest } from "@gameforge/game-verifier";
 import {
   draftGameSpecTool,
   getProjectAssetsTool,
+  recoverProjectAssetsTool,
   generateGameProjectTool,
   importSoundAssetTool,
   completeGameRunTool,
@@ -352,6 +353,19 @@ describe("validation tool handlers", () => {
       error: "project_assets_read_failed",
       message: "Runtime asset manifest is invalid.",
     });
+  });
+
+  it("recovers one interrupted asset transaction without invoking a provider", async () => {
+    const calls: string[] = [];
+    const result = await recoverProjectAssetsTool({
+      async recover(projectId) {
+        calls.push(projectId);
+        return { schemaVersion: "1.0", projectId, revision: 2, assets: [] };
+      },
+    }, "safety-sprint");
+    expect(result.isError).not.toBe(true);
+    expect(calls).toEqual(["safety-sprint"]);
+    expect(readJsonResult(result)).toMatchObject({ revision: 2 });
   });
 
   it("imports one selected sound preview and stores it once", async () => {

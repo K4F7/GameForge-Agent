@@ -59,6 +59,7 @@ describe("GameForge doctor core", () => {
       "import_sound_asset",
       "list_game_tasks",
       "publish_run_events",
+      "recover_project_assets",
       "replay_game_run",
       "request_image_asset",
       "search_sound_asset",

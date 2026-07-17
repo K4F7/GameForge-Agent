@@ -29,7 +29,7 @@ OpenCode Plugin 生命周期依附具体客户端版本、Session 和 TUI API。
 OpenCode 会把 MCP 工具暴露为带服务器前缀的名称，例如 `gameforge_<tool>`。实际名称以客户端工具列表为准。
 
 - `allow`：`validate_*`、`get_*`、`list_*`、`replay_*`、`query_*` 等无写入校验与查询；
-- `ask`：`generate_*`、`import_*`、`request_*`、`start_*`、`stop_*`、`create_*`、`claim_*`、`publish_*`、`complete_*`；
+- `ask`：`generate_*`、`import_*`、`request_*`、`recover_*`、`start_*`、`stop_*`、`create_*`、`claim_*`、`publish_*`、`complete_*`；
 - 未匹配的 `gameforge_*` 默认 `ask`。
 
 OpenCode 权限按最后匹配规则覆盖前项，因此 `opencode.json.example` 先声明通配 `ask`，再用更具体规则放行查询类工具。涉及云请求的 `search_*`/`draft_*` 即使只返回数据也建议保持 `ask`，因为可能消耗配额或产生外部调用。

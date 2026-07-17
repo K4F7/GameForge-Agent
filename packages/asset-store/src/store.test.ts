@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GameProjectGenerator } from "@gameforge/generator";
@@ -8,6 +8,7 @@ import { ProjectAssetStore, type AssetLockRuntime } from "./store.js";
 
 const roots: string[] = [];
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0xff, 0xd9]);
+const revisedJpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10, 0xff, 0xd9]);
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const mp3 = new Uint8Array([0x49, 0x44, 0x33, 0x04]);
 const spec = {
@@ -62,6 +63,56 @@ const lockRuntime = (options: { now?: number; alive?: boolean; hostname?: string
   hostname: options.hostname ?? "test-host",
   isProcessAlive: () => options.alive ?? false,
 });
+
+async function stageInterruptedReplacement(
+  root: string,
+  store: ProjectAssetStore,
+  manifestState: "old" | "new",
+  pathMode: "same" | "different" = "different",
+): Promise<{ transactionPath: string; backup: string; oldPath: string; newPath: string }> {
+  const first = imageRequest();
+  first.provenance.assetId = "images/hero";
+  const stored = await store.store(first);
+  const project = path.join(root, "safety-sprint");
+  const manifestPath = path.join(project, "public", "assets", "manifest.json");
+  const oldManifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+    schemaVersion: "1.0"; projectId: string; revision: number; assets: Array<Record<string, unknown>>;
+  };
+  const oldEntry = stored.entry;
+  const newBytes = pathMode === "same" ? revisedJpeg : png;
+  const newHash = createHash("sha256").update(newBytes).digest("hex");
+  const newEntry = {
+    ...oldEntry,
+    path: pathMode === "same" ? oldEntry.path : "assets/images/hero.png",
+    mimeType: pathMode === "same" ? oldEntry.mimeType : "image/png" as const,
+    bytes: newBytes.byteLength,
+    sha256: newHash,
+    provenance: { ...oldEntry.provenance, model: "seedream-revised", prompt: "Revised hero", sha256: newHash },
+  };
+  const newManifest = { ...oldManifest, revision: 2, assets: [newEntry] };
+  const transactionId = "00000000-0000-4000-8000-000000000099";
+  const oldPath = path.join(project, "public", "assets", "images", "hero.jpg");
+  const newPath = pathMode === "same" ? oldPath : path.join(project, "public", "assets", "images", "hero.png");
+  const backup = `${oldPath}.${transactionId}.bak`;
+  const transactionPath = path.join(project, ".gameforge", "assets.transaction.json");
+  await rename(oldPath, backup);
+  await writeFile(newPath, newBytes);
+  if (manifestState === "new") await writeFile(manifestPath, `${JSON.stringify(newManifest, null, 2)}\n`);
+  const canonicalHash = (value: unknown) => createHash("sha256").update(`${JSON.stringify(value, null, 2)}\n`).digest("hex");
+  await writeFile(transactionPath, `${JSON.stringify({
+    version: 1,
+    transactionId,
+    projectId: "safety-sprint",
+    operation: "replace",
+    oldRevision: 1,
+    newRevision: 2,
+    oldManifestSha256: canonicalHash(oldManifest),
+    newManifestSha256: canonicalHash(newManifest),
+    oldEntry,
+    newEntry,
+  }, null, 2)}\n`);
+  return { transactionPath, backup, oldPath, newPath };
+}
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -160,6 +211,62 @@ describe("ProjectAssetStore", () => {
     await expect(store.store(imageRequest())).rejects.toThrow("already exists");
     expect(await readFile(destination)).toEqual(Buffer.from([1, 2, 3, 4]));
     await expect(store.read("safety-sprint")).resolves.toMatchObject({ revision: 0, assets: [] });
+  });
+
+  it("rolls back an interrupted replacement when the old manifest is authoritative", async () => {
+    const { root, store } = await fixture();
+    const staged = await stageInterruptedReplacement(root, store, "old");
+    await expect(store.recover("safety-sprint")).resolves.toMatchObject({ revision: 1 });
+    expect(await readFile(staged.oldPath)).toEqual(Buffer.from(jpeg));
+    await expect(readFile(staged.newPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(staged.backup)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(staged.transactionPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(store.read("safety-sprint")).resolves.toMatchObject({
+      revision: 1,
+      assets: [{ assetId: "images/hero", mimeType: "image/jpeg" }],
+    });
+  });
+
+  it("finalizes an interrupted replacement when the new manifest is authoritative", async () => {
+    const { root, store } = await fixture();
+    const staged = await stageInterruptedReplacement(root, store, "new");
+    const other = imageRequest();
+    other.provenance.assetId = "images/other.jpg";
+    delete (other as { role?: unknown }).role;
+    await expect(store.store(other)).resolves.toMatchObject({ manifestRevision: 3 });
+    await expect(readFile(staged.oldPath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(staged.newPath)).toEqual(Buffer.from(png));
+    await expect(readFile(staged.backup)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(staged.transactionPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(store.read("safety-sprint")).resolves.toMatchObject({
+      revision: 3,
+      assets: [{ assetId: "images/hero", mimeType: "image/png" }, { assetId: "images/other.jpg" }],
+    });
+  });
+
+  it("refuses an unknown transaction log without modifying project files", async () => {
+    const { root, store } = await fixture();
+    await store.store(imageRequest());
+    const transactionPath = path.join(root, "safety-sprint", ".gameforge", "assets.transaction.json");
+    await writeFile(transactionPath, JSON.stringify({ version: 999, projectId: "safety-sprint" }));
+    const other = imageRequest();
+    other.provenance.assetId = "images/other.jpg";
+    delete (other as { role?: unknown }).role;
+    await expect(store.store(other)).rejects.toThrow();
+    expect(await readFile(transactionPath, "utf8")).toContain("999");
+    await expect(store.read("safety-sprint")).resolves.toMatchObject({ revision: 1 });
+  });
+
+  it("rolls back an interrupted same-path replacement without deleting the old asset", async () => {
+    const { root, store } = await fixture();
+    const staged = await stageInterruptedReplacement(root, store, "old", "same");
+    const other = imageRequest();
+    other.provenance.assetId = "images/other.jpg";
+    delete (other as { role?: unknown }).role;
+    await expect(store.store(other)).resolves.toMatchObject({ manifestRevision: 2 });
+    expect(await readFile(staged.oldPath)).toEqual(Buffer.from(jpeg));
+    await expect(readFile(staged.backup)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(staged.transactionPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("reads an authoritative manifest for event recovery and rejects inconsistent files", async () => {

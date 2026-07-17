@@ -146,9 +146,11 @@ export async function draftGameSpecTool(
 export type AssetStore = {
   store(request: StoreAssetRequest): Promise<StoreAssetResult>;
   read?(projectId: string): Promise<import("@gameforge/contracts").RuntimeAssetManifest>;
+  recover?(projectId: string): Promise<import("@gameforge/contracts").RuntimeAssetManifest>;
 };
 
 export type AssetManifestReader = Required<Pick<AssetStore, "read">>;
+export type AssetTransactionRecovery = Required<Pick<AssetStore, "recover">>;
 type AssetWriteControl = {
   mode?: "create" | "replace" | undefined;
   expectedRevision?: number | undefined;
@@ -166,6 +168,23 @@ export async function getProjectAssetsTool(
       content: [{ type: "text", text: JSON.stringify({
         error: "project_assets_read_failed",
         message: error instanceof Error ? error.message : "Project assets could not be read.",
+      }) }],
+    };
+  }
+}
+
+export async function recoverProjectAssetsTool(
+  recovery: AssetTransactionRecovery,
+  projectId: string,
+): Promise<CallToolResult> {
+  try {
+    return { content: [{ type: "text", text: JSON.stringify(await recovery.recover(projectId), null, 2) }] };
+  } catch (error) {
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify({
+        error: "project_assets_recovery_failed",
+        message: error instanceof Error ? error.message : "Project asset recovery failed.",
       }) }],
     };
   }

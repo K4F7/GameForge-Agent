@@ -30,6 +30,7 @@
     "gameforge_generate_*": "ask",
     "gameforge_import_*": "ask",
     "gameforge_request_*": "ask",
+    "gameforge_recover_*": "ask",
     "gameforge_start_*": "ask",
     "gameforge_stop_*": "ask",
     "gameforge_complete_*": "ask"

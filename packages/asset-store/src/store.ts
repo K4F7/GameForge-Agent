@@ -21,6 +21,7 @@ const IMAGE_MAX_BYTES = 32 * 1024 * 1024;
 const AUDIO_MAX_BYTES = 64 * 1024 * 1024;
 const LOCK_STALE_AFTER_MS = 10 * 60 * 1000;
 const LOCK_METADATA_MAX_BYTES = 4 * 1024;
+const ASSET_TRANSACTION_MAX_BYTES = 32 * 1024;
 const assetLockMetadataSchema = z.strictObject({
   version: z.literal(1),
   token: z.string().uuid(),
@@ -28,8 +29,21 @@ const assetLockMetadataSchema = z.strictObject({
   hostname: z.string().trim().min(1).max(255),
   createdAtMs: z.number().int().nonnegative(),
 });
+const assetTransactionSchema = z.strictObject({
+  version: z.literal(1),
+  transactionId: z.string().uuid(),
+  projectId: projectIdSchema,
+  operation: z.literal("replace"),
+  oldRevision: z.number().int().nonnegative(),
+  newRevision: z.number().int().positive(),
+  oldManifestSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  newManifestSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  oldEntry: runtimeAssetManifestSchema.shape.assets.element,
+  newEntry: runtimeAssetManifestSchema.shape.assets.element,
+});
 
 type AssetLockMetadata = z.infer<typeof assetLockMetadataSchema>;
+type AssetTransaction = z.infer<typeof assetTransactionSchema>;
 
 export type AssetLockRuntime = {
   now(): number;
@@ -89,6 +103,30 @@ export class ProjectAssetStore {
     return manifest;
   }
 
+  async recover(projectIdInput: string): Promise<RuntimeAssetManifest> {
+    const projectId = projectIdSchema.parse(projectIdInput);
+    const project = await verifiedManagedProject(this.#projectsRoot, projectId);
+    const metadataDirectory = await verifiedDirectory(safeChild(project, ".gameforge"), "Project metadata directory");
+    const lockPath = safeChild(metadataDirectory, "assets.lock");
+    const recoveryPath = safeChild(metadataDirectory, "assets.lock.recovery");
+    const lock = await acquireAssetLock(lockPath, recoveryPath, this.#lockRuntime);
+    try {
+      const publicDirectory = await verifiedDirectory(safeChild(project, "public"), "Project public directory");
+      const assetsDirectory = await verifiedDirectory(safeChild(publicDirectory, "assets"), "Project assets directory");
+      await recoverAssetTransaction(
+        safeChild(metadataDirectory, "assets.transaction.json"),
+        metadataDirectory,
+        publicDirectory,
+        assetsDirectory,
+        safeChild(assetsDirectory, "manifest.json"),
+        projectId,
+      );
+    } finally {
+      await releaseAssetLock(lockPath, lock);
+    }
+    return this.read(projectId);
+  }
+
   async store(request: StoreAssetRequest): Promise<StoreAssetResult> {
     const projectId = projectIdSchema.parse(request.projectId);
     const provenance = assetProvenanceSchema.parse(request.provenance);
@@ -122,6 +160,15 @@ export class ProjectAssetStore {
       const publicDirectory = await verifiedDirectory(safeChild(realProject, "public"), "Project public directory");
       const assetsDirectory = await verifiedDirectory(safeChild(publicDirectory, "assets"), "Project assets directory");
       const manifestPath = safeChild(assetsDirectory, "manifest.json");
+      const transactionPath = safeChild(metadataDirectory, "assets.transaction.json");
+      await recoverAssetTransaction(
+        transactionPath,
+        metadataDirectory,
+        publicDirectory,
+        assetsDirectory,
+        manifestPath,
+        projectId,
+      );
       const manifest = runtimeAssetManifestSchema.parse(
         await readVerifiedJson(manifestPath, assetsDirectory, "Runtime asset manifest"),
       );
@@ -186,6 +233,10 @@ export class ProjectAssetStore {
           destination,
           manifestPath,
           assetsDirectory,
+          transactionPath,
+          projectId,
+          manifest,
+          entry,
           bytes,
           nextManifest,
         );
@@ -228,6 +279,10 @@ async function commitReplacedAsset(
   destination: string,
   manifestPath: string,
   assetsDirectory: string,
+  transactionPath: string,
+  projectId: string,
+  oldManifest: RuntimeAssetManifest,
+  newEntry: RuntimeAssetEntry,
   bytes: Uint8Array,
   manifest: RuntimeAssetManifest,
 ): Promise<void> {
@@ -238,9 +293,24 @@ async function commitReplacedAsset(
   let oldBackedUp = false;
   let newCommitted = false;
   let manifestCommitted = false;
+  const oldEntry = oldManifest.assets.find((entry) => entry.assetId === newEntry.assetId);
+  if (oldEntry === undefined) throw new Error("Asset replacement transaction target is missing.");
+  const transaction = assetTransactionSchema.parse({
+    version: 1,
+    transactionId,
+    projectId,
+    operation: "replace",
+    oldRevision: oldManifest.revision,
+    newRevision: manifest.revision,
+    oldManifestSha256: sha256(manifestBytes(oldManifest)),
+    newManifestSha256: sha256(manifestBytes(manifest)),
+    oldEntry,
+    newEntry,
+  });
   try {
     await writeSynced(assetTemporary, bytes);
     await writeSynced(manifestTemporary, manifestBytes(manifest));
+    await writeSynced(transactionPath, Buffer.from(`${JSON.stringify(transaction, null, 2)}\n`, "utf8"), 0o600);
     await rename(oldDestination, oldBackup);
     oldBackedUp = true;
     await link(assetTemporary, destination);
@@ -266,13 +336,142 @@ async function commitReplacedAsset(
         "Asset replacement failed and rollback encountered additional filesystem errors.",
       );
     }
+    await rm(transactionPath, { force: true }).catch(() => undefined);
     throw error;
   }
-  await rm(oldBackup, { force: true }).catch(() => undefined);
+  const backupCleaned = await rm(oldBackup, { force: true }).then(() => true, () => false);
+  if (backupCleaned) await rm(transactionPath, { force: true }).catch(() => undefined);
 }
 
 function manifestBytes(manifest: RuntimeAssetManifest): Uint8Array {
   return Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+}
+
+async function recoverAssetTransaction(
+  transactionPath: string,
+  metadataDirectory: string,
+  publicDirectory: string,
+  assetsDirectory: string,
+  manifestPath: string,
+  projectId: string,
+): Promise<void> {
+  const transactionInfo = await lstat(transactionPath).catch((error: unknown) => {
+    if (isNodeError(error, "ENOENT")) return undefined;
+    throw error;
+  });
+  if (transactionInfo === undefined) return;
+  if (
+    !transactionInfo.isFile() || transactionInfo.isSymbolicLink() || transactionInfo.nlink !== 1 ||
+    transactionInfo.size < 1 || transactionInfo.size > ASSET_TRANSACTION_MAX_BYTES
+  ) throw new Error("Asset transaction log is invalid; refusing automatic recovery.");
+  const transaction = assetTransactionSchema.parse(
+    await readVerifiedJson(transactionPath, metadataDirectory, "Asset transaction log"),
+  );
+  validateAssetTransaction(transaction, projectId);
+  const currentManifest = runtimeAssetManifestSchema.parse(
+    await readVerifiedJson(manifestPath, assetsDirectory, "Runtime asset manifest"),
+  );
+  const currentHash = sha256(manifestBytes(currentManifest));
+  const oldDestination = safeChild(publicDirectory, transaction.oldEntry.path);
+  const newDestination = safeChild(publicDirectory, transaction.newEntry.path);
+  const backup = `${oldDestination}.${transaction.transactionId}.bak`;
+  const assetTemporary = `${newDestination}.${transaction.transactionId}.tmp`;
+  const manifestTemporary = safeChild(assetsDirectory, `.manifest.${transaction.transactionId}.tmp`);
+
+  if (
+    currentManifest.revision === transaction.newRevision &&
+    currentHash === transaction.newManifestSha256 &&
+    manifestContainsEntry(currentManifest, transaction.newEntry)
+  ) {
+    await assertTransactionAsset(newDestination, publicDirectory, transaction.newEntry, "new");
+    await removeTransactionAssetIfPresent(backup, publicDirectory, transaction.oldEntry, "backup");
+    await removeTransactionAssetIfPresent(assetTemporary, publicDirectory, transaction.newEntry, "temporary");
+    await removeManifestTemporaryIfPresent(manifestTemporary, assetsDirectory, transaction.newManifestSha256);
+    await rm(transactionPath);
+    return;
+  }
+
+  if (
+    currentManifest.revision !== transaction.oldRevision ||
+    currentHash !== transaction.oldManifestSha256 ||
+    !manifestContainsEntry(currentManifest, transaction.oldEntry)
+  ) throw new Error("Asset transaction does not match the old or new manifest; refusing automatic recovery.");
+
+  const backupExists = await pathExists(backup);
+  if (oldDestination === newDestination) {
+    if (backupExists && await pathExists(newDestination)) {
+      await assertTransactionAsset(newDestination, publicDirectory, transaction.newEntry, "new");
+      await rm(newDestination);
+    }
+  } else {
+    await removeTransactionAssetIfPresent(newDestination, publicDirectory, transaction.newEntry, "new");
+  }
+  if (backupExists) {
+    await assertTransactionAsset(backup, publicDirectory, transaction.oldEntry, "backup");
+    if (await pathExists(oldDestination)) {
+      throw new Error("Old asset destination already exists during transaction rollback.");
+    }
+    await link(backup, oldDestination);
+    await unlink(backup);
+  } else {
+    await assertTransactionAsset(oldDestination, publicDirectory, transaction.oldEntry, "old");
+  }
+  await removeTransactionAssetIfPresent(assetTemporary, publicDirectory, transaction.newEntry, "temporary");
+  await removeManifestTemporaryIfPresent(manifestTemporary, assetsDirectory, transaction.newManifestSha256);
+  await rm(transactionPath);
+}
+
+function validateAssetTransaction(transaction: AssetTransaction, projectId: string): void {
+  if (transaction.projectId !== projectId) throw new Error("Asset transaction belongs to another project.");
+  if (transaction.newRevision !== transaction.oldRevision + 1) {
+    throw new Error("Asset transaction revisions are not consecutive.");
+  }
+  if (transaction.oldEntry.assetId !== transaction.newEntry.assetId) {
+    throw new Error("Asset transaction entries do not identify the same asset.");
+  }
+}
+
+function manifestContainsEntry(manifest: RuntimeAssetManifest, expected: RuntimeAssetEntry): boolean {
+  const actual = manifest.assets.find((entry) => entry.assetId === expected.assetId);
+  return actual !== undefined && JSON.stringify(actual) === JSON.stringify(expected);
+}
+
+async function assertTransactionAsset(
+  target: string,
+  publicDirectory: string,
+  entry: RuntimeAssetEntry,
+  label: string,
+): Promise<void> {
+  const digest = await verifiedAssetHash(target, publicDirectory, entry.bytes, `${entry.assetId} (${label})`);
+  if (digest !== entry.sha256 || digest !== entry.provenance.sha256) {
+    throw new Error(`Asset transaction ${label} file hash is inconsistent.`);
+  }
+}
+
+async function removeTransactionAssetIfPresent(
+  target: string,
+  publicDirectory: string,
+  entry: RuntimeAssetEntry,
+  label: string,
+): Promise<void> {
+  if (!await pathExists(target)) return;
+  await assertTransactionAsset(target, publicDirectory, entry, label);
+  await rm(target);
+}
+
+async function removeManifestTemporaryIfPresent(
+  target: string,
+  assetsDirectory: string,
+  expectedHash: string,
+): Promise<void> {
+  if (!await pathExists(target)) return;
+  const manifest = runtimeAssetManifestSchema.parse(
+    await readVerifiedJson(target, assetsDirectory, "Temporary runtime asset manifest"),
+  );
+  if (sha256(manifestBytes(manifest)) !== expectedHash) {
+    throw new Error("Temporary runtime asset manifest hash is inconsistent.");
+  }
+  await rm(target);
 }
 
 
@@ -516,8 +715,8 @@ async function verifiedDirectory(target: string, label: string): Promise<string>
   return realpath(target);
 }
 
-async function writeSynced(target: string, bytes: Uint8Array): Promise<void> {
-  const handle = await open(target, "wx");
+async function writeSynced(target: string, bytes: Uint8Array, mode?: number): Promise<void> {
+  const handle = await open(target, "wx", mode);
   try {
     await handle.writeFile(bytes);
     await handle.sync();

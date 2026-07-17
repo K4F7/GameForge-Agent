@@ -53,6 +53,7 @@ import {
   verifyGameProjectTool,
   getGameforgeCapabilitiesTool,
   getProjectAssetsTool,
+  recoverProjectAssetsTool,
   type GameSpecDraftProvider,
   type ProjectGenerator,
   type AssetStore,
@@ -92,7 +93,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       sound: { provider: "freesound", ready: options.soundSearchProvider !== undefined && options.soundPreviewProvider !== undefined && options.assetStore !== undefined },
     },
     engineering: {
-      assetStore: options.assetStore?.read !== undefined,
+      assetStore: options.assetStore?.read !== undefined && options.assetStore.recover !== undefined,
       generator: options.projectGenerator !== undefined,
       verifier: options.projectVerifier !== undefined,
       preview: options.projectPreviewManager !== undefined,
@@ -121,6 +122,20 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         inputSchema: { projectId: projectIdSchema },
       },
       async ({ projectId }) => getProjectAssetsTool(reader, projectId),
+    );
+  }
+
+  if (options.assetStore?.recover !== undefined) {
+    const recovery = { recover: options.assetStore.recover.bind(options.assetStore) };
+    server.registerTool(
+      "recover_project_assets",
+      {
+        title: "Recover an interrupted asset transaction",
+        description:
+          "Under the project asset write lock, validate a persisted transaction log and either roll it back or finish cleanup according to the authoritative manifest. No Provider is called.",
+        inputSchema: { projectId: projectIdSchema },
+      },
+      async ({ projectId }) => recoverProjectAssetsTool(recovery, projectId),
     );
   }
 

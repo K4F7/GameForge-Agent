@@ -54,7 +54,7 @@ export function expectedConditionalTools(snapshot: {
     ...(snapshot.providers.image.ready ? ["request_image_asset"] : []),
     ...(snapshot.providers.tts.ready ? ["submit_voice_job", "query_voice_job", "materialize_voice_job"] : []),
     ...(snapshot.providers.sound.ready ? ["search_sound_asset", "import_sound_asset"] : []),
-    ...(snapshot.engineering.assetStore ? ["get_project_assets"] : []),
+    ...(snapshot.engineering.assetStore ? ["get_project_assets", "recover_project_assets"] : []),
     ...(snapshot.engineering.generator ? ["generate_game_project"] : []),
     ...(snapshot.engineering.verifier ? ["verify_game_project"] : []),
     ...(snapshot.engineering.preview ? ["start_game_preview", "stop_game_preview"] : []),
