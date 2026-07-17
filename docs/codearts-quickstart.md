@@ -64,8 +64,11 @@ CodeArts项目级Skill位于：
 ```text
 bun install --frozen-lockfile
 bun run build
+bun run doctor
 bun run dev:local
 ```
+
+`doctor` 使用真实 MCP SDK stdio Client 启动构建后的 Node 服务，输出 JSON：`ok`、Node/Bun 版本、锁文件状态、已注册工具、无密钥 capability snapshot 和稳定问题码。它校验每个 ready 能力的条件工具；Task Inbox ready 时还调用一次有界、只读 `list_game_tasks({limit: 1})`，验证 Relay URL 可达。基础无密钥环境下 Provider/engineering 的 `ready: false` 是预期结果；在 CodeArts 同一环境变量下重跑时，应与准备启用的工具一致。该命令不执行任何模型或媒体请求。
 
 如需本地任务跨 Relay 重启恢复，先在启动 `dev:local` 的终端设置 `GAMEFORGE_RUN_RELAY_STATE_FILE` 为绝对路径。PowerShell 示例：
 

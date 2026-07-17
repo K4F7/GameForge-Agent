@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GameProjectGenerator } from "@gameforge/generator";
@@ -64,6 +64,34 @@ describe("ProjectAssetStore", () => {
     )) as { revision: number; assets: unknown[] };
     expect(manifest).toMatchObject({ revision: 1 });
     expect(manifest.assets).toHaveLength(1);
+  });
+
+  it("reads an authoritative manifest for event recovery and rejects inconsistent files", async () => {
+    const { root, store } = await fixture();
+    const hash = createHash("sha256").update(jpeg).digest("hex");
+    await store.store({
+      projectId: "safety-sprint",
+      bytes: jpeg,
+      mimeType: "image/jpeg",
+      role: "player",
+      provenance: {
+        assetId: "images/hero.jpg",
+        kind: "image",
+        origin: "generated",
+        provider: "volcengine-ark",
+        model: "seedream",
+        prompt: "Hero",
+        license: "provider-terms",
+        sha256: hash,
+      },
+    });
+    await expect(store.read("safety-sprint")).resolves.toMatchObject({
+      projectId: "safety-sprint",
+      revision: 1,
+      assets: [{ assetId: "images/hero.jpg", role: "player" }],
+    });
+    await writeFile(path.join(root, "safety-sprint", "public", "assets", "images", "hero.jpg"), new Uint8Array([1]));
+    await expect(store.read("safety-sprint")).rejects.toThrow("missing or inconsistent");
   });
 
   it("rejects hash mismatches, media spoofing, and duplicate assets", async () => {

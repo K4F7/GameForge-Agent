@@ -145,12 +145,35 @@ export async function draftGameSpecTool(
 
 export type AssetStore = {
   store(request: StoreAssetRequest): Promise<StoreAssetResult>;
+  read?(projectId: string): Promise<import("@gameforge/contracts").RuntimeAssetManifest>;
 };
+
+export type AssetManifestReader = Required<Pick<AssetStore, "read">>;
+
+export async function getProjectAssetsTool(
+  reader: AssetManifestReader,
+  projectId: string,
+): Promise<CallToolResult> {
+  try {
+    return { content: [{ type: "text", text: JSON.stringify(await reader.read(projectId), null, 2) }] };
+  } catch (error) {
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify({
+        error: "project_assets_read_failed",
+        message: error instanceof Error ? error.message : "Project assets could not be read.",
+      }) }],
+    };
+  }
+}
 
 export async function requestImageAssetTool(
   provider: ImageGenerationProvider<SeedreamImageRequest, SeedreamImageResult>,
   store: AssetStore,
-  request: SeedreamImageRequest & { projectId: string; role?: StoreAssetRequest["role"] },
+  request: SeedreamImageRequest & {
+    projectId: string;
+    role?: "player" | "collectible" | "hazard" | "background" | undefined;
+  },
 ): Promise<CallToolResult> {
   try {
     const { projectId, role, ...generationRequest } = request;
@@ -180,7 +203,7 @@ export async function requestImageAssetTool(
 }
 
 export type FreesoundPreviewToolProvider = {
-  execute(request: FreesoundPreviewRequest): Promise<FreesoundPreviewResult>;
+  execute(request: FreesoundPreviewRequest, classification?: "sound" | "music"): Promise<FreesoundPreviewResult>;
 };
 
 export async function importSoundAssetTool(
@@ -193,7 +216,7 @@ export async function importSoundAssetTool(
 ): Promise<CallToolResult> {
   try {
     const { projectId, role, ...previewRequest } = request;
-    const preview = await provider.execute(previewRequest);
+    const preview = await provider.execute(previewRequest, role === "bgm" ? "music" : "sound");
     const stored = await store.store({
       projectId,
       bytes: preview.bytes,

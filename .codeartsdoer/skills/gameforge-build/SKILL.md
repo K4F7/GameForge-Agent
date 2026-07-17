@@ -12,16 +12,16 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
 1. 阅读 `AGENTS.md`、相关设计文档和即将修改的代码。
 2. 列出 MCP 当前实际注册的工具；未注册的媒体工具视为未配置，不猜测密钥。调用一次 `get_gameforge_capabilities` 获取不含密钥的实际适配器快照，工具列表只用于确认可调用性，snapshot 才是 Provider 选择的权威来源。
 3. 明确验收条件：可构建、可运行、核心玩法可完成、失败条件有效、素材来源可审计。Run 建立或恢复后，若回放中尚无 `capabilities.ready`，将 capability snapshot 原样发布为下一条连续事件；只使用其中 `ready: true` 的可选 Provider。
-4. 若 `list_game_tasks` 已注册，调用一次 `{ limit: 20 }` 的无状态过滤快照。优先选择当前用户明确指定的 Task；否则优先恢复 `status: "claimed"` 且 `claimedBy: "codearts"` 的相关任务，再选择 `queued` 任务。存在多个无法从当前 Run ID、Prompt 或用户上下文消歧的候选时请求用户选择，不猜测。无论恢复还是首次处理，都以 `agentId: "codearts"` 调用 `claim_game_task`；同一 agent 重复认领是幂等操作。将返回的 `prompt` 和 `runId` 作为权威输入。Workbench 创建 Task 时已经原子创建 Run，因此不得再次调用 `create_game_run`。随后调用一次 `replay_game_run`（`after: 0`）恢复该 Run 的权威事件与最后 sequence；若返回正好 1000 项，按最后 sequence 再读取下一页，直到不足 1000 项，禁止轮询等待新事件。恢复任务时根据已有 `phase.completed`、`spec.ready`、`asset.ready` 和 `preview.ready` 跳过已完成的有副作用步骤，从下一未完成阶段继续。若没有收件箱任务，则创建唯一实验编号和 run ID，调用 `create_game_run` 并保存 sequence 游标。禁止在 Skill 或 MCP 内循环轮询任务。
+4. 若 `list_game_tasks` 已注册，调用一次 `{ limit: 20 }` 的无状态过滤快照。优先选择当前用户明确指定的 Task；否则优先恢复 `status: "claimed"` 且 `claimedBy: "codearts"` 的相关任务，再选择 `queued` 任务。存在多个无法从当前 Run ID、Prompt 或用户上下文消歧的候选时请求用户选择，不猜测。无论恢复还是首次处理，都以 `agentId: "codearts"` 调用 `claim_game_task`；同一 agent 重复认领是幂等操作。将返回的 `prompt` 和 `runId` 作为权威输入。Workbench 创建 Task 时已经原子创建 Run，因此不得再次调用 `create_game_run`。随后调用一次 `replay_game_run`（`after: 0`）恢复该 Run 的权威事件与最后 sequence；若返回正好 1000 项，按最后 sequence 再读取下一页，直到不足 1000 项，禁止轮询等待新事件。恢复任务时根据已有 `phase.completed`、`spec.ready`、`asset.ready` 和 `preview.ready` 跳过已完成的有副作用步骤，从下一未完成阶段继续。若项目已生成且 `get_project_assets` 已注册，调用一次读取权威 Manifest；将 Manifest 中尚无对应 `asset.ready` 的 entry 以当前 `revision` 逐条补发为连续事件，再决定是否调用媒体 Provider。这样可恢复“文件已落盘、事件未发布”的中断，不得因 Relay 缺事件就重复下载或生成已有 asset ID/role。若没有收件箱任务，则创建唯一实验编号和 run ID，调用 `create_game_run` 并保存 sequence 游标。禁止在 Skill 或 MCP 内循环轮询任务。
 
 ## 工作流
 
 1. 使用已认领 Task 的 `prompt`（或当前直接用户需求）。若 `draft_game_spec` 已注册，优先用它转换为一次结构化 GameSpec 草案；随后始终调用 `validate_game_spec`。若工具未注册，CodeArts 自行整理 GameSpec；校验失败时由 CodeArts 修改输入后再次调用。验证成功后，将返回的规格原样发布为下一条连续的 `spec.ready` RunEvent，供 Workbench 展示；`draft_game_spec` 只发起一次百炼 Qwen 请求，不负责规划、重试或修复。
 2. 调用 `generate_game_project` 的 `dry-run`，审阅文件计划；确认目标为空且路径正确后再以 `apply` 执行。
 3. 默认使用 Phaser、Vite 与程序化占位素材。仅在工具已注册且需求需要时：
-   - `request_image_asset`：一次 Seedream 官方 API 请求并安全落盘；
+   - `request_image_asset`：一次 Seedream 官方 API 请求并安全落盘；只选择 `player`、`collectible`、`hazard` 或 `background` 图片角色，语音和音频角色不会进入该工具 Schema；
    - `search_sound_asset`：一次 Freesound 官方搜索，默认 CC0；
-   - `import_sound_asset`：一次预览下载并记录许可、署名和哈希；
+   - `import_sound_asset`：一次预览下载并记录许可、署名和哈希；短音效使用 `collect-sound`/`hit-sound`，明确选作背景音乐的候选使用 `bgm`，工具会将后者记录为 `music`；
    - `submit_voice_job`：提交一次火山长文本 TTS 作业；
    - `query_voice_job`：查询一次带签名且绑定项目的作业；
    - `materialize_voice_job`：成功后查询一次、下载一次并写入 `voice` 角色。

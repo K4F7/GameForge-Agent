@@ -38,6 +38,9 @@ const chromeExecutablePath = process.env.GAMEFORGE_CHROME_EXECUTABLE?.trim();
 const previewManager = projectOutputRoot === undefined || projectOutputRoot.length === 0
   ? undefined
   : new GamePreviewManager({ projectsRoot: projectOutputRoot });
+const assetStore = projectOutputRoot === undefined || projectOutputRoot.length === 0
+  ? undefined
+  : new ProjectAssetStore({ projectsRoot: projectOutputRoot });
 const runRelayClient = runRelayUrl === undefined || runRelayUrl.length === 0
   ? undefined
   : new RunRelayClient({ baseUrl: runRelayUrl });
@@ -98,6 +101,7 @@ const server = createServer({
             ? {}
             : { chromeExecutablePath }),
         }),
+        assetStore: assetStore as ProjectAssetStore,
       }),
   ...(runRelayClient === undefined
     ? {}
@@ -113,7 +117,6 @@ const server = createServer({
             ? {}
             : { allowedReferenceImageHosts: seedreamReferenceHosts }),
         }),
-        assetStore: new ProjectAssetStore({ projectsRoot: projectOutputRoot as string }),
       }),
   ...(freesoundApiKey === undefined || freesoundApiKey.length === 0
     ? {}
@@ -128,7 +131,6 @@ const server = createServer({
     ? {}
     : {
         soundPreviewProvider: new FreesoundPreviewProvider(),
-        assetStore: new ProjectAssetStore({ projectsRoot: projectOutputRoot }),
       }),
   ...(speechApiToken === undefined || speechApiToken.length === 0
     ? {}
@@ -139,7 +141,6 @@ const server = createServer({
           license: ttsLicense as string,
           allowedAudioHosts: ttsAudioHosts as string[],
         }),
-        assetStore: new ProjectAssetStore({ projectsRoot: projectOutputRoot as string }),
       }),
 });
 const transport = new StdioServerTransport();

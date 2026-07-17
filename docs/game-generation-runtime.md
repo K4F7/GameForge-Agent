@@ -82,9 +82,9 @@ bun run dev
 
 生成器 0.2.1 修复了统一终态处理未刷新 HUD 的问题：`finish()` 先同步分数、生命和倒计时，再发布终态并绘制遮罩。全新 30 秒样例经独立 Bun 安装/检查/构建和真实 Chrome lost 验收，结构化状态与 HUD 均为 0 秒。
 
-生成器 0.3.0 新增 GameSpec `gameplay` 调优。真实 Chrome 参数样例证明 2 个收集物、0 个危险物、1 条生命和 300 px/s 连续移动均进入运行时 telemetry；证据见 `experiments/2026-07-17-gameplay-tuning/`。
+生成器 0.3.0 新增 GameSpec `gameplay` 调优。真实 Chrome 参数样例证明 2 个收集物、0 个危险物、1 条生命和 300 px/s 连续移动均进入运行时 telemetry；证据见 `experiments/2026-07-17-gameplay-tuning/`。0.4.0 进一步校验浏览器实际消费的 Manifest 条目，并补齐 `bgm` 运行时绑定。0.5.0 将玩家和危险物的显示与碰撞体固定为 32×32、收集物固定为 24×24，避免 Seedream 大尺寸源图直接改变玩法尺度。
 
-验收过程只允许访问本次本地 Vite origin，阻断其他网络请求；收集浏览器控制台错误、页面异常和失败请求，检查 Canvas 尺寸，读取 `window.__GAMEFORGE_TEST__`，并将 PNG 证据写入 `.gameforge/verification/`。报告只有在诊断为空且显式结果符合预期时才为 `passed: true`。报告同时返回项目内相对 `evidencePath`，CodeArts 将非敏感摘要发布为 `verification.ready`；事件记录 outcome、状态数值、Canvas、诊断计数、动作数、耗时和相对证据路径，不暴露绝对本机路径或诊断全文。工具不设计动作、不重试、不修改代码，动作规划与失败后的修复仍由 CodeArts 负责。
+验收过程只允许访问本次本地 Vite origin，阻断其他网络请求；收集浏览器控制台错误、页面异常和失败请求。就绪条件不是“Canvas 节点已插入”，而是运行时已经发布 telemetry，且缩小采样后的 Canvas 至少存在两组有明显差异的像素；这避免 Phaser 尚未完成首帧时产生纯背景截图和假阳性。随后检查 Canvas 尺寸、读取 `window.__GAMEFORGE_TEST__`，并将 PNG 证据写入 `.gameforge/verification/`。报告只有在诊断为空且显式结果符合预期时才为 `passed: true`。报告同时返回项目内相对 `evidencePath`，CodeArts 将非敏感摘要发布为 `verification.ready`；事件记录 outcome、状态数值、Canvas、诊断计数、动作数、耗时和相对证据路径，不暴露绝对本机路径或诊断全文。工具不设计动作、不重试、不修改代码，动作规划与失败后的修复仍由 CodeArts 负责。
 
 实现依据（访问日期 2026-07-16）：Playwright 官方 [`BrowserType.launch`](https://playwright.dev/docs/api/class-browsertype#browser-type-launch) 文档确认可用 `channel: "chrome"` 调用品牌 Chrome；[Network](https://playwright.dev/docs/network) 文档提供 `page.route()` 与 `route.abort()` 拦截请求，并建议在需要完整路由可见性时阻止 Service Worker；[Screenshots](https://playwright.dev/docs/screenshots) 文档提供 `page.screenshot()` 与整页截图。依赖固定为 `playwright-core@1.61.1`，不在安装阶段下载浏览器。
 
@@ -115,7 +115,7 @@ URL 契约只允许 HTTPS，或主机严格为 `localhost`、`127.0.0.1`、`[::1
 
 CodeArts 在 `validate_game_spec` 成功后发布 `spec.ready`；图片、音效或配音工具真正完成安全落盘后，原样使用返回的 `entry` 与 `manifestRevision` 发布 `asset.ready`。候选搜索结果、纯日志和未写入文件的 Provider 响应不能伪装成已就绪资产。
 
-每个 Run 开始或恢复后，CodeArts 调用一次无参数 `get_gameforge_capabilities`；若回放中尚无 capability 事件，则原样发布 snapshot。快照不包含密钥或配置值。Qwen 以草拟 Provider 存在为 ready；Seedream 和 TTS 还要求 Asset Store；Freesound 要求搜索、preview 下载和 Asset Store 三者同时存在。工程能力分别反映 generator、verifier、preview、Run Relay 和 Task Inbox 的实际注入状态。
+每个 Run 开始或恢复后，CodeArts 调用一次无参数 `get_gameforge_capabilities`；若回放中尚无 capability 事件，则原样发布 snapshot。快照不包含密钥或配置值。Qwen 以草拟 Provider 存在为 ready；Seedream 和 TTS 还要求 Asset Store；Freesound 要求搜索、preview 下载和 Asset Store 三者同时存在。工程能力分别反映 Asset Store、generator、verifier、preview、Run Relay 和 Task Inbox 的实际注入状态。
 
 `submit_voice_job` 和每次单次 `query_voice_job` 返回后，CodeArts 原样发布 `voice.job.updated`。恢复时按 projectId + assetId 选择 sequence 最新的事件，从中取得签名 handle：processing 可继续单次 query，succeeded 可 materialize，failed 保留证据并决定回退。Workbench 只保留并显示 project/asset/status，不把 handle 放入归约状态或界面；但 handle 仍存在于本地 Relay 事件流和状态文件，应把它视为受限 capability data，保护 Relay 文件与访问边界。
 
@@ -185,9 +185,9 @@ Workbench 页面加载时使用时间与浏览器 UUID 熵生成符合 `runIdSch
 
 `@gameforge/asset-store` 只接受已由生成器创建的项目，核验 `.gameforge/manifest.json`、项目 ID、真实目录、媒体魔数、大小、SHA-256、角色与 MIME 的对应关系。文件固定写入 `public/assets/`，清单使用互斥锁和临时文件更新；重复 asset ID、重复运行时角色、符号链接与路径越界都会被拒绝。
 
-当前生成模板会在启动时读取 `public/assets/manifest.json`：存在 `player`、`collectible`、`hazard`、`background` 时加载图片；存在 `collect-sound` 和 `hit-sound` 时播放音频。清单缺失、为空或单项加载失败时继续使用程序化纹理与静音回退，因此媒体 Provider 不会成为玩法可运行性的硬依赖。
+当前生成模板会在启动时读取 `public/assets/manifest.json`：存在 `player`、`collectible`、`hazard`、`background` 时加载图片；存在 `collect-sound` 和 `hit-sound` 时播放音频。浏览器运行时只接受契约内角色、同类型 MIME、`assets/` 内规范相对路径和唯一角色；损坏、重复或类型不匹配的条目被忽略。角色图片无论源分辨率如何，都会归一化显示尺寸和 Arcade Physics 碰撞体；背景仍按 960×540 场景缩放。清单缺失、为空或单项加载失败时继续使用程序化纹理与静音回退，因此媒体 Provider 不会成为玩法可运行性的硬依赖。
 
-存在 `voice` 角色时，模板会在玩家第一次点击或按键后播放配音，以遵守浏览器自动播放限制；解码失败时保持静音并继续游戏。
+存在 `voice` 角色时，模板会在玩家第一次点击或按键后播放配音，以遵守浏览器自动播放限制；存在 `bgm` 时，同一次用户手势会以 0.35 音量开始循环播放。Freesound 导入工具会把明确选择为 `bgm` 的预览记录为 `kind: "music"`，其他音效仍记录为 `kind: "sound"`，从而满足 Asset Store 的角色—来源一致性校验。解码失败时保持静音并继续游戏。
 
 生成模板还暴露只读验证状态 `window.__GAMEFORGE_TEST__`，包含 `status`、`score`、`lives`、`remainingSeconds`、结束详情和可选 telemetry。生成器 0.2.0 的 telemetry 提供玩家、仍存活收集物与危险物的世界坐标，数值保留两位小数；胜负发生时仍保留最终 telemetry，并派发 `gameforge:outcome`。它只提供可观测状态，不接受命令、不改变玩法逻辑，供 CodeArts 设计有限动作，避免依赖缩放截图或 OCR 猜测 Canvas 状态。
 
@@ -195,10 +195,12 @@ Workbench 页面加载时使用时间与浏览器 UUID 熵生成符合 `runIdSch
 
 MCP 侧提供两个条件注册工具：
 
-- `request_image_asset`：执行一次 Seedream 官方请求，再将校验后的图片写入项目；
+- `request_image_asset`：执行一次 Seedream 官方请求，再将校验后的图片写入项目；MCP 输入只接受四个图片角色，无效的语音或音频角色在 Provider 调用前拒绝；
 - `import_sound_asset`：执行一次官方 Freesound preview GET，再记录来源、许可、署名和哈希。
 
 两者均不重试、不修改玩法代码，也不实现 Agent 循环。
+
+项目输出根配置后还注册只读 `get_project_assets`。它重新验证生成项目边界、严格 Manifest、项目 ID，以及每个引用文件存在、非符号链接、仍位于 `public/` 内且字节数一致，然后返回当前 revision 和完整 entries。CodeArts 恢复 Run 时将它与已回放的 `asset.ready` 按 asset ID 对账，只为 Manifest 中缺少事件的 entry 补发当前 revision；这关闭了“媒体已落盘但事件发布前会话中断”的窗口，不会重复调用 Seedream、Freesound 或 TTS。
 
 ## 官方依据
 

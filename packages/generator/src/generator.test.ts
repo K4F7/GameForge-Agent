@@ -117,6 +117,29 @@ describe("GameProjectGenerator", () => {
     expect(source).toContain("direction.x * movementSpeed");
   });
 
+  it("validates runtime media bindings and starts background music after user input", async () => {
+    const { generator, root } = await createGenerator();
+    await generator.execute({ projectId: "media-game", spec, mode: "apply" });
+
+    const source = await readFile(path.join(root, "media-game", "src", "main.ts"), "utf8");
+    expect(source).toContain("function parseRuntimeAssets(value: unknown)");
+    expect(source).toContain("assetPathPattern.test(path)");
+    expect(source).toContain("roles.has(role as RuntimeAssetRole)");
+    expect(source).toContain('this.sound.play("bgm", { loop: true, volume: 0.35 })');
+    expect(source).toContain('this.input.once("pointerdown", () => this.startAudio())');
+  });
+
+  it("normalizes generated image dimensions for rendering and collision", async () => {
+    const { generator, root } = await createGenerator();
+    await generator.execute({ projectId: "image-sizing", spec, mode: "apply" });
+
+    const source = await readFile(path.join(root, "image-sizing", "src", "main.ts"), "utf8");
+    expect(source).toContain('this.createSizedSprite(120, height / 2, "player", 32, 32)');
+    expect(source).toContain('(sprite.body as Phaser.Physics.Arcade.Body).setSize(displayWidth, displayHeight, true)');
+    expect(source).toContain('collectible.setDisplaySize(24, 24)');
+    expect(source).toContain('(collectible.body as Phaser.Physics.Arcade.Body).setSize(24, 24, true)');
+  });
+
   it("rejects relative output roots", () => {
     expect(() => new GameProjectGenerator({ outputRoot: "generated-games" })).toThrow("absolute");
   });

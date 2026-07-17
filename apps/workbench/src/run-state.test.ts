@@ -63,7 +63,7 @@ describe("runReducer", () => {
         tts: { provider: "volcengine-speech" as const, ready: false },
         sound: { provider: "freesound" as const, ready: true },
       },
-      engineering: { generator: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+      engineering: { assetStore: true, generator: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
     };
     const state = runReducer(
       runReducer(createInitialRunState(), { type: "run.started", runId: "run-1", sequence: 1 }),

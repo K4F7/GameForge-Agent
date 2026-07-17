@@ -42,6 +42,29 @@ export class ProjectAssetStore {
     this.#projectsRoot = normalized;
   }
 
+  async read(projectIdInput: string): Promise<RuntimeAssetManifest> {
+    const projectId = projectIdSchema.parse(projectIdInput);
+    const project = await verifiedManagedProject(this.#projectsRoot, projectId);
+    const publicDirectory = await verifiedDirectory(safeChild(project, "public"), "Project public directory");
+    const assetsDirectory = await verifiedDirectory(safeChild(publicDirectory, "assets"), "Project assets directory");
+    const manifest = runtimeAssetManifestSchema.parse(
+      JSON.parse(await readFile(safeChild(assetsDirectory, "manifest.json"), "utf8")) as unknown,
+    );
+    if (manifest.projectId !== projectId) throw new Error("Runtime asset manifest project ID does not match.");
+    for (const entry of manifest.assets) {
+      const target = safeChild(publicDirectory, entry.path);
+      const info = await lstat(target).catch(() => undefined);
+      if (info === undefined || !info.isFile() || info.isSymbolicLink() || info.size !== entry.bytes) {
+        throw new Error(`Runtime asset file is missing or inconsistent: ${entry.assetId}`);
+      }
+      const realTarget = await realpath(target);
+      if (!realTarget.startsWith(`${publicDirectory}${path.sep}`)) {
+        throw new Error(`Runtime asset file escaped the project: ${entry.assetId}`);
+      }
+    }
+    return manifest;
+  }
+
   async store(request: StoreAssetRequest): Promise<StoreAssetResult> {
     const projectId = projectIdSchema.parse(request.projectId);
     const provenance = assetProvenanceSchema.parse(request.provenance);
@@ -52,20 +75,7 @@ export class ProjectAssetStore {
     const actualHash = sha256(bytes);
     if (actualHash !== provenance.sha256) throw new Error("Asset bytes do not match the provenance SHA-256.");
 
-    const root = await verifiedDirectory(this.#projectsRoot, "Asset projects root");
-    const project = safeChild(root, projectId);
-    const projectInfo = await lstat(project).catch(() => undefined);
-    if (projectInfo === undefined || !projectInfo.isDirectory() || projectInfo.isSymbolicLink()) {
-      throw new Error("Asset target must be an existing generated project directory.");
-    }
-    const realProject = await realpath(project);
-    if (path.dirname(realProject).toLowerCase() !== root.toLowerCase()) {
-      throw new Error("Generated project escaped the configured projects root.");
-    }
-
-    const managedPath = safeChild(realProject, ".gameforge/manifest.json");
-    const managed = managedProjectSchema.parse(JSON.parse(await readFile(managedPath, "utf8")) as unknown);
-    if (managed.projectId !== projectId) throw new Error("Generated project manifest ID does not match.");
+    const realProject = await verifiedManagedProject(this.#projectsRoot, projectId);
 
     const metadataDirectory = await verifiedDirectory(safeChild(realProject, ".gameforge"), "Project metadata directory");
     const lockPath = safeChild(metadataDirectory, "assets.lock");
@@ -133,6 +143,23 @@ export class ProjectAssetStore {
       await unlink(lockPath).catch(() => undefined);
     }
   }
+}
+
+async function verifiedManagedProject(projectsRoot: string, projectId: string): Promise<string> {
+  const root = await verifiedDirectory(projectsRoot, "Asset projects root");
+  const project = safeChild(root, projectId);
+  const projectInfo = await lstat(project).catch(() => undefined);
+  if (projectInfo === undefined || !projectInfo.isDirectory() || projectInfo.isSymbolicLink()) {
+    throw new Error("Asset target must be an existing generated project directory.");
+  }
+  const realProject = await realpath(project);
+  if (path.dirname(realProject).toLowerCase() !== root.toLowerCase()) {
+    throw new Error("Generated project escaped the configured projects root.");
+  }
+  const managedPath = safeChild(realProject, ".gameforge/manifest.json");
+  const managed = managedProjectSchema.parse(JSON.parse(await readFile(managedPath, "utf8")) as unknown);
+  if (managed.projectId !== projectId) throw new Error("Generated project manifest ID does not match.");
+  return realProject;
 }
 
 function validateMedia(

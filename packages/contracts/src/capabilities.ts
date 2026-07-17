@@ -13,6 +13,7 @@ export const gameforgeCapabilitySnapshotSchema = z.strictObject({
     sound: providerCapabilitySchema,
   }),
   engineering: z.strictObject({
+    assetStore: z.boolean(),
     generator: z.boolean(),
     verifier: z.boolean(),
     preview: z.boolean(),

@@ -6,6 +6,7 @@ import type { ProjectGenerationResult } from "@gameforge/contracts";
 import type { VerifyGameRequest } from "@gameforge/game-verifier";
 import {
   draftGameSpecTool,
+  getProjectAssetsTool,
   generateGameProjectTool,
   importSoundAssetTool,
   completeGameRunTool,
@@ -280,13 +281,51 @@ describe("validation tool handlers", () => {
     expect(calls).toEqual(["generate:player", "store:safety-sprint:player"]);
   });
 
+  it("reads the authoritative asset manifest exactly once", async () => {
+    const calls: string[] = [];
+    const result = await getProjectAssetsTool({
+      async read(projectId) {
+        calls.push(projectId);
+        return {
+          schemaVersion: "1.0",
+          projectId,
+          revision: 1,
+          assets: [],
+        };
+      },
+    }, "safety-sprint");
+
+    expect(result.isError).not.toBe(true);
+    expect(calls).toEqual(["safety-sprint"]);
+    expect(readJsonResult(result)).toEqual({
+      schemaVersion: "1.0",
+      projectId: "safety-sprint",
+      revision: 1,
+      assets: [],
+    });
+  });
+
+  it("returns a stable error when the asset manifest cannot be read", async () => {
+    const result = await getProjectAssetsTool({
+      async read() {
+        throw new Error("Runtime asset manifest is invalid.");
+      },
+    }, "safety-sprint");
+
+    expect(result.isError).toBe(true);
+    expect(readJsonResult(result)).toEqual({
+      error: "project_assets_read_failed",
+      message: "Runtime asset manifest is invalid.",
+    });
+  });
+
   it("imports one selected sound preview and stores it once", async () => {
     const calls: string[] = [];
     const bytes = new Uint8Array([0x49, 0x44, 0x33, 0x04]);
     const result = await importSoundAssetTool(
       {
-        async execute(request) {
-          calls.push(`preview:${request.soundId}`);
+        async execute(request, classification) {
+          calls.push(`preview:${request.soundId}:${classification}`);
           return {
             bytes,
             mimeType: "audio/mpeg",
@@ -334,7 +373,65 @@ describe("validation tool handlers", () => {
       },
     );
     expect(result.isError).not.toBe(true);
-    expect(calls).toEqual(["preview:42", "store:safety-sprint:hit-sound"]);
+    expect(calls).toEqual(["preview:42:sound", "store:safety-sprint:hit-sound"]);
+  });
+
+  it("classifies a selected Freesound preview as music for the BGM role", async () => {
+    const classifications: Array<string | undefined> = [];
+    const result = await importSoundAssetTool(
+      {
+        async execute(request, classification) {
+          classifications.push(classification);
+          return {
+            bytes: new Uint8Array([0x49, 0x44, 0x33, 0x04]),
+            mimeType: "audio/mpeg",
+            provenance: {
+              assetId: request.assetId,
+              kind: classification === "music" ? "music" : "sound",
+              origin: "retrieved",
+              provider: "freesound",
+              sourceUrl: request.sourceUrl,
+              license: `Freesound ${request.license}`,
+              attribution: `by ${request.username}`,
+              sha256: "d".repeat(64),
+            },
+          };
+        },
+      },
+      {
+        async store(request) {
+          expect(request.provenance.kind).toBe("music");
+          expect(request.role).toBe("bgm");
+          return {
+            entry: {
+              assetId: request.provenance.assetId,
+              kind: "music",
+              role: "bgm",
+              path: "assets/music/theme.mp3",
+              mimeType: "audio/mpeg",
+              bytes: request.bytes.length,
+              sha256: request.provenance.sha256,
+              provenance: request.provenance,
+            },
+            manifestRevision: 1,
+          };
+        },
+      },
+      {
+        projectId: "safety-sprint",
+        assetId: "music/theme",
+        soundId: 84,
+        name: "Looping theme",
+        username: "composer",
+        license: "Creative Commons 0",
+        sourceUrl: "https://freesound.org/people/composer/sounds/84/",
+        previewUrl: "https://cdn.freesound.org/previews/0/84_1-hq.mp3",
+        role: "bgm",
+      },
+    );
+
+    expect(result.isError).not.toBe(true);
+    expect(classifications).toEqual(["music"]);
   });
 
   it("keeps asynchronous TTS submit, query, and materialization deterministic", async () => {

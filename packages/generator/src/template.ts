@@ -19,8 +19,8 @@ type GameSpec = {
 };
 
 const spec = rawSpec as GameSpec;
-type RuntimeAsset = { role?: string; path: string; mimeType: string };
-type RuntimeAssetManifest = { assets: RuntimeAsset[] };
+type RuntimeAssetRole = "player" | "collectible" | "hazard" | "background" | "collect-sound" | "hit-sound" | "voice" | "bgm";
+type RuntimeAsset = { role: RuntimeAssetRole; path: string; mimeType: string };
 type VerificationState = {
   status: "running" | "won" | "lost";
   score: number;
@@ -36,9 +36,34 @@ type VerificationState = {
 declare global {
   interface Window { __GAMEFORGE_TEST__: VerificationState }
 }
-const runtimeAssets: RuntimeAssetManifest = await fetch("assets/manifest.json")
-  .then(async (response) => response.ok ? await response.json() as RuntimeAssetManifest : { assets: [] })
-  .catch(() => ({ assets: [] }));
+const imageRoles = new Set<RuntimeAssetRole>(["player", "collectible", "hazard", "background"]);
+const audioRoles = new Set<RuntimeAssetRole>(["collect-sound", "hit-sound", "voice", "bgm"]);
+const assetPathPattern = /^assets\/[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*$/;
+function parseRuntimeAssets(value: unknown): RuntimeAsset[] {
+  if (typeof value !== "object" || value === null || !("assets" in value) || !Array.isArray(value.assets)) return [];
+  const accepted: RuntimeAsset[] = [];
+  const roles = new Set<RuntimeAssetRole>();
+  for (const candidate of value.assets) {
+    if (typeof candidate !== "object" || candidate === null) continue;
+    const role = "role" in candidate ? candidate.role : undefined;
+    const path = "path" in candidate ? candidate.path : undefined;
+    const mimeType = "mimeType" in candidate ? candidate.mimeType : undefined;
+    if (typeof role !== "string" || typeof path !== "string" || typeof mimeType !== "string") continue;
+    if (![...imageRoles, ...audioRoles].includes(role as RuntimeAssetRole) || roles.has(role as RuntimeAssetRole)) continue;
+    if (!assetPathPattern.test(path)) continue;
+    const typedRole = role as RuntimeAssetRole;
+    const compatible = imageRoles.has(typedRole)
+      ? ["image/jpeg", "image/png", "image/webp"].includes(mimeType)
+      : ["audio/mpeg", "audio/ogg", "audio/wav"].includes(mimeType);
+    if (!compatible) continue;
+    roles.add(typedRole);
+    accepted.push({ role: typedRole, path, mimeType });
+  }
+  return accepted;
+}
+const runtimeAssets = await fetch("assets/manifest.json")
+  .then(async (response) => response.ok ? parseRuntimeAssets(await response.json()) : [])
+  .catch((): RuntimeAsset[] => []);
 const width = 960;
 const height = 540;
 const collectibleCount = spec.gameplay?.collectibleCount ?? (spec.genre === "strategy" ? 6 : 5);
@@ -69,6 +94,7 @@ class GameScene extends Phaser.Scene {
   private ended = false;
   private damageBlockedUntil = 0;
   private voicePlayed = false;
+  private bgmStarted = false;
   private direction = new Phaser.Math.Vector2(1, 0);
 
   constructor() {
@@ -76,8 +102,7 @@ class GameScene extends Phaser.Scene {
   }
 
   preload(): void {
-    for (const asset of runtimeAssets.assets) {
-      if (asset.role === undefined) continue;
+    for (const asset of runtimeAssets) {
       if (asset.mimeType.startsWith("image/")) this.load.image(asset.role, asset.path);
       if (asset.mimeType.startsWith("audio/")) this.load.audio(asset.role, asset.path);
     }
@@ -113,8 +138,8 @@ class GameScene extends Phaser.Scene {
     }
     this.cursors = keyboard.createCursorKeys();
     this.actionKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    this.input.once("pointerdown", () => this.playVoice());
-    keyboard.once("keydown", () => this.playVoice());
+    this.input.once("pointerdown", () => this.startAudio());
+    keyboard.once("keydown", () => this.startAudio());
 
     this.collectibles = this.physics.add.group({ allowGravity: false, immovable: true });
     this.hazards = this.physics.add.group({ allowGravity: spec.genre === "platformer" });
@@ -188,17 +213,17 @@ class GameScene extends Phaser.Scene {
     if (!this.textures.exists("background")) {
       this.add.grid(width / 2, height / 2 + 40, width - 80, height - 160, 48, 48, 0x0f1f35, 0.9, 0x1e3a5f, 0.35);
     }
-    this.player = this.physics.add.sprite(120, height / 2, "player").setCollideWorldBounds(true);
+    this.player = this.createSizedSprite(120, height / 2, "player", 32, 32).setCollideWorldBounds(true);
 
     const itemPositions: ReadonlyArray<readonly [number, number]> = [[250, 170], [440, 150], [690, 180], [310, 390], [650, 390], [820, 300], [540, 410], [790, 150], [390, 220], [720, 330]];
     for (let index = 0; index < collectibleCount; index += 1) {
       const position = itemPositions[index] ?? [480, 270];
-      this.collectibles.create(position[0], position[1], "collectible");
+      this.createCollectible(position[0], position[1]);
     }
 
     const hazardPositions: ReadonlyArray<readonly [number, number]> = [[380, 270], [570, 300], [780, 410], [470, 410], [830, 220], [260, 320]];
     hazardPositions.slice(0, hazardCount).forEach((position, index) => {
-      const hazard = this.physics.add.sprite(position[0], position[1], "hazard")
+      const hazard = this.createSizedSprite(position[0], position[1], "hazard", 32, 32)
         .setCollideWorldBounds(true)
         .setBounce(1)
         .setVelocity(index % 2 === 0 ? 115 : -135, index === 1 ? 90 : -70);
@@ -213,17 +238,17 @@ class GameScene extends Phaser.Scene {
       this.platforms?.create(x, y, "platform");
     });
 
-    this.player = this.physics.add.sprite(100, 460, "player").setCollideWorldBounds(true).setBounce(0.05);
+    this.player = this.createSizedSprite(100, 460, "player", 32, 32).setCollideWorldBounds(true).setBounce(0.05);
     this.physics.add.collider(this.player, this.platforms);
     this.physics.add.collider(this.hazards, this.platforms);
 
     const itemPositions: ReadonlyArray<readonly [number, number]> = [[230, 370], [500, 300], [750, 380], [620, 470], [860, 470], [320, 470], [420, 470], [580, 470], [700, 470], [810, 470]];
     itemPositions.slice(0, collectibleCount).forEach(([x, y]) => {
-      this.collectibles.create(x, y, "collectible");
+      this.createCollectible(x, y);
     });
     const hazardPositions: ReadonlyArray<readonly [number, number]> = [[350, 450], [680, 450], [820, 450], [520, 450], [260, 450], [760, 390]];
     hazardPositions.slice(0, hazardCount).forEach(([x, y], index) => {
-      const hazard = this.physics.add.sprite(x, y, "hazard").setBounce(1).setVelocityX(index === 0 ? 100 : -120);
+      const hazard = this.createSizedSprite(x, y, "hazard", 32, 32).setBounce(1).setVelocityX(index === 0 ? 100 : -120);
       this.hazards.add(hazard);
     });
   }
@@ -238,6 +263,24 @@ class GameScene extends Phaser.Scene {
     const direction = new Phaser.Math.Vector2(x, y).normalize();
     this.player.setVelocity(direction.x * movementSpeed, direction.y * movementSpeed);
     if (direction.lengthSq() > 0) this.direction.copy(direction);
+  }
+
+  private createSizedSprite(
+    x: number,
+    y: number,
+    texture: string,
+    displayWidth: number,
+    displayHeight: number,
+  ): Phaser.Physics.Arcade.Sprite {
+    const sprite = this.physics.add.sprite(x, y, texture).setDisplaySize(displayWidth, displayHeight);
+    (sprite.body as Phaser.Physics.Arcade.Body).setSize(displayWidth, displayHeight, true);
+    return sprite;
+  }
+
+  private createCollectible(x: number, y: number): void {
+    const collectible = this.collectibles.create(x, y, "collectible") as Phaser.Physics.Arcade.Sprite;
+    collectible.setDisplaySize(24, 24);
+    (collectible.body as Phaser.Physics.Arcade.Body).setSize(24, 24, true);
   }
 
   private updatePuzzleMovement(): void {
@@ -359,6 +402,18 @@ class GameScene extends Phaser.Scene {
     if (this.voicePlayed || !this.cache.audio.exists("voice")) return;
     this.voicePlayed = true;
     this.playSound("voice");
+  }
+
+  private startAudio(): void {
+    if (!this.bgmStarted && this.cache.audio.exists("bgm")) {
+      this.bgmStarted = true;
+      try {
+        this.sound.play("bgm", { loop: true, volume: 0.35 });
+      } catch {
+        this.bgmStarted = false;
+      }
+    }
+    this.playVoice();
   }
 }
 

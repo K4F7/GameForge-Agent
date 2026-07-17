@@ -297,7 +297,7 @@ describe("local CodeArts workflow boundary", () => {
           tts: { provider: "volcengine-speech", ready: true },
           sound: { provider: "freesound", ready: false },
         },
-        engineering: { generator: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+        engineering: { assetStore: true, generator: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
       });
 
       const spec = {
@@ -354,6 +354,14 @@ describe("local CodeArts workflow boundary", () => {
         "utf8",
       )) as unknown);
       expect(manifest).toMatchObject({ revision: 1, assets: [{ assetId: "player", role: "player" }] });
+      const recoveredAssets = await callJson(mcpClient, "get_project_assets", {
+        projectId: "local-e2e",
+      });
+      expect(recoveredAssets).toMatchObject({
+        projectId: "local-e2e",
+        revision: 1,
+        assets: [{ assetId: "player", role: "player" }],
+      });
       await callJson(mcpClient, "publish_run_events", {
         runId: "run-local-e2e",
         after: 3,

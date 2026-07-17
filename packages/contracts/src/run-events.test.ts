@@ -211,7 +211,7 @@ describe("run event contracts", () => {
           tts: { provider: "volcengine-speech", ready: false },
           sound: { provider: "freesound", ready: false },
         },
-        engineering: { generator: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+        engineering: { assetStore: true, generator: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
       },
     }).success).toBe(true);
   });

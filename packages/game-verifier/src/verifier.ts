@@ -253,7 +253,38 @@ class PlaywrightSession implements VerificationSession {
 
   async waitUntilReady(timeoutMs: number): Promise<void> {
     await this.#page.waitForFunction(
-      () => document.querySelector("canvas") !== null && window.__GAMEFORGE_TEST__ !== undefined,
+      () => {
+        const canvas = document.querySelector("canvas");
+        const state = window.__GAMEFORGE_TEST__;
+        if (
+          canvas === null || typeof state !== "object" || state === null ||
+          !("telemetry" in state) || typeof state.telemetry !== "object" || state.telemetry === null
+        ) return false;
+        const probe = document.createElement("canvas");
+        probe.width = 48;
+        probe.height = 27;
+        const context = probe.getContext("2d", { willReadFrequently: true });
+        if (context === null) return false;
+        try {
+          context.drawImage(canvas, 0, 0, probe.width, probe.height);
+          const pixels = context.getImageData(0, 0, probe.width, probe.height).data;
+          const red = pixels[0] ?? 0;
+          const green = pixels[1] ?? 0;
+          const blue = pixels[2] ?? 0;
+          const alpha = pixels[3] ?? 0;
+          for (let offset = 4; offset < pixels.length; offset += 4) {
+            if (
+              Math.abs((pixels[offset] ?? 0) - red) > 8 ||
+              Math.abs((pixels[offset + 1] ?? 0) - green) > 8 ||
+              Math.abs((pixels[offset + 2] ?? 0) - blue) > 8 ||
+              Math.abs((pixels[offset + 3] ?? 0) - alpha) > 8
+            ) return true;
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      },
       undefined,
       { timeout: timeoutMs },
     );

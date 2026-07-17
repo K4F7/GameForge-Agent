@@ -30,7 +30,10 @@ export class FreesoundPreviewProvider {
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
-  async execute(request: FreesoundPreviewRequest): Promise<FreesoundPreviewResult> {
+  async execute(
+    request: FreesoundPreviewRequest,
+    classification: "sound" | "music" = "sound",
+  ): Promise<FreesoundPreviewResult> {
     const input = freesoundPreviewRequestSchema.parse(request);
     const sourceUrl = officialUrl(input.sourceUrl, ["freesound.org"]);
     const previewUrl = officialUrl(input.previewUrl, ["freesound.org", "cdn.freesound.org"]);
@@ -53,7 +56,7 @@ export class FreesoundPreviewProvider {
     const attribution = `“${input.name}” by ${input.username} — ${input.license} — ${sourceUrl.href}`;
     const provenance = assetProvenanceSchema.parse({
       assetId: input.assetId,
-      kind: "sound",
+      kind: classification,
       origin: "retrieved",
       provider: "freesound",
       sourceUrl: sourceUrl.href,

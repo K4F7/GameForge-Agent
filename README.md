@@ -56,8 +56,11 @@ bun install --frozen-lockfile
 bun run build
 bun run test
 bun run audit
+bun run doctor
 bun run dev:local
 ```
+
+`bun run doctor` 会构建基础包与 MCP，然后用真实 Node stdio Client 检查运行时版本、Bun 单锁、生产入口、必需工具、本次 capability snapshot 及 ready 能力对应的条件工具。配置 Task Inbox 时还会执行一次 `{limit: 1}` 的只读 Relay 探测，因此不可达 URL 不会显示绿灯。它不调用云 API、不输出凭据；可在与 CodeArts 相同的环境变量下运行，以提前发现半配置和路径错误。
 
 `dev:local` 通过 Bun 并行启动示例游戏（5173）、Workbench（4173）和 Run Relay（8787）。仅在 Vite 开发模式且未显式配置时，Workbench 默认连接 `http://127.0.0.1:8787/`；生产构建仍要求设置 `VITE_AGENT_BASE_URL`。MCP 是 stdio 子进程，应由 CodeArts 启动，不包含在该并行命令中。生产式本地联调先执行 `bun run build`，再使用 `bun run start:relay`；CodeArts MCP 配置见 [CodeArts 快速开始](docs/codearts-quickstart.md)。
 
@@ -95,7 +98,9 @@ GAMEFORGE_PROJECT_OUTPUT_ROOT=D:\GameForgeGenerated
 GAMEFORGE_CHROME_EXECUTABLE=C:\Program Files\Google\Chrome\Application\chrome.exe
 ```
 
-验收工具只处理生成器托管的项目，动作脚本最多 100 步；运行时阻断外部网络，捕获控制台错误、页面异常和失败请求，读取 `window.__GAMEFORGE_TEST__` 并把截图写入项目的 `.gameforge/verification/`。CodeArts 将验收摘要发布为 `verification.ready`，Workbench 显示胜负状态、诊断计数和项目内证据路径；绝对路径与诊断全文不进入浏览器事件流。CodeArts 可将 `start_game_preview` 返回的 URL 原样发布为 `preview.ready` RunEvent；Workbench 收到后自动切换预览。事件 URL 只接受 HTTPS 或 loopback HTTP，iframe 使用受限 sandbox。
+同一输出目录还注册 `get_project_assets`，用于 CodeArts 重启后读取并验证已落盘 Manifest，补发缺失的 `asset.ready`，而不是重复生成或下载已有素材。
+
+验收工具只处理生成器托管的项目，动作脚本最多 100 步；运行时阻断外部网络，捕获控制台错误、页面异常和失败请求，并等待 telemetry 与非空白 Canvas 首帧后再读取 `window.__GAMEFORGE_TEST__` 和截图，避免把刚创建但尚未渲染的 Canvas 误报为通过。证据写入项目的 `.gameforge/verification/`。CodeArts 将验收摘要发布为 `verification.ready`，Workbench 显示胜负状态、诊断计数和项目内证据路径；绝对路径与诊断全文不进入浏览器事件流。CodeArts 可将 `start_game_preview` 返回的 URL 原样发布为 `preview.ready` RunEvent；Workbench 收到后自动切换预览。事件 URL 只接受 HTTPS 或 loopback HTTP，iframe 使用受限 sandbox。
 
 启用 Run Relay 生命周期工具：
 
@@ -120,7 +125,7 @@ GAMEFORGE_IMAGE_LICENSE=<当前账号与用途对应的输出许可说明>
 GAMEFORGE_IMAGE_REFERENCE_HOSTS=example-oss.cn-beijing.aliyuncs.com
 ```
 
-只有同时设置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 和上述三个必填变量时，MCP 才注册 `request_image_asset`。Freesound 与输出目录均配置后，还会注册 `import_sound_asset`；它只下载搜索结果中的官方 preview，不把 Token 拼入 URL，也不替代需要 OAuth2 的原始文件下载接口。
+只有同时设置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 和上述三个必填变量时，MCP 才注册 `request_image_asset`。其角色只能是 `player`、`collectible`、`hazard` 或 `background`；无效音频角色会在调用 Seedream 前被 MCP Schema 拒绝。Seedream 等生图模型输出的角色图片会在生成游戏中归一化到固定显示尺寸与碰撞体，不让源分辨率改变玩法尺度。Freesound 与输出目录均配置后，还会注册 `import_sound_asset`；它只下载搜索结果中的官方 preview，不把 Token 拼入 URL，也不替代需要 OAuth2 的原始文件下载接口。选择 `collect-sound` 或 `hit-sound` 时按音效入库，明确选择 `bgm` 时按音乐入库；生成游戏会在玩家第一次交互后循环播放 BGM。
 
 启用火山引擎异步长文本配音：
 

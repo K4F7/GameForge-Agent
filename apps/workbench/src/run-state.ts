@@ -249,7 +249,7 @@ export function createDemoEvents(runId: string): ReadonlyArray<RunEvent> {
           tts: { provider: "volcengine-speech", ready: false },
           sound: { provider: "freesound", ready: false },
         },
-        engineering: { generator: true, verifier: true, preview: true, runRelay: false, taskInbox: false },
+        engineering: { assetStore: false, generator: true, verifier: true, preview: true, runRelay: false, taskInbox: false },
       },
     },
     {

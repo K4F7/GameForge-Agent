@@ -265,12 +265,14 @@ describe("GameForge MCP server", () => {
   });
 
   it("registers image materialization only when provider and store are both configured", async () => {
+    const calls: string[] = [];
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer({
       imageProvider: {
         id: "volcengine-ark",
         capability: "image",
         async execute(request) {
+          calls.push(`provider:${request.assetId}`);
           return {
             bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xd9]),
             mimeType: "image/jpeg" as const,
@@ -289,6 +291,7 @@ describe("GameForge MCP server", () => {
       },
       assetStore: {
         async store(request) {
+          calls.push(`store:${request.provenance.assetId}`);
           return {
             entry: {
               assetId: request.provenance.assetId,
@@ -319,6 +322,18 @@ describe("GameForge MCP server", () => {
           role: "player",
         },
       })).isError).not.toBe(true);
+      expect(calls).toEqual(["provider:player", "store:player"]);
+
+      expect((await client.callTool({
+        name: "request_image_asset",
+        arguments: {
+          projectId: "safety-sprint",
+          assetId: "invalid-voice-image",
+          prompt: "This request must be rejected before Seedream is called.",
+          role: "voice",
+        },
+      })).isError).toBe(true);
+      expect(calls).toEqual(["provider:player", "store:player"]);
     } finally {
       await client.close();
       await server.close();

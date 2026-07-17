@@ -12,7 +12,7 @@ import { mkdir, lstat, open, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { indexHtml, runtimeSource } from "./template.js";
 
-const GENERATOR_VERSION = "0.3.0";
+const GENERATOR_VERSION = "0.5.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 
 type GeneratedFile = { path: string; content: string; bytes: number; sha256: string };

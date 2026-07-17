@@ -26,6 +26,16 @@ describe("FreesoundPreviewProvider", () => {
     expect(result.provenance.attribution).toContain("sound-author");
   });
 
+  it("classifies a selected preview as music only when requested by the caller", async () => {
+    const fetchMock = vi.fn<FreesoundFetchLike>(async () =>
+      new Response(new Uint8Array([0x49, 0x44, 0x33, 0x04]), { status: 200 }),
+    );
+    const provider = new FreesoundPreviewProvider({ fetch: fetchMock });
+
+    await expect(provider.execute(request)).resolves.toMatchObject({ provenance: { kind: "sound" } });
+    await expect(provider.execute(request, "music")).resolves.toMatchObject({ provenance: { kind: "music" } });
+  });
+
   it("rejects redirects, untrusted hosts, and media spoofing", async () => {
     const fetchMock = vi.fn<FreesoundFetchLike>(async () =>
       new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 }),

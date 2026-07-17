@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runtimeAssetManifestSchema } from "./runtime-assets.js";
+import { imageRuntimeAssetRoleSchema, runtimeAssetManifestSchema } from "./runtime-assets.js";
 
 const provenance = {
   assetId: "images/hero.jpg",
@@ -13,6 +13,12 @@ const provenance = {
 };
 
 describe("runtime asset manifest", () => {
+  it("keeps image generation roles separate from audio roles", () => {
+    expect(imageRuntimeAssetRoleSchema.options).toEqual(["player", "collectible", "hazard", "background"]);
+    expect(imageRuntimeAssetRoleSchema.safeParse("voice").success).toBe(false);
+    expect(imageRuntimeAssetRoleSchema.safeParse("bgm").success).toBe(false);
+  });
+
   it("validates matching provenance and unique roles", () => {
     expect(runtimeAssetManifestSchema.parse({
       schemaVersion: "1.0",

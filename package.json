@@ -16,6 +16,7 @@
     "check": "bun run build:foundation && bun run --filter '*' check",
     "test": "bun run build:foundation && bun run --filter '*' test",
     "audit": "bun audit --prod",
+    "doctor": "bun run build:foundation && bun run --filter @gameforge/mcp-server build && node packages/mcp-server/dist/doctor.js",
     "dev:game": "bun run --filter @gameforge/game dev",
     "dev:workbench": "bun run --filter @gameforge/workbench dev",
     "dev:mcp": "bun run --filter @gameforge/mcp-server dev",

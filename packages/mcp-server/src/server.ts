@@ -8,7 +8,7 @@ import {
   runEventBatchSchema,
   replayRunEventsRequestSchema,
   runIdSchema,
-  runtimeAssetRoleSchema,
+  imageRuntimeAssetRoleSchema,
   type ImageGenerationProvider,
   type SoundSearchProvider,
   gameforgeCapabilitySnapshotSchema,
@@ -52,6 +52,7 @@ import {
   stopGamePreviewTool,
   verifyGameProjectTool,
   getGameforgeCapabilitiesTool,
+  getProjectAssetsTool,
   type GameSpecDraftProvider,
   type ProjectGenerator,
   type AssetStore,
@@ -91,6 +92,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       sound: { provider: "freesound", ready: options.soundSearchProvider !== undefined && options.soundPreviewProvider !== undefined && options.assetStore !== undefined },
     },
     engineering: {
+      assetStore: options.assetStore?.read !== undefined,
       generator: options.projectGenerator !== undefined,
       verifier: options.projectVerifier !== undefined,
       preview: options.projectPreviewManager !== undefined,
@@ -108,6 +110,19 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     },
     async () => getGameforgeCapabilitiesTool(capabilitySnapshot),
   );
+
+  if (options.assetStore?.read !== undefined) {
+    const reader = { read: options.assetStore.read.bind(options.assetStore) };
+    server.registerTool(
+      "get_project_assets",
+      {
+        title: "Read one managed project's asset manifest",
+        description: "Read and validate the authoritative runtime asset manifest without downloading or modifying assets.",
+        inputSchema: { projectId: projectIdSchema },
+      },
+      async ({ projectId }) => getProjectAssetsTool(reader, projectId),
+    );
+  }
 
   server.registerTool(
     "validate_game_spec",
@@ -283,7 +298,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         inputSchema: {
           projectId: projectIdSchema,
           ...seedreamImageRequestSchema.shape,
-          role: runtimeAssetRoleSchema.optional(),
+          role: imageRuntimeAssetRoleSchema.optional(),
         },
       },
       async (request) => requestImageAssetTool(imageProvider, assetStore, request),

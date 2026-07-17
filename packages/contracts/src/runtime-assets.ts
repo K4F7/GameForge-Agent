@@ -13,6 +13,13 @@ export const runtimeAssetRoleSchema = z.enum([
   "bgm",
 ]);
 
+export const imageRuntimeAssetRoleSchema = z.enum([
+  "player",
+  "collectible",
+  "hazard",
+  "background",
+]);
+
 export const runtimeAssetMimeTypeSchema = z.enum([
   "image/jpeg",
   "image/png",
@@ -72,6 +79,7 @@ export const runtimeAssetManifestSchema = z
   });
 
 export type RuntimeAssetRole = z.infer<typeof runtimeAssetRoleSchema>;
+export type ImageRuntimeAssetRole = z.infer<typeof imageRuntimeAssetRoleSchema>;
 export type RuntimeAssetMimeType = z.infer<typeof runtimeAssetMimeTypeSchema>;
 export type RuntimeAssetEntry = z.infer<typeof runtimeAssetEntrySchema>;
 export type RuntimeAssetManifest = z.infer<typeof runtimeAssetManifestSchema>;
