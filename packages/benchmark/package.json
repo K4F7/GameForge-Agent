@@ -10,7 +10,11 @@
     "start": "bun src/cli.ts",
     "test": "vitest run src"
   },
-  "dependencies": { "zod": "4.4.3" },
+  "dependencies": {
+    "@gameforge/contracts": "0.1.0",
+    "@gameforge/run-relay": "0.1.0",
+    "zod": "4.4.3"
+  },
   "devDependencies": {
     "@types/node": "22.20.1",
     "typescript": "7.0.2",

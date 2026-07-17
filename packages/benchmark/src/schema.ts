@@ -21,22 +21,28 @@ const eventSummarySchema = z.strictObject({
   types: z.record(z.string().min(1), z.number().int().nonnegative()),
 });
 
-const toolSummarySchema = z.strictObject({
+export const toolSummarySchema = z.strictObject({
   count: z.number().int().nonnegative().nullable(),
   names: z.array(z.string().trim().min(1)).max(200),
   errors: z.number().int().nonnegative().nullable(),
 });
 
+export const benchmarkClientSchema = z.strictObject({
+  name: z.enum(["codearts", "opencode"]),
+  version: z.string().trim().min(1).max(100).regex(/^[^\r\n|]+$/),
+  model: z.string().trim().min(1).max(200).regex(/^[^\r\n|]+$/).optional(),
+  provider: z.string().trim().min(1).max(200).regex(/^[^\r\n|]+$/).optional(),
+});
+
+export const benchmarkFailureSchema = z.enum([
+  "none", "rate-limit", "authentication", "provider", "tool", "timeout", "stopped", "unknown",
+]);
+
 export const benchmarkRecordSchema = z.strictObject({
   schemaVersion: z.literal(1),
   benchmarkId: benchmarkDefinitionSchema.shape.benchmarkId,
   definitionFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-  client: z.strictObject({
-    name: z.enum(["codearts", "opencode"]),
-    version: z.string().trim().min(1).max(100).regex(/^[^\r\n|]+$/),
-    model: z.string().trim().min(1).max(200).regex(/^[^\r\n|]+$/).optional(),
-    provider: z.string().trim().min(1).max(200).regex(/^[^\r\n|]+$/).optional(),
-  }),
+  client: benchmarkClientSchema,
   taskId: z.string().trim().min(1).max(120),
   runId: z.string().trim().min(1).max(120),
   terminalStatus: z.enum(["completed", "failed", "stopped", "queued", "claimed"]),
@@ -51,7 +57,7 @@ export const benchmarkRecordSchema = z.strictObject({
     diagnostics: z.number().int().nonnegative(),
   }).optional(),
   humanInterventions: z.array(z.string().trim().min(1).max(500)).max(50),
-  failure: z.enum(["none", "rate-limit", "authentication", "provider", "tool", "timeout", "stopped", "unknown"]),
+  failure: benchmarkFailureSchema,
   evidence: z.array(z.string().trim().min(1).max(500)).min(1).max(50),
 }).superRefine((record, context) => {
   const eventCount = Object.values(record.events.types).reduce((total, count) => total + count, 0);

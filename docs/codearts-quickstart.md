@@ -145,6 +145,14 @@ Run Relay 的可选状态文件已通过真实生产进程两次重启验证；�
 - 是否一次通过验证；
 - 最终提交差异。
 
+Task 到达终态后，先准备严格 `definition.json` 与人工核验的 `metadata.json`，再执行：
+
+```powershell
+bun run benchmark -- capture definition.json metadata.json --task-id <Task-ID> --out codearts.record.json
+```
+
+命令从配置的 `GAMEFORGE_RUN_RELAY_URL`（默认 loopback 8787）分页读取完整保留期事件，校验定义、sequence 和终态。客户端版本、模型、工具调用和人工干预只能写入 metadata；缺失工具历史时必须使用 `count: null`/`errors: null`，不得从 RunEvent 数量推断。输出采用 allowlist 摘要，不包含 Task Prompt、日志正文、素材提示、URL、绝对路径或 TTS job handle，并拒绝覆盖已有 record。
+
 ## 官方文档
 
 - [IDE快速启动](https://support.huaweicloud.com/usermanual-codeartssnap/codeartsdoer_ug_0002.html)

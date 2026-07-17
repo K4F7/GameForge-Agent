@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "evidence-capture-smoke",
+  "definitionFingerprint": "cc6e51655d6c054fc70eebdf0d0bad6af6c2832ac91c58cb7a04f0723716d00d",
+  "client": {
+    "name": "codearts",
+    "version": "local-relay-fixture"
+  },
+  "taskId": "task-32838d5c-be71-4367-b2cc-9466a4f0cffb",
+  "runId": "evidence-capture-real",
+  "terminalStatus": "completed",
+  "durationMs": 44,
+  "events": {
+    "count": 3,
+    "types": {
+      "run.started": 1,
+      "verification.ready": 1,
+      "run.completed": 1
+    }
+  },
+  "tools": {
+    "count": null,
+    "names": [],
+    "errors": null
+  },
+  "verification": {
+    "passed": true,
+    "outcome": "won",
+    "score": 5,
+    "lives": 3,
+    "diagnostics": 0
+  },
+  "humanInterventions": [],
+  "failure": "none",
+  "evidence": [
+    "experiments/2026-07-18-benchmark-evidence-capture/result.md",
+    ".gameforge/verification/capture.png"
+  ]
+}
