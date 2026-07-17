@@ -196,6 +196,8 @@ Workbench 可选择 `zh-CN` 或 `en-US`。语言随 Task 进入权威 `run.start
 
 Workbench 会为每次页面会话准备唯一 Run ID；连接期间输入锁定。若提交响应不确定，直接保留当前 ID 和项目选择重试；若要开始不同需求，先停止或等待当前 Run 终止，再点击“新任务”显式轮换 ID。不要手工修改已连接 Run 的 ID。
 
+Workbench 的“Task 历史”只读获取 Relay 最近 20 项。选择后会清空当前 UI 投影，并从该 Task 的 Run sequence 0 权威回放 Prompt、语言、项目选择和 RunEvent；它不会重新认领 Task、修改旧 Run 或自动停止正在后台执行的 Run。持久化历史仍取决于 Relay 是否配置 `GAMEFORGE_RUN_RELAY_STATE_FILE`。
+
 当前机器已安装 CodeArts Agent 客户端；真实 CodeArts 端到端验收不能由本地 MCP Client 替代。可执行步骤、已通过证据与第二轮 TUI/GUI TODO 见 [路线图](docs/roadmap.md)。
 
 2026-07-18 已使用 CodeArts 26.6.2 OAuth TUI 和临时隔离配置完成首个真实闭环：CodeArts 启动 `gameforge` stdio MCP、认领 Workbench Task、发布 capability 与英文 GameSpec、生成并构建 Phaser 项目、取得真实 Chrome `won` 证据、发布 preview/verification 并完成 Run。云 Provider 均未配置也未调用。详见 [`2026-07-18-codearts-real-e2e`](experiments/2026-07-18-codearts-real-e2e/result.md)。

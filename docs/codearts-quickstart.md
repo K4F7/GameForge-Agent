@@ -106,6 +106,7 @@ bun run dev:local
 首次联调按以下顺序检查：
 
 1. 打开 `http://127.0.0.1:4173/`，提交一个 Prompt，记录 Task ID 与 Run ID；新项目将“继续项目”留空，迭代已有项目时显式填写其 `projectId`；
+   页面刷新或切换任务后，可点击“刷新历史”读取最近 20 个 Task，再选择“载入历史”从 sequence 0 回放；该操作只读取 Relay，不认领或修改 Task。
 2. 在 CodeArts 中确认可见 `list_game_tasks`、`claim_game_task` 和 `replay_game_run`；
 3. 调用一次不带 status 的 `list_game_tasks`；若存在 `claimedBy: "codearts"` 的相关 Task，优先幂等恢复，否则认领刚创建的 queued Task；认领结果中的可选 `projectId` 决定 update/create，禁止从 Prompt 或目录猜测；
 4. 按 `gameforge-build` Skill 完成规格、生成、验收和 `preview.ready`；

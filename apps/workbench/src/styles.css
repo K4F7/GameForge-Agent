@@ -105,11 +105,12 @@ select:focus { border-color: rgba(86,229,202,.55); box-shadow: 0 0 0 3px rgba(86
 .relay-card.connected { border-color: rgba(86,229,202,.35); }
 .relay-card.error { border-color: rgba(255,111,120,.35); }
 .relay-card label { color: var(--muted); font-size: 9px; font-weight: 800; }
-.relay-card input { width: 100%; margin-top: 6px; padding: 8px; color: var(--text); border: 1px solid var(--line); border-radius: 6px; outline: none; background: #080c12; font-size: 10px; }
+.relay-card input, .relay-card select { width: 100%; margin-top: 6px; padding: 8px; color: var(--text); border: 1px solid var(--line); border-radius: 6px; outline: none; background: #080c12; font-size: 10px; }
 .relay-card p { min-height: 16px; margin: 7px 0; color: var(--muted); font-size: 9px; line-height: 1.4; }
 .relay-card .task-receipt { color: var(--cyan); overflow-wrap: anywhere; }
 .relay-card .task-receipt code { color: #dffcf6; }
 .relay-card > div { display: flex; gap: 6px; }
+.relay-card > select + div { margin: 7px 0; }
 .relay-card button { flex: 1; padding: 7px; color: #dbe6f7; border: 1px solid var(--line); border-radius: 6px; background: #151c26; cursor: pointer; font-size: 9px; }
 .section-title { display: flex; justify-content: space-between; align-items: center; margin: 19px 0 10px; }
 .valid-badge, .count-badge { color: var(--cyan); padding: 4px 6px; border-radius: 5px; background: var(--cyan-soft); font-size: 9px; letter-spacing: 0; text-transform: none; }

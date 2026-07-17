@@ -3,6 +3,7 @@ import {
   connectRunEventStream,
   connectRecoveringRunEventStream,
   createGameTask,
+  listGameTasks,
   createRun,
   fetchRunEvents,
   stopRun,
@@ -75,6 +76,32 @@ describe("run event client", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://127.0.0.1:8787/tasks");
     expect(fetchMock.mock.calls[0]?.[1]?.body).toContain('"language":"zh-CN"');
     expect(fetchMock.mock.calls[0]?.[1]?.body).toContain('"projectId":"safety-game"');
+  });
+
+  it("lists bounded authoritative task history", async () => {
+    const task = {
+      taskId: "task-00000000-0000-0000-0000-000000000000",
+      runId: "run-history",
+      prompt: "Create a complete browser history game.",
+      language: "en-US" as const,
+      projectId: "history-game",
+      status: "queued" as const,
+      createdAt: emittedAt,
+    };
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+      new Response(JSON.stringify({ tasks: [task] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(listGameTasks({
+      baseUrl: "http://127.0.0.1:8787/",
+      limit: 20,
+      fetch: fetchMock,
+    })).resolves.toEqual([task]);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://127.0.0.1:8787/tasks?limit=20");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ headers: { Accept: "application/json" } });
   });
 
   it("creates a relay run without sending credentials", async () => {

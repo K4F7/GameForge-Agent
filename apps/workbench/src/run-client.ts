@@ -1,6 +1,8 @@
 import {
   createGameTaskRequestSchema,
   createGameTaskResponseSchema,
+  listGameTasksRequestSchema,
+  listGameTasksResponseSchema,
   runEventBatchSchema,
   runEventSchema,
   runIdSchema,
@@ -27,6 +29,24 @@ export type CreateGameTaskOptions = CreateRunOptions & {
   language?: "zh-CN" | "en-US";
   projectId?: string;
 };
+
+export type ListGameTasksOptions = {
+  baseUrl: string;
+  limit?: number;
+  fetch?: typeof globalThis.fetch;
+};
+
+export async function listGameTasks(options: ListGameTasksOptions): Promise<ReadonlyArray<GameTask>> {
+  const baseUrl = relayBaseUrl(options.baseUrl);
+  const request = listGameTasksRequestSchema.parse({
+    ...(options.limit === undefined ? {} : { limit: options.limit }),
+  });
+  const url = new URL("tasks", baseUrl);
+  url.searchParams.set("limit", String(request.limit));
+  const response = await (options.fetch ?? globalThis.fetch)(url, { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(`Task list failed with HTTP ${response.status}.`);
+  return listGameTasksResponseSchema.parse(await response.json()).tasks;
+}
 
 export async function createGameTask(options: CreateGameTaskOptions): Promise<{
   task: GameTask;

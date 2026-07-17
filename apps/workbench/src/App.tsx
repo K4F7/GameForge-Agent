@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { gamePreviewUrlSchema } from "@gameforge/contracts";
+import { gamePreviewUrlSchema, type GameTask } from "@gameforge/contracts";
 import {
   createDemoEvents,
   createInitialRunState,
@@ -10,6 +10,7 @@ import {
 import {
   connectRecoveringRunEventStream,
   createGameTask,
+  listGameTasks,
   stopRun,
   type RecoveringRunEventConnection,
 } from "./run-client.js";
@@ -75,9 +76,12 @@ export function App(): React.JSX.Element {
   const [relayState, setRelayState] = useState<"disconnected" | "connecting" | "connected" | "error">("disconnected");
   const [relayMessage, setRelayMessage] = useState("等待连接事件中继");
   const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskHistory, setTaskHistory] = useState<ReadonlyArray<GameTask>>([]);
+  const [selectedTaskId, setSelectedTaskId] = useState("");
   const timerRef = useRef<number | null>(null);
   const relayConnectionRef = useRef<RecoveringRunEventConnection | null>(null);
   const relayConnectionGenerationRef = useRef(0);
+  const taskHistoryRequestRef = useRef(0);
 
   useEffect(() => {
     if (runState.language !== null) setTaskLanguage(runState.language);
@@ -240,12 +244,54 @@ export function App(): React.JSX.Element {
         ...(projectId.trim() === "" ? {} : { projectId: projectId.trim() }),
       });
       setTaskId(created.task.taskId);
+      setTaskHistory((tasks) => [created.task, ...tasks.filter((task) => task.taskId !== created.task.taskId)]);
+      setSelectedTaskId(created.task.taskId);
       dispatch(created.event);
       setRelayMessage(`任务已排队；等待 CodeArts 认领，游标 ${created.event.sequence}`);
       await startRelayConnection(created.task.runId, created.event.sequence);
     } catch (error) {
       setRelayState("error");
       setRelayMessage(error instanceof Error ? error.message : "任务提交失败");
+    }
+  };
+
+  const refreshTaskHistory = async (): Promise<void> => {
+    if (agentBaseUrl === null) return;
+    const requestGeneration = taskHistoryRequestRef.current + 1;
+    taskHistoryRequestRef.current = requestGeneration;
+    try {
+      const tasks = await listGameTasks({ baseUrl: agentBaseUrl, limit: 20 });
+      if (taskHistoryRequestRef.current !== requestGeneration) return;
+      setTaskHistory(tasks);
+      setSelectedTaskId((current) => tasks.some((task) => task.taskId === current)
+        ? current
+        : tasks[0]?.taskId ?? "");
+      setRelayMessage(tasks.length === 0 ? "Task 历史为空" : `已读取 ${tasks.length} 个 Task`);
+    } catch (error) {
+      if (taskHistoryRequestRef.current !== requestGeneration) return;
+      setRelayState("error");
+      setRelayMessage(error instanceof Error ? error.message : "Task 历史读取失败");
+    }
+  };
+
+  const loadSelectedTask = async (): Promise<void> => {
+    const task = taskHistory.find((item) => item.taskId === selectedTaskId);
+    if (task === undefined || agentBaseUrl === null) return;
+    stopDemo();
+    disconnectRelay();
+    dispatch({ type: "ui.reset" });
+    setRelayRunId(task.runId);
+    setTaskId(task.taskId);
+    setPrompt(task.prompt);
+    setTaskLanguage(task.language);
+    setProjectId(task.projectId ?? "");
+    setRelayState("connecting");
+    setRelayMessage(`正在回放 ${task.runId}`);
+    try {
+      await startRelayConnection(task.runId, 0);
+    } catch (error) {
+      setRelayState("error");
+      setRelayMessage(error instanceof Error ? error.message : "历史 Run 回放失败");
     }
   };
 
@@ -373,6 +419,24 @@ export function App(): React.JSX.Element {
                   />
                   <p role={relayState === "error" ? "alert" : "status"} aria-live={relayState === "error" ? "assertive" : "polite"}>{relayMessage}</p>
                   {taskId !== null && <p className="task-receipt">Task <code>{taskId}</code></p>}
+                  <label htmlFor="relay-task-history">Task 历史（最近 20 项）</label>
+                  <select
+                    id="relay-task-history"
+                    value={selectedTaskId}
+                    disabled={relayState === "connecting" || relayState === "connected" || taskHistory.length === 0}
+                    onChange={(event) => setSelectedTaskId(event.target.value)}
+                  >
+                    {taskHistory.length === 0 && <option value="">尚未读取</option>}
+                    {taskHistory.map((task) => (
+                      <option value={task.taskId} key={task.taskId}>
+                        {task.status} · {task.projectId ?? "新项目"} · {task.runId}
+                      </option>
+                    ))}
+                  </select>
+                  <div>
+                    <button type="button" onClick={() => void refreshTaskHistory()}>刷新历史</button>
+                    <button type="button" disabled={selectedTaskId === ""} onClick={() => void loadSelectedTask()}>载入历史</button>
+                  </div>
                   <div>
                     <button type="button" onClick={() => void submitTask()}>提交给 CodeArts</button>
                     {relayState === "error" && <button type="button" onClick={recoverRelay}>恢复连接</button>}

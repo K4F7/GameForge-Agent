@@ -237,8 +237,10 @@ function writeJson(response: ServerResponse, statusCode: number, value: unknown)
 
 function writeSse(response: ServerResponse, event: WireRunEvent): void {
   if (response.destroyed || response.writableEnded) return;
-  const accepted = response.write(`id: ${event.sequence}\ndata: ${JSON.stringify(event)}\n\n`);
-  if (!accepted) response.end();
+  // A false return value signals buffered backpressure, not a failed write.
+  // Node retains the chunk and emits drain after the socket catches up; closing
+  // here would truncate an otherwise valid event stream.
+  response.write(`id: ${event.sequence}\ndata: ${JSON.stringify(event)}\n\n`);
 }
 
 class HttpError extends Error {
