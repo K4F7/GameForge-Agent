@@ -59,6 +59,8 @@ Generated Game
 
 模型与媒体资产不在MCP工具内部形成第二套Agent循环。默认国产模型路由、字节图片生成、TTS、音效检索和资产来源记录方案见[国产模型与游戏媒体资产策略](./model-media-strategy.md)。
 
+R3F、Three.js 与桌面 GUI 的正式适用边界见 [ADR-0001](./decisions/0001-rendering-and-desktop-surfaces.md)：Phaser 保持默认 2D 生成运行时；R3F/Three.js 只在独立 3D 模板或编辑器需求满足对照门槛后评估。
+
 ## 官方项目
 
 - [Phaser](https://github.com/phaserjs/phaser)

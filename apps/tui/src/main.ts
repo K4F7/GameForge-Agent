@@ -5,6 +5,7 @@ import type { WireRunEvent } from "@gameforge/contracts";
 import { parseArgs } from "./args.js";
 import { formatSummary, summarizeRun } from "./summary.js";
 import { streamRunEvents } from "./stream.js";
+import { attachTerminalControls, renderWatchFrame } from "./terminal.js";
 
 const help = `GameForge TUI
 
@@ -74,20 +75,31 @@ export async function runCli(argv: readonly string[]): Promise<void> {
         }
         const summary = summarizeRun(history);
         const text = summary === null ? "Waiting for run events..." : formatSummary(summary);
-        if (process.stdout.isTTY) process.stdout.write(`\u001b[2J\u001b[H${text}\n`);
-        else process.stdout.write(`${text}\n`);
+        process.stdout.write(renderWatchFrame(text, process.stdout));
       };
       if (options.json) replay.events.forEach((event) => render(event)); else render();
       const cursor = replay.events.at(-1)?.sequence ?? options.after;
       const terminal = replay.events.at(-1);
       if (terminal?.type === "run.completed" || terminal?.type === "run.stopped" ||
           (terminal?.type === "phase.failed" && !terminal.repairable)) return;
-      await streamRunEvents({
-        baseUrl: options.baseUrl,
-        runId: options.runId!,
-        after: cursor,
-        onEvent: (event) => { history.push(event); render(event); },
+      const controls = options.json ? undefined : attachTerminalControls({
+        input: process.stdin,
+        output: process.stdout,
+        onResize: () => render(),
       });
+      try {
+        await streamRunEvents({
+          baseUrl: options.baseUrl,
+          runId: options.runId!,
+          after: cursor,
+          onEvent: (event) => { history.push(event); render(event); },
+          ...(controls === undefined ? {} : { signal: controls.signal }),
+        });
+      } catch (error) {
+        if (controls?.signal.aborted !== true) throw error;
+      } finally {
+        controls?.close();
+      }
     }
   }
 }
