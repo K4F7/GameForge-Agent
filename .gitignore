@@ -6,6 +6,7 @@ dist/
 coverage/
 .gameforge-validation/
 .vite/
+.playwright-cli/
 *.tsbuildinfo
 *.log
 apps/desktop/src-tauri/target/

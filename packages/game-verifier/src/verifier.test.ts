@@ -202,9 +202,10 @@ describe("GameVerifier", () => {
       expect(response.ok).toBe(true);
       expect(await response.text()).toContain("GameForge Generated Game");
       const loader = await stage("loader", fetch(new URL("src/main.ts", server.url), {
-        headers: { Connection: "close" },
+        headers: { Connection: "close", Origin: "null" },
         signal: AbortSignal.timeout(10_000),
       }));
+      expect(loader.headers.get("access-control-allow-origin")).toBe("*");
       expect(await loader.text()).toContain('import("/src/game.ts")');
       const game = await stage("game", fetch(new URL("src/game.ts", server.url), {
         headers: { Connection: "close" },

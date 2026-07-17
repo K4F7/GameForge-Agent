@@ -1,6 +1,6 @@
 import { gamePreviewUrlSchema } from "@gameforge/contracts";
 
-const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const loopbackHosts = new Set(["localhost", "127.0.0.1"]);
 export const previewFramePolicy = {
   sandbox: "allow-scripts allow-pointer-lock",
   referrerPolicy: "no-referrer" as const,
@@ -33,9 +33,14 @@ export function safePreviewUrl(candidate: string | undefined, fallback: string, 
   return fallback;
 }
 
-export function workbenchCsp(options: { previewOrigins: readonly string[]; relayUrl?: string }): string {
-  const frameSources = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*", ...options.previewOrigins];
-  const connectSources = ["'self'", "http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"];
+export function workbenchCsp(options: {
+  previewOrigins: readonly string[];
+  relayUrl?: string;
+  allowDevScripts?: boolean;
+  allowDevStyles?: boolean;
+}): string {
+  const frameSources = ["http://127.0.0.1:*", "http://localhost:*", ...options.previewOrigins];
+  const connectSources = ["'self'", "http://127.0.0.1:*", "http://localhost:*"];
   if (options.relayUrl !== undefined && options.relayUrl.trim().length > 0) {
     const relay = new URL(options.relayUrl);
     if (relay.username || relay.password || relay.search || relay.hash) throw new Error("Relay URL is unsafe for CSP.");
@@ -45,7 +50,10 @@ export function workbenchCsp(options: { previewOrigins: readonly string[]; relay
     connectSources.push(relay.origin);
   }
   return [
-    "default-src 'self'", "script-src 'self'", "style-src 'self'", "img-src 'self' data: blob:",
+    "default-src 'self'",
+    `script-src 'self'${options.allowDevScripts === true ? " 'unsafe-inline'" : ""}`,
+    `style-src 'self'${options.allowDevStyles === true ? " 'unsafe-inline'" : ""}`,
+    "img-src 'self' data: blob:",
     `connect-src ${[...new Set(connectSources)].join(" ")}`,
     `frame-src ${[...new Set(frameSources)].join(" ")}`,
     "object-src 'none'", "base-uri 'none'", "form-action 'none'",

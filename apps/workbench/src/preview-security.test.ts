@@ -24,11 +24,15 @@ describe("Workbench preview security", () => {
 
   it("builds a narrow CSP without wildcard remote frames or privileged APIs", () => {
     const csp = workbenchCsp({ previewOrigins: ["https://preview.example"], relayUrl: "https://relay.example/api/" });
-    expect(csp).toContain("frame-src http://127.0.0.1:* http://localhost:* http://[::1]:* https://preview.example");
+    expect(csp).toContain("frame-src http://127.0.0.1:* http://localhost:* https://preview.example");
     expect(csp).toContain("connect-src 'self'");
     expect(csp).toContain("https://relay.example");
     expect(csp).not.toContain("frame-src *");
     expect(csp).toContain("object-src 'none'");
+    expect(csp).not.toContain("unsafe-inline");
+    const devCsp = workbenchCsp({ previewOrigins: [], allowDevScripts: true, allowDevStyles: true });
+    expect(devCsp).toContain("script-src 'self' 'unsafe-inline'");
+    expect(devCsp).toContain("style-src 'self' 'unsafe-inline'");
   });
 
   it("keeps the iframe opaque and denies fullscreen and navigation capabilities", () => {

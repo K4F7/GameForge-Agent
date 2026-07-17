@@ -6,7 +6,7 @@ Workbench 将生成游戏视为不可信内容。`preview.ready` 通过 RunEvent
 
 ## 预览策略
 
-- loopback HTTP：允许 `localhost`、`127.0.0.1`、`[::1]` 的任意端口，支持受控本地预览；
+- loopback HTTP：Workbench CSP 允许 `localhost`、`127.0.0.1` 的任意端口，支持受控本地预览；Chrome 会把带通配端口的 IPv6 host-source 判为无效，因此 UI 不再声称支持 `[::1]` 预览，Relay 与预览服务本身也固定绑定 IPv4 loopback；
 - 远程预览：必须使用 HTTPS，且 exact origin 出现在 `VITE_GAME_PREVIEW_ORIGINS`；
 - 未授权事件 URL：自身不会进入 iframe 或新窗口链接，界面改为加载已授权的 `VITE_GAME_PREVIEW_URL` 并显示原因；
 - URL 不得携带用户名、密码或 fragment；远程 origin 配置不得包含 path、query；
@@ -16,6 +16,8 @@ Workbench 将生成游戏视为不可信内容。`preview.ready` 通过 RunEvent
 ## CSP 与响应头
 
 Vite 构建把同一 allowlist 写入 CSP meta；开发与 `vite preview` 同时发送 CSP、`Permissions-Policy`、`Referrer-Policy: no-referrer` 和 `X-Content-Type-Options: nosniff`。生产 Web 服务器或未来桌面壳必须发送同等或更严格的响应头，因为 `frame-ancestors` 不能依靠 meta 生效。
+
+Vite React 开发模式需要内联 preamble 和错误覆盖层样式，因此仅 `vite serve --mode development` 的 header/meta 增加 `script-src/style-src 'unsafe-inline'`；生产 build、`vite preview` 与 Tauri CSP 仍不包含它。Workbench 已把动态地图坐标和阶段进度从 React inline style 改为固定 CSS 网格类与原生 `<progress>`，生产页面不依赖内联样式。生成项目/示例游戏的 Vite 只绑定 `127.0.0.1`，并为脚本返回 `Access-Control-Allow-Origin: *`，这是 opaque-origin sandbox iframe 加载 ES module 所必需，不授予 iframe 访问 Workbench origin。
 
 CSP 不允许任意远程 frame。`connect-src` 只包含 self、loopback 和配置的 Relay origin。摄像头、麦克风、地理位置、支付和 USB 默认关闭。
 

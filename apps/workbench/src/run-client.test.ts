@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   connectRunEventStream,
+  connectRecoveringRunEventStream,
   createGameTask,
   createRun,
   fetchRunEvents,
@@ -9,6 +10,20 @@ import {
 } from "./run-client.js";
 
 const emittedAt = "2026-07-16T06:00:00+08:00";
+
+async function waitUntil(assertion: () => void, attempts = 50): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+  }
+  throw lastError;
+}
 
 class FakeEventSource implements RunEventSource {
   readonly listeners = new Map<string, Array<(event: MessageEvent<string> | Event) => void>>();
@@ -187,6 +202,107 @@ describe("run event client", () => {
 
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onOpen.mock.calls).toEqual([[1], [2]]);
+  });
+
+  it("replays a missing event after an SSE gap and resumes without duplicates", async () => {
+    const sources: FakeEventSource[] = [];
+    let replayCalls = 0;
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const after = Number(new URL(String(input)).searchParams.get("after"));
+      replayCalls += 1;
+      const events = replayCalls === 1 ? [] : [{
+        type: "log.appended",
+        runId: "run-1",
+        sequence: 2,
+        emittedAt,
+        source: "agent",
+        level: "info",
+        message: "Recovered",
+      }];
+      return new Response(JSON.stringify({ runId: "run-1", after, events }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    const received: number[] = [];
+    const states: string[] = [];
+    const connection = connectRecoveringRunEventStream({
+      baseUrl: "http://127.0.0.1:8787/",
+      runId: "run-1",
+      after: 1,
+      fetch: fetchMock,
+      onEvent: (event) => received.push(event.sequence),
+      onState: (state) => states.push(state.status),
+      eventSourceFactory: () => {
+        const source = new FakeEventSource();
+        sources.push(source);
+        return source;
+      },
+    });
+    await waitUntil(() => expect(sources).toHaveLength(1));
+    sources[0]?.emit("open", new Event("open"));
+    await connection.ready;
+    sources[0]?.emit("message", new MessageEvent("message", { data: JSON.stringify({
+      type: "run.completed", runId: "run-1", sequence: 3, emittedAt,
+    }) }));
+
+    await waitUntil(() => expect(sources).toHaveLength(2));
+    expect(sources[0]?.closed).toBe(true);
+    expect(received).toEqual([2]);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("after=1");
+    sources[1]?.emit("open", new Event("open"));
+    sources[1]?.emit("message", new MessageEvent("message", { data: JSON.stringify({
+      type: "run.completed", runId: "run-1", sequence: 3, emittedAt,
+    }) }));
+    expect(received).toEqual([2, 3]);
+    expect(connection.cursor()).toBe(3);
+    expect(sources[1]?.closed).toBe(true);
+    expect(states).toContain("replaying");
+    expect(states).toContain("terminal");
+  });
+
+  it("bounds automatic replay retries and fails fast for an expired cursor", async () => {
+    const callbacks: Array<() => void> = [];
+    const delays: number[] = [];
+    const states: string[] = [];
+    const connection = connectRecoveringRunEventStream({
+      baseUrl: "http://127.0.0.1:8787/",
+      runId: "run-1",
+      after: 1,
+      fetch: async () => { throw new Error("offline"); },
+      onEvent() {},
+      onState: (state) => states.push(state.status),
+      retryDelaysMs: [5, 10],
+      schedule(callback, delay) {
+        callbacks.push(callback);
+        delays.push(delay);
+        return callbacks.length;
+      },
+      cancelSchedule() {},
+    });
+    await waitUntil(() => expect(callbacks).toHaveLength(1));
+    callbacks.shift()?.();
+    await waitUntil(() => expect(callbacks).toHaveLength(1));
+    callbacks.shift()?.();
+    await expect(connection.ready).rejects.toThrow("offline");
+    expect(delays).toEqual([5, 10]);
+    expect(states.at(-1)).toBe("failed");
+
+    let scheduled = false;
+    const expired = connectRecoveringRunEventStream({
+      baseUrl: "http://127.0.0.1:8787/",
+      runId: "run-1",
+      after: 4,
+      fetch: async () => new Response("{}", { status: 410 }),
+      onEvent() {},
+      onState() {},
+      schedule() {
+        scheduled = true;
+        return 1;
+      },
+    });
+    await expect(expired.ready).rejects.toThrow("HTTP 410");
+    expect(scheduled).toBe(false);
   });
 
   it("rejects insecure remote Agent URLs", async () => {

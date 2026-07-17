@@ -7,7 +7,12 @@ import {
   type PhaseStatus,
   type RunStatus,
 } from "./run-state.js";
-import { connectRunEventStream, createGameTask, fetchRunEvents, stopRun } from "./run-client.js";
+import {
+  connectRecoveringRunEventStream,
+  createGameTask,
+  stopRun,
+  type RecoveringRunEventConnection,
+} from "./run-client.js";
 import { createWorkbenchRunId } from "./run-id.js";
 import { createMapView, createSceneNodes } from "./design-view.js";
 import { configuredPreviewOrigins, isAllowedPreviewUrl, previewFramePolicy, previewWindowRel, safePreviewUrl } from "./preview-security.js";
@@ -70,8 +75,8 @@ export function App(): React.JSX.Element {
   const [relayMessage, setRelayMessage] = useState("等待连接事件中继");
   const [taskId, setTaskId] = useState<string | null>(null);
   const timerRef = useRef<number | null>(null);
-  const disconnectRelayRef = useRef<(() => void) | null>(null);
-  const relayCursorRef = useRef(0);
+  const relayConnectionRef = useRef<RecoveringRunEventConnection | null>(null);
+  const relayConnectionGenerationRef = useRef(0);
 
   useEffect(() => {
     if (runState.language !== null) setTaskLanguage(runState.language);
@@ -149,39 +154,53 @@ export function App(): React.JSX.Element {
   };
 
   const disconnectRelay = (): void => {
-    disconnectRelayRef.current?.();
-    disconnectRelayRef.current = null;
-    relayCursorRef.current = 0;
+    relayConnectionGenerationRef.current += 1;
+    relayConnectionRef.current?.close();
+    relayConnectionRef.current = null;
     setRelayState("disconnected");
     setRelayMessage("已断开事件中继");
   };
 
-  const attachRelayStream = (runId: string, cursor: number): void => {
+  const startRelayConnection = async (runId: string, cursor: number): Promise<void> => {
     if (agentBaseUrl === null) throw new Error("事件中继未配置。");
-    relayCursorRef.current = cursor;
-    disconnectRelayRef.current = connectRunEventStream({
+    relayConnectionRef.current?.close();
+    const generation = relayConnectionGenerationRef.current + 1;
+    relayConnectionGenerationRef.current = generation;
+    const connection = connectRecoveringRunEventStream({
       baseUrl: agentBaseUrl,
       runId,
       after: cursor,
       onEvent(event) {
-        relayCursorRef.current = event.sequence;
+        if (relayConnectionGenerationRef.current !== generation) return;
         dispatch(event);
       },
-      onOpen(cursorNow) {
-        setRelayState("connected");
-        setRelayMessage(`已连接 ${runId}，游标 ${cursorNow}`);
-      },
-      onGap(gap) {
-        disconnectRelayRef.current?.();
-        disconnectRelayRef.current = null;
-        setRelayState("error");
-        setRelayMessage(`事件缺口：等待 ${gap.expected}，收到 ${gap.received}；请重新连接回补`);
-      },
-      onError(error) {
-        setRelayState("error");
-        setRelayMessage(error.message);
+      onState(state) {
+        if (relayConnectionGenerationRef.current !== generation) return;
+        if (state.status === "connected") {
+          setRelayState("connected");
+          setRelayMessage(`已连接 ${runId}，游标 ${state.cursor}`);
+        } else if (state.status === "replaying") {
+          setRelayState("connecting");
+          setRelayMessage(`正在从游标 ${state.cursor} 回放运行事件`);
+        } else if (state.status === "waiting") {
+          setRelayState("connecting");
+          setRelayMessage(`事件流中断；${state.delayMs}ms 后第 ${state.attempt} 次恢复（游标 ${state.cursor}）`);
+        } else if (state.status === "terminal") {
+          setRelayState("disconnected");
+          setRelayMessage(`运行已到终态，最后游标 ${state.cursor}`);
+        } else {
+          setRelayState("error");
+          setRelayMessage(`${state.error.message} 请使用“恢复连接”重试。`);
+        }
       },
     });
+    relayConnectionRef.current = connection;
+    try {
+      await connection.ready;
+    } catch (error) {
+      if (relayConnectionGenerationRef.current !== generation) return;
+      throw error;
+    }
   };
 
   const connectRelay = async (): Promise<void> => {
@@ -193,16 +212,7 @@ export function App(): React.JSX.Element {
     setRelayMessage("正在回放已有运行");
 
     try {
-      let cursor = 0;
-      for (let page = 0; page < 10; page += 1) {
-        const events = await fetchRunEvents({ baseUrl: agentBaseUrl, runId: relayRunId, after: cursor });
-        for (const event of events) dispatch(event);
-        if (events.length > 0) cursor = events.at(-1)?.sequence ?? cursor;
-        if (events.length < 1_000) break;
-      }
-      attachRelayStream(relayRunId, cursor);
-      setRelayState("connected");
-      setRelayMessage(`已连接 ${relayRunId}，游标 ${cursor}`);
+      await startRelayConnection(relayRunId, 0);
     } catch (error) {
       setRelayState("error");
       setRelayMessage(error instanceof Error ? error.message : "事件中继连接失败");
@@ -229,9 +239,8 @@ export function App(): React.JSX.Element {
       });
       setTaskId(created.task.taskId);
       dispatch(created.event);
-      attachRelayStream(created.task.runId, created.event.sequence);
-      setRelayState("connected");
       setRelayMessage(`任务已排队；等待 CodeArts 认领，游标 ${created.event.sequence}`);
+      await startRelayConnection(created.task.runId, created.event.sequence);
     } catch (error) {
       setRelayState("error");
       setRelayMessage(error instanceof Error ? error.message : "任务提交失败");
@@ -255,13 +264,13 @@ export function App(): React.JSX.Element {
 
   const stopRelayRun = async (): Promise<void> => {
     if (agentBaseUrl === null) return;
-    disconnectRelayRef.current?.();
-    disconnectRelayRef.current = null;
+    relayConnectionGenerationRef.current += 1;
+    relayConnectionRef.current?.close();
+    relayConnectionRef.current = null;
     setRelayState("connecting");
     setRelayMessage("正在请求停止运行");
     try {
       const stopped = await stopRun({ baseUrl: agentBaseUrl, runId: relayRunId });
-      relayCursorRef.current = stopped.sequence;
       dispatch(stopped);
       setRelayState("disconnected");
       setRelayMessage(`运行 ${relayRunId} 已停止`);
@@ -271,11 +280,21 @@ export function App(): React.JSX.Element {
     }
   };
 
+  const recoverRelay = (): void => {
+    if (relayConnectionRef.current === null) {
+      void connectRelay();
+      return;
+    }
+    setRelayState("connecting");
+    setRelayMessage("正在手动恢复事件流");
+    relayConnectionRef.current.reconnect();
+  };
+
   useEffect(() => () => {
     if (timerRef.current !== null) {
       window.clearInterval(timerRef.current);
     }
-    disconnectRelayRef.current?.();
+    relayConnectionRef.current?.close();
   }, []);
 
   return (
@@ -305,8 +324,8 @@ export function App(): React.JSX.Element {
           <button className="button secondary" type="button" onClick={agentBaseUrl === null ? stopDemo : () => void stopRelayRun()}>
             停止
           </button>
-          <button className="button primary" type="button" onClick={agentBaseUrl === null ? runDemo : () => void connectRelay()}>
-            {agentBaseUrl === null ? "运行演示" : "连接运行"}
+          <button className="button primary" type="button" onClick={agentBaseUrl === null ? runDemo : relayState === "error" ? recoverRelay : () => void connectRelay()}>
+            {agentBaseUrl === null ? "运行演示" : relayState === "error" ? "恢复连接" : "连接运行"}
           </button>
         </div>
       </header>
@@ -341,10 +360,11 @@ export function App(): React.JSX.Element {
                     disabled={relayState === "connecting" || relayState === "connected"}
                     onChange={(event) => setRelayRunId(event.target.value)}
                   />
-                  <p>{relayMessage}</p>
+                  <p role={relayState === "error" ? "alert" : "status"} aria-live={relayState === "error" ? "assertive" : "polite"}>{relayMessage}</p>
                   {taskId !== null && <p className="task-receipt">Task <code>{taskId}</code></p>}
                   <div>
                     <button type="button" onClick={() => void submitTask()}>提交给 CodeArts</button>
+                    {relayState === "error" && <button type="button" onClick={recoverRelay}>恢复连接</button>}
                     <button type="button" onClick={prepareNewTask}>新任务</button>
                     <button type="button" onClick={runDemo}>本地演示</button>
                   </div>
@@ -478,11 +498,10 @@ export function App(): React.JSX.Element {
             ) : mapView !== null ? (
               <div className="map-editor" aria-label="游戏模板地图视图">
                 <header><div><span>LAYOUT BLUEPRINT</span><strong>{mapView.label}</strong></div><em>模板示意 · 非关卡文件</em></header>
-                <div className="map-grid" style={{ gridTemplateColumns: `repeat(${mapView.columns}, 1fr)` }}>
+              <div className="map-grid">
                   {mapView.cells.map((cell, index) => (
                     <span
-                      className={`map-cell ${cell.kind}`}
-                      style={{ gridColumn: cell.column + 1, gridRow: cell.row + 1 }}
+                      className={`map-cell ${cell.kind} column-${cell.column} row-${cell.row}`}
                       key={`${cell.kind}:${cell.column}:${cell.row}:${index}`}
                       title={cell.kind}
                     />
@@ -500,7 +519,7 @@ export function App(): React.JSX.Element {
             <div><span className="eyebrow">AGENT RUN</span><strong>{statusLabels[runState.status]}</strong></div>
             <span className={`run-status ${runState.status}`}>{runState.runId ?? "NO RUN"}</span>
           </div>
-          <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
+          <progress className="progress-track" value={progress} max={100} aria-label="阶段完成百分比" />
           <div className="progress-caption"><span>阶段进度</span><strong>{progress}%</strong></div>
 
           {runState.verification !== null && (

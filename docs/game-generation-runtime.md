@@ -148,7 +148,7 @@ Task 创建的权威 `run.started` 可携带可选 language。由 `/tasks` 创�
 
 默认状态仍仅在内存中。生产入口可设置 `GAMEFORGE_RUN_RELAY_STATE_FILE`（绝对路径）启用本地快照：每次 Task/Run 变更等待串行保存队列，快照经过严格 Schema、事件连续性和 Task/Run 终态一致性校验，并以临时文件同步后 rename。启动时恢复 Task、RunEvent、终态和游标，但不恢复 SSE 连接；Workbench 和 CodeArts 应按现有回放协议重连。文件包含 Prompt、事件和日志，应使用受限目录，不放入仓库或云同步目录。若磁盘写入失败，请求返回 500，但本进程内存可能已应用该次变更；此时应停止 Relay、处理磁盘问题并从最后成功快照恢复，再由 CodeArts 使用 `replay_game_run` 对账。本机制面向单机研究，不替代数据库事务、多实例一致性或高可用存储。
 
-Workbench 使用浏览器原生 `EventSource` 的自动重连。Relay 重启期间 `error` 会暂时显示连接失败；新连接触发 `open` 后，UI 恢复为 connected 并显示客户端已消费的最新游标。服务端按 URL 中的旧 `after` 回放时可能再次发送已消费事件，客户端按 sequence 忽略重复项；若收到真正的序列缺口，则仍会主动关闭连接并要求显式回放，不把缺口伪装成恢复成功。真实系统 Chrome 已验证一次 Relay 重启产生 1 次预期 error、2 次 open，并最终收到持久化后的 sequence 2。
+Workbench 不依赖原生 `EventSource` 用旧 URL 盲目重连。SSE `error` 或真实 sequence 缺口发生后，客户端关闭旧连接，从最后成功消费的 sequence 调用 `/events?after=N` 回放连续批次，再以新游标建立 stream。网络故障采用 500/1000/2000/4000/8000 ms 的有限退避；HTTP 409 `cursor_ahead`、410 `cursor_expired` 或五次耗尽会进入显式错误，用户可点击“恢复连接”从同一游标重试。重复 sequence 被忽略，只有成功交给 reducer 后才推进游标；终态事件会关闭 stream。该恢复控制器只消费确定性 HTTP/SSE，不调用模型、MCP 或 Agent 循环。
 
 配置 `GAMEFORGE_RUN_RELAY_URL` 后，MCP 除 Run 生命周期工具外还注册：
 
@@ -167,7 +167,7 @@ CodeArts 新会话调用一次不带 status 的 `list_game_tasks`，优先恢复
 VITE_AGENT_BASE_URL=http://127.0.0.1:8787/
 ```
 
-配置后工作台显示 Run ID 和 Prompt，“提交给 CodeArts”调用 `/tasks`，展示返回的 Task ID，并从 `run.started` 游标立即连接对应 SSE。连接已有 Run 仍可独立使用。GameSpec 与资产面板分别只消费 `spec.ready` 和 `asset.ready`，新 Run 会清空旧产物；未收到时明确显示等待。收到序列缺口时会停止消费并要求重新连接回放，不会跳过事件继续显示错误状态。收到 `preview.ready` 后，预览 iframe 自动切换到事件中的项目 URL；iframe 仅开放脚本与 pointer lock，不发送 referrer。未收到事件时才使用 `VITE_GAME_PREVIEW_URL`（默认 `http://localhost:5173/`）作为回退。
+配置后工作台显示 Run ID 和 Prompt，“提交给 CodeArts”调用 `/tasks`，展示返回的 Task ID，并从 `run.started` 游标立即连接对应 SSE。连接已有 Run 仍可独立使用。GameSpec 与资产面板分别只消费 `spec.ready` 和 `asset.ready`，新 Run 会清空旧产物；未收到时明确显示等待。收到序列缺口时不会跳过事件，而是从最后连续游标自动回放并重建 stream；有限重试耗尽后显示手动恢复入口。收到 `preview.ready` 后，预览 iframe 自动切换到事件中的项目 URL；iframe 仅开放脚本与 pointer lock，不发送 referrer。未收到事件时才使用 `VITE_GAME_PREVIEW_URL`（默认 `http://localhost:5173/`）作为回退。
 
 ## 语言链路与生成运行时
 
@@ -189,7 +189,7 @@ Workbench 页面加载时使用时间与浏览器 UUID 熵生成符合 `runIdSch
 - 实际生成独立样例后，已对生成目录运行严格TypeScript检查和Vite生产构建。
 - Relay测试覆盖创建、追加、客户端 Schema 回放、连续回放、SSE、CORS拒绝、游标冲突、终态原子性和订阅通知。
 - Task 测试覆盖 Prompt/状态契约、原子创建 Task+Run、列表、读取、单 agent 幂等认领、认领冲突、未认领完成拒绝和终态同步。
-- 工作台客户端与状态测试覆盖提交 Prompt 创建 Task、创建/回放 Run、SSE重复事件忽略、缺口检测、不安全远程URL拒绝，以及按运行切换/清空 GameSpec、资产和预览。
+- 工作台客户端与状态测试覆盖提交 Prompt 创建 Task、创建/回放 Run、SSE重复事件忽略、缺口自动回放、有限退避、过期游标快速失败、不安全远程URL拒绝，以及按运行切换/清空 GameSpec、资产和预览。
 - 预览管理器测试覆盖托管项目校验、会话复用、并发启动合并、幂等停止和不安全 URL 清理；MCP 测试覆盖条件注册与启停调用。
 - 本地工作流集成测试使用真实 HTTP Relay、MCP Client、磁盘生成器、生产 Asset Store 和受控 Vite，覆盖 Task 创建/认领、Run 回放、`spec.ready`、dry-run/apply、图片/音效/配音的魔数、哈希、角色、许可与 Manifest 落盘、三个连续 `asset.ready`、预览 HTTP 200、`preview.ready`、Run 完成与 Task 终态同步。媒体 Provider 使用明确标注的确定性测试替身；TTS 仍分为 submit/query/materialize 且不轮询。该测试不替代真实 CodeArts 或 Seedream、Freesound、火山语音账号验收。
 

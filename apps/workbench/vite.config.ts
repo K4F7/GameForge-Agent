@@ -2,11 +2,13 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import { configuredPreviewOrigins, workbenchCsp } from "./src/preview-security.js";
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, ".", "");
   const csp = workbenchCsp({
     previewOrigins: configuredPreviewOrigins(env.VITE_GAME_PREVIEW_ORIGINS),
     ...(env.VITE_AGENT_BASE_URL === undefined ? {} : { relayUrl: env.VITE_AGENT_BASE_URL }),
+    allowDevScripts: command === "serve" && mode === "development",
+    allowDevStyles: command === "serve" && mode === "development",
   });
   const headers = {
     "Content-Security-Policy": `${csp}; frame-ancestors 'none'`,

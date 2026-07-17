@@ -206,7 +206,7 @@ export class PlaywrightVerificationRuntime implements VerificationRuntime {
         logLevel: "silent",
         resolve: { alias: { phaser: PHASER_ENTRY } },
         optimizeDeps: { noDiscovery: true, include: [] },
-        server: { host: "127.0.0.1", port: 0, strictPort: false },
+        server: { host: "127.0.0.1", port: 0, strictPort: false, cors: true },
       }), 10_000, "Verifier Vite creation timed out.");
       await withTimeout(server.listen(), 10_000, "Verifier Vite listen timed out.");
     } catch (error) {
