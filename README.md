@@ -24,6 +24,7 @@
 ├── packages/providers/               # 国产模型与媒体Provider适配器
 ├── packages/run-relay/               # RunEvent回放与SSE中继
 ├── packages/opencode-plugin/          # 可选薄插件：状态提示与通知
+├── packages/benchmark/                # 客户端同任务指纹与对比报告
 ├── integrations/codearts/             # CodeArts动态启动适配
 ├── integrations/opencode/             # OpenCode动态启动适配
 ├── docs/
@@ -39,12 +40,12 @@
 
 ## 第一阶段里程碑
 
-- [ ] 安装并登录 CodeArts Agent IDE 或 CLI
-- [ ] 用 CodeArts 打开或克隆本仓库
-- [ ] 验证 `AGENTS.md` 是否被自动识别
-- [ ] 调用项目级 `research-verify` Skill
-- [ ] 完成一个“理解—修改—测试—报告”的基准任务
-- [ ] 保存日志、耗时、人工干预次数和测试结果
+- [x] 安装并通过 OAuth 登录 CodeArts Agent CLI/TUI
+- [x] 用 CodeArts 打开本仓库并加载项目级上下文
+- [x] 验证根 `AGENTS.md` 与 `.codeartsdoer/AGENTS.md` 分层
+- [x] 加载项目级 GameForge 生产 Skill
+- [x] 完成一个真实“理解—生成—构建—浏览器验收—报告”基准任务
+- [x] 保存脱敏事件、人工干预和测试结果
 
 ## 技术底座
 
@@ -72,6 +73,8 @@ bun run tui -- list
 `dev:local` 通过 Bun 并行启动示例游戏（5173）、Workbench（4173）和 Run Relay（8787）。仅在 Vite 开发模式且未显式配置时，Workbench 默认连接 `http://127.0.0.1:8787/`；生产构建仍要求设置 `VITE_AGENT_BASE_URL`。MCP 是 stdio 子进程，应由 CodeArts 启动，不包含在该并行命令中。生产式本地联调先执行 `bun run build`，再使用 `bun run start:relay`；CodeArts MCP 配置见 [CodeArts 快速开始](docs/codearts-quickstart.md)。
 
 第二轮 Bun TUI MVP 位于 `apps/tui`，复用严格 Schema 的 Run Relay Client，不包含 Agent 循环。它支持提交/列出/查看 Task、回放/停止 Run，以及通过 SSE 实时观察连续 RunEvent；`--json` 在无 TTY 环境逐行输出可机器处理的 JSON。完整命令见 [TUI 使用说明](docs/tui.md)。
+
+客户端基准使用规范化任务定义的 SHA-256，而不是要求 CodeArts 与 OpenCode 复用同一个 Task ID。运行 `bun run benchmark -- report definition.json codearts.record.json opencode.record.json --out report.md` 可校验记录并生成对比；只有两端都完成时才允许比较工作流质量。
 
 ## 集成边界
 

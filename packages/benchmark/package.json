@@ -1,0 +1,19 @@
+{
+  "name": "@gameforge/benchmark",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "gameforge-benchmark": "dist/cli.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit",
+    "start": "bun src/cli.ts",
+    "test": "vitest run src"
+  },
+  "dependencies": { "zod": "4.4.3" },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

@@ -73,6 +73,21 @@
         "vitest": "4.1.10",
       },
     },
+    "packages/benchmark": {
+      "name": "@gameforge/benchmark",
+      "version": "0.1.0",
+      "bin": {
+        "gameforge-benchmark": "dist/cli.js",
+      },
+      "dependencies": {
+        "zod": "4.4.3",
+      },
+      "devDependencies": {
+        "@types/node": "22.20.1",
+        "typescript": "7.0.2",
+        "vitest": "4.1.10",
+      },
+    },
     "packages/contracts": {
       "name": "@gameforge/contracts",
       "version": "0.1.0",
@@ -241,6 +256,8 @@
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
 
     "@gameforge/asset-store": ["@gameforge/asset-store@workspace:packages/asset-store"],
+
+    "@gameforge/benchmark": ["@gameforge/benchmark@workspace:packages/benchmark"],
 
     "@gameforge/contracts": ["@gameforge/contracts@workspace:packages/contracts"],
 

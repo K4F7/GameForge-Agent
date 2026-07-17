@@ -1,6 +1,6 @@
 # CodeArts 与 OpenCode 同任务基准
 
-使用完全相同的 `en-US` 安全小游戏 Task、同一 GameForge MCP/Relay 和无云媒体边界，比较 CodeArts 26.6.2 与 OpenCode 1.18.3 的事件、工具调用和人工干预。
+使用 `definition.json` 中完全相同的 `en-US` 安全小游戏任务定义、同一 GameForge MCP/Relay 和无云媒体边界，比较 CodeArts 26.6.2 与 OpenCode 1.18.3 的事件、工具调用和人工干预。两端使用独立 Task/Run，规范化定义的 SHA-256 才是同任务判据。
 
 验收条件：
 
