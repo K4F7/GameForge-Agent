@@ -15,7 +15,7 @@
 - [x] 由 CodeArts 实际列出、认领并回放该 Task；
 - [x] 无百炼账号时由 CodeArts 按 Skill 手工构造同 locale 规格并发布 `spec.ready`；
 - [x] CodeArts 生成项目、运行构建与浏览器验收、发布 `preview.ready`/`verification.ready` 并完成 Run；
-- [x] 保存脱敏实验记录：客户端版本、耗时、工具调用、人工干预、Task/Run ID、截图与失败边界。
+- [x] 保存脱敏实验记录：客户端版本、耗时、RunEvent 序列、人工干预、Task/Run ID、截图与失败边界。该历史执行没有完整 MCP 工具调用序列，基准记录按 `null`/`unknown` 保留，不从事件数反推；
 
 通过标准：Relay 中 Task 为 completed，真实 CodeArts Run 发布规格、预览与验证事件，生成项目可构建且 Chrome 证据通过，记录中不存在密钥或账号隐私。该标准已于 2026-07-18 首次通过；本次没有媒体资产，因此没有 `asset.ready`，Workbench 资产面板应保持空状态而不是伪造结果。
 

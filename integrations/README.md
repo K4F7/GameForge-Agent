@@ -15,7 +15,7 @@ bun run codearts
 bun run opencode
 ```
 
-使用 `bun run codearts -- --dry-run` 或 `bun run opencode -- --dry-run` 只生成并打印脱敏运行计划，不启动客户端。
+使用 `bun run codearts -- --dry-run` 或 `bun run opencode -- --dry-run` 会生成忽略目录中的临时配置并打印本地运行计划，但不启动客户端。计划不含凭据，不过会显示客户端、仓库、输出目录和临时配置的绝对路径，因此不应直接粘贴到公开日志。
 
 可选环境变量：
 
@@ -24,4 +24,4 @@ bun run opencode
 - `CODEARTS_BIN` / `OPENCODE_BIN`：客户端可执行文件；
 - Provider 密钥仍由用户安全环境提供，启动器不生成、不保存。
 
-CodeArts 启动器在 Windows 默认发现 `%USERPROFILE%\.codeartsdoer\installers\bin\codearts.exe`，并复用用户已有 OAuth 数据目录；OpenCode 启动器默认调用 PATH 中的 `opencode`。正式 MCP 始终由 Node 承载，启动器自身由 Bun 执行。
+CodeArts 启动器在 Windows 先发现 `%USERPROFILE%\.codeartsdoer\installers\bin\codearts.exe`，不存在时回退到官方安装生成的 `%USERPROFILE%\.codeartsdoer\installers\codearts.cmd` shim，并通过 `ComSpec` 启动；两种方式都复用用户已有 OAuth 数据目录。shim 路径与参数逐项加引号，包含 cmd 元字符的参数会被拒绝并提示改用 `CODEARTS_BIN` 指向 exe。`--dry-run` 会显示实际发现的客户端路径但不启动进程。OpenCode 启动器默认调用 PATH 中的 `opencode`。正式 MCP 始终由 Node 承载，启动器自身由 Bun 执行。

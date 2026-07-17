@@ -34,11 +34,11 @@ SCENARIO=codeartsdoer
 & "$env:USERPROFILE\.codeartsdoer\installers\codearts.cmd" agent --help
 ```
 
-`codearts mcp list/add` 在当前 shell 返回认证失败，要求设置 `CODEARTS_CLI_AK`/`CODEARTS_CLI_SK`。本实验没有读取、申请、输入或持久化任何凭据。由于当前没有可连接的已登录 TUI/IDE 窗口，也没有本地 server 端口，真实 CodeArts MCP 配置和 GameForge Task 闭环尚未执行。
+`codearts mcp list/add` 在本次早期探测所用 shell 返回认证失败，要求设置 `CODEARTS_CLI_AK`/`CODEARTS_CLI_SK`。本实验没有读取、申请、输入或持久化任何凭据。当时没有可连接的已登录 TUI/IDE 窗口，也没有本地 server 端口，因此本探测本身没有执行真实 CodeArts MCP 与 GameForge Task 闭环。后续同日已改用 OAuth TUI 完成首次真实闭环，见 [`../2026-07-18-codearts-real-e2e/result.md`](../2026-07-18-codearts-real-e2e/result.md)。
 
-## 下一步验收
+## 后续完成的验收
 
-用户在自己的安全环境中完成 CLI AK/SK 配置，或打开已登录的 CodeArts 交互客户端后：
+后续使用已登录的 CodeArts OAuth 交互客户端执行：
 
 1. 启动 `bun run dev:local`；
 2. 在 CodeArts 配置 `gameforge` stdio MCP，设置项目输出根和 loopback Relay URL；
@@ -47,4 +47,4 @@ SCENARIO=codeartsdoer
 5. 生成、预览、Chrome 验收并发布 `run.completed`；
 6. 保存脱敏 Task/Run ID、工具摘要和 Workbench 截图。
 
-当前结论：真实客户端安装和实现指纹已验证；真实 CodeArts Agent 执行 GameForge 工作流尚未验证。
+历史结论：本探测验证了客户端安装和实现指纹，但在当时尚未验证 GameForge 工作流。当前结论以同日后续实验为准：真实 CodeArts Agent 已完成无云媒体的 GameForge 工作流；Seedream、Freesound、百炼与火山 TTS 的账号级调用仍未验证。
