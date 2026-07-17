@@ -1,9 +1,11 @@
 import { gameSpecSchema, modelIdSchema, type GameSpec, type LlmProvider } from "@gameforge/contracts";
 import { z } from "zod";
 import type { FetchLike } from "./seedream.js";
+import { fetchProvider, type ProviderRetryOptions } from "./transport.js";
 
 const ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const MAX_JSON_BYTES = 1024 * 1024;
+const DEFAULT_TIMEOUT_MS = 60_000;
 
 export const draftGameSpecRequestSchema = z.strictObject({
   prompt: z.string().trim().min(10).max(12_000),
@@ -26,25 +28,37 @@ export class BailianGameSpecProvider implements LlmProvider<DraftGameSpecRequest
   readonly #apiKey: string;
   readonly #model: string;
   readonly #fetch: FetchLike;
+  readonly #retry: ProviderRetryOptions | undefined;
+  readonly #timeoutMs: number;
 
-  constructor(options: { apiKey: string; model?: string; fetch?: FetchLike }) {
+  constructor(options: { apiKey: string; model?: string; fetch?: FetchLike; timeoutMs?: number; retry?: ProviderRetryOptions }) {
     const apiKey = options.apiKey.trim();
     if (apiKey.length === 0) throw new Error("Bailian API key is required at runtime.");
     this.#apiKey = apiKey;
     this.#model = modelIdSchema.parse(options.model ?? "qwen3.6-flash");
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 10 * 60_000) {
+      throw new Error("Bailian timeoutMs must be an integer between 1 and 600000.");
+    }
+    this.#timeoutMs = timeoutMs;
+    this.#retry = options.retry;
   }
 
   async execute(request: DraftGameSpecRequest): Promise<DraftGameSpecResult> {
     const input = draftGameSpecRequestSchema.parse(request);
     const schema = gameSpecJsonSchema();
-    const response = await this.#fetch(ENDPOINT, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.#apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    const response = await fetchProvider({
+      provider: "Bailian",
+      fetch: this.#fetch,
+      input: ENDPOINT,
+      init: {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.#apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
         model: this.#model,
         messages: [
           {
@@ -61,9 +75,11 @@ export class BailianGameSpecProvider implements LlmProvider<DraftGameSpecRequest
         },
         stream: false,
         temperature: 0.2,
-      }),
+        }),
+      },
+      timeoutMs: this.#timeoutMs,
+      ...(this.#retry === undefined ? {} : { retry: this.#retry }),
     });
-    if (!response.ok) throw new Error(`Bailian request failed with HTTP ${response.status}.`);
     const text = await boundedText(response, MAX_JSON_BYTES);
     let raw: unknown;
     try { raw = JSON.parse(text) as unknown; }
@@ -116,7 +132,10 @@ function gameSpecJsonSchema(): Record<string, unknown> {
 
 async function boundedText(response: Response, limit: number): Promise<string> {
   const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > limit) throw new Error("Bailian response exceeds the byte limit.");
+  if (Number.isFinite(declared) && declared > limit) {
+    if (response.body !== null) await response.body.cancel().catch(() => undefined);
+    throw new Error("Bailian response exceeds the byte limit.");
+  }
   const text = await response.text();
   if (new TextEncoder().encode(text).byteLength > limit) throw new Error("Bailian response exceeds the byte limit.");
   return text;

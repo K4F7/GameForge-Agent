@@ -66,4 +66,16 @@ describe("FreesoundPreviewProvider", () => {
     expect(chunks).toBeLessThanOrEqual(18);
     expect(cancelled).toBe(true);
   });
+
+  it("retries transient preview download failures", async () => {
+    const fetchMock = vi.fn<FreesoundFetchLike>()
+      .mockResolvedValueOnce(new Response("temporary", { status: 503 }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([0x49, 0x44, 0x33, 0x04]), { status: 200 }));
+    const provider = new FreesoundPreviewProvider({
+      fetch: fetchMock,
+      retry: { baseDelayMs: 0, maxDelayMs: 0, sleep: async () => undefined },
+    });
+    await expect(provider.execute(request)).resolves.toMatchObject({ mimeType: "audio/mpeg" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

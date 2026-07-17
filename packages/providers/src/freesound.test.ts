@@ -125,4 +125,25 @@ describe("FreesoundProvider", () => {
     expect(message).toContain("HTTP 401");
     expect(message).not.toContain(apiKey);
   });
+
+  it("retries transient search failures and bounds the response body", async () => {
+    const fetchMock = vi.fn<FreesoundFetchLike>()
+      .mockResolvedValueOnce(new Response("busy", { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ count: 1, results: [sound()] }), { status: 200 }));
+    const provider = new FreesoundProvider({
+      apiKey,
+      apiUsage: "non-commercial",
+      fetch: fetchMock,
+      retry: { baseDelayMs: 0, maxDelayMs: 0, sleep: async () => undefined },
+    });
+    await expect(provider.execute({ query: "impact" })).resolves.toMatchObject({ total: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const oversized = new FreesoundProvider({
+      apiKey,
+      apiUsage: "non-commercial",
+      fetch: async () => new Response("{}", { status: 200, headers: { "Content-Length": String(5 * 1024 * 1024) } }),
+    });
+    await expect(oversized.execute({ query: "impact" })).rejects.toThrow("byte limit");
+  });
 });

@@ -113,6 +113,8 @@ GAMEFORGE_SPEC_MODEL=qwen3.6-flash
 
 `get_gameforge_capabilities` 始终注册，返回本次 MCP 进程实际可用的国产模型、媒体和工程能力布尔快照，不返回密钥、Token、主机白名单或本机路径。CodeArts 将它发布为 `capabilities.ready` 后，Workbench 才把对应 Provider 标记为“本次 MCP 已配置”；未收到事件时显示等待，完整依赖链缺一项时显示未配置。
 
+Provider HTTP 适配器统一使用有界超时和结构化错误。百炼、Freesound GET 与 TTS 查询/下载可对 408、429、5xx、超时和网络错误最多尝试三次；认证、授权和普通请求错误立即失败。Seedream 生图与 TTS submit 默认只发送一次，因为官方没有可核验的幂等保证，避免模糊网络失败造成重复计费任务。完整依据与边界见 [国产模型与游戏媒体资产策略](docs/model-media-strategy.md)。
+
 启用许可证过滤的音效搜索工具时，在启动MCP服务的进程环境中设置：
 
 ```text

@@ -1,8 +1,11 @@
 import type { SoundSearchProvider } from "@gameforge/contracts";
 import { z } from "zod";
+import { fetchProvider, type ProviderRetryOptions } from "./transport.js";
 
 const DEFAULT_ENDPOINT = "https://freesound.org/apiv2/search/";
 const TRUSTED_ENDPOINT_HOST = "freesound.org";
+const DEFAULT_TIMEOUT_MS = 30_000;
+const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 const SEARCH_FIELDS = [
   "id",
   "name",
@@ -109,6 +112,8 @@ export type FreesoundProviderOptions = {
   apiUsage: "non-commercial" | "commercial-agreement";
   endpoint?: string;
   fetch?: FreesoundFetchLike;
+  timeoutMs?: number;
+  retry?: ProviderRetryOptions;
 };
 
 export class FreesoundProvider
@@ -120,6 +125,8 @@ export class FreesoundProvider
   readonly #apiKey: string;
   readonly #endpoint: string;
   readonly #fetch: FreesoundFetchLike;
+  readonly #retry: ProviderRetryOptions | undefined;
+  readonly #timeoutMs: number;
 
   constructor(options: FreesoundProviderOptions) {
     const apiKey = options.apiKey.trim();
@@ -145,6 +152,12 @@ export class FreesoundProvider
     this.#apiKey = apiKey;
     this.#endpoint = endpoint.href;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) {
+      throw new Error("Freesound timeoutMs must be an integer between 1 and 60000.");
+    }
+    this.#timeoutMs = timeoutMs;
+    this.#retry = options.retry;
   }
 
   async execute(request: FreesoundSearchRequest): Promise<FreesoundSearchResult> {
@@ -157,16 +170,18 @@ export class FreesoundProvider
     url.searchParams.set("page", String(input.page));
     url.searchParams.set("page_size", String(input.pageSize));
 
-    const response = await this.#fetch(url, {
-      method: "GET",
-      headers: { Authorization: `Token ${this.#apiKey}` },
+    const response = await fetchProvider({
+      provider: "Freesound",
+      fetch: this.#fetch,
+      input: url,
+      init: {
+        method: "GET",
+        headers: { Authorization: `Token ${this.#apiKey}` },
+      },
+      timeoutMs: this.#timeoutMs,
+      ...(this.#retry === undefined ? {} : { retry: this.#retry }),
     });
-
-    if (!response.ok) {
-      throw new Error(`Freesound search failed with HTTP ${response.status}.`);
-    }
-
-    const parsed = searchResponseSchema.parse(await response.json());
+    const parsed = searchResponseSchema.parse(await readBoundedJson(response, MAX_RESPONSE_BYTES));
     const candidates = parsed.results.flatMap((sound) => {
       if (!isAllowedLicense(input.license, sound.license)) {
         throw new Error("Freesound response contained a sound outside the requested license policy.");
@@ -197,6 +212,46 @@ export class FreesoundProvider
     });
 
     return { total: parsed.count, candidates };
+  }
+}
+
+async function readBoundedJson(response: Response, limit: number): Promise<unknown> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > limit) {
+    if (response.body !== null) await response.body.cancel().catch(() => undefined);
+    throw new Error("Freesound response exceeded the byte limit.");
+  }
+  if (response.body === null) throw new Error("Freesound response was empty.");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  let complete = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        complete = true;
+        break;
+      }
+      length += value.byteLength;
+      if (length > limit) throw new Error("Freesound response exceeded the byte limit.");
+      chunks.push(value);
+    }
+  } finally {
+    if (!complete) await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+  if (length === 0) throw new Error("Freesound response was empty.");
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
+  } catch {
+    throw new Error("Freesound response was not valid bounded JSON.");
   }
 }
 

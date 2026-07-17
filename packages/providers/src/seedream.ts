@@ -5,6 +5,7 @@ import {
   type ImageGenerationProvider,
 } from "@gameforge/contracts";
 import { z } from "zod";
+import { fetchProvider, type ProviderRetryOptions } from "./transport.js";
 
 const DEFAULT_ENDPOINT = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
 const DEFAULT_MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
@@ -74,6 +75,7 @@ export type SeedreamProviderOptions = {
   allowedReferenceImageHosts?: ReadonlyArray<string>;
   maxOutputBytes?: number;
   timeoutMs?: number;
+  retry?: ProviderRetryOptions;
 };
 
 export class SeedreamProvider
@@ -91,6 +93,7 @@ export class SeedreamProvider
   readonly #maxResponseBytes: number;
   readonly #model: string;
   readonly #timeoutMs: number;
+  readonly #retry: ProviderRetryOptions | undefined;
 
   constructor(options: SeedreamProviderOptions) {
     const apiKey = options.apiKey.trim();
@@ -147,6 +150,7 @@ export class SeedreamProvider
     this.#maxOutputBytes = maxOutputBytes;
     this.#maxResponseBytes = Math.ceil(maxOutputBytes / 3) * 4 + RESPONSE_ENVELOPE_BYTES;
     this.#timeoutMs = timeoutMs;
+    this.#retry = options.retry;
   }
 
   async execute(request: SeedreamImageRequest): Promise<SeedreamImageResult> {
@@ -175,26 +179,21 @@ export class SeedreamProvider
           : input.referenceImages;
     }
 
-    const signal = AbortSignal.timeout(this.#timeoutMs);
-    let response: Response;
-    try {
-      response = await this.#fetch(this.#endpoint, {
+    const response = await fetchProvider({
+      provider: "Seedream",
+      fetch: this.#fetch,
+      input: this.#endpoint,
+      init: {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.#apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestBody),
-        signal,
-      });
-    } catch {
-      if (signal.aborted) throw new Error("Seedream request timed out.");
-      throw new Error("Seedream network request failed.");
-    }
-
-    if (!response.ok) {
-      throw new Error(`Seedream request failed with HTTP ${response.status}.`);
-    }
+      },
+      timeoutMs: this.#timeoutMs,
+      retry: this.#retry ?? { maxAttempts: 1 },
+    });
 
     const parsedResponse = seedreamResponseSchema.parse(
       await readBoundedJson(response, this.#maxResponseBytes),
@@ -305,6 +304,7 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 async function readBoundedJson(response: Response, limit: number): Promise<unknown> {
   const declaredLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > limit) {
+    if (response.body !== null) await response.body.cancel().catch(() => undefined);
     throw new Error("Seedream response JSON exceeded the byte limit.");
   }
   if (response.body === null) throw new Error("Seedream response was empty.");

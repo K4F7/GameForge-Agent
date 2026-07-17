@@ -122,4 +122,33 @@ describe("VolcengineAsyncTtsProvider", () => {
     expect(message).toContain("HTTP 401");
     expect(message).not.toContain(token);
   });
+
+  it("does not automatically retry non-idempotent submit requests", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response("temporary", { status: 503 }));
+    await expect(provider(fetchMock).submit(baseRequest)).rejects.toMatchObject({
+      kind: "server",
+      retryable: true,
+      attempts: 1,
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("retries read-only query requests after a transient server failure", async () => {
+    const fetchMock = vi.fn<FetchLike>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: "task-42", task_status: 0 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response("temporary", { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: "task-42", task_status: 1 }), { status: 200 }));
+    const tts = new VolcengineAsyncTtsProvider({
+      apiToken: token,
+      appId: "test-app-id",
+      license: "volcengine-account-terms",
+      allowedAudioHosts: ["audio.example.volces.com"],
+      fetch: fetchMock,
+      retry: { baseDelayMs: 0, maxDelayMs: 0, sleep: async () => undefined },
+    });
+    const submitted = await tts.submit(baseRequest);
+    await expect(tts.query({ projectId: baseRequest.projectId, jobHandle: submitted.jobHandle }))
+      .resolves.toMatchObject({ status: "succeeded" });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
 });

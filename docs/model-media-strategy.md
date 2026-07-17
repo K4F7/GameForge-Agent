@@ -1,7 +1,7 @@
 # 国产模型与游戏媒体资产策略
 
-更新日期：2026-07-16
-官方资料访问日期：2026-07-16
+更新日期：2026-07-18
+官方资料访问日期：2026-07-18
 
 ## 待验证主张
 
@@ -26,7 +26,7 @@
 
 ### 已实现的 GameSpec 适配器
 
-仓库已实现 `BailianGameSpecProvider` 与条件注册的 MCP 工具 `draft_game_spec`。服务端设置 `DASHSCOPE_API_KEY` 后，适配器调用百炼官方 OpenAI 兼容端点 `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`；`GAMEFORGE_SPEC_MODEL` 可覆盖默认的 `qwen3.6-flash`。每次工具调用只发送一次非流式请求，使用 `response_format.type = json_schema` 与严格 Schema，并对模型返回再次执行 `gameSpecSchema.parse`。Provider 不承担 Agent 规划、循环重试或代码修改。
+仓库已实现 `BailianGameSpecProvider` 与条件注册的 MCP 工具 `draft_game_spec`。服务端设置 `DASHSCOPE_API_KEY` 后，适配器调用百炼官方 OpenAI 兼容端点 `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`；`GAMEFORGE_SPEC_MODEL` 可覆盖默认的 `qwen3.6-flash`。请求使用 `response_format.type = json_schema` 与严格 Schema，并对模型返回再次执行 `gameSpecSchema.parse`。百炼官方建议对 429、5xx 和连接错误执行有界指数退避，因此确定性传输层最多尝试三次；它不改变 Prompt、模型或请求体，也不承担 Agent 规划、反思或代码修改。
 
 当前证据只覆盖模拟官方 HTTP 契约、错误脱敏和本地 Schema 验证；尚未使用真实百炼账号验证模型可用性、结构化输出兼容性、延迟和费用。
 
@@ -71,7 +71,7 @@ GAMEFORGE_TTS_PROVIDER=volcengine-speech
 
 2026-07-16评估了官方`@volcengine/ark-runtime@1.0.10`。该版本已经导出`ArkRuntimeClient.withApiKey()`和`generateImages()`，比README中遗留的`createImage()`示例更接近当前图片API。但安装后执行`npm audit --registry=https://registry.npmjs.org`发现其传递依赖带来1个critical、5个high和1个moderate漏洞，且当时没有自动修复版本；问题链路包含旧版`protobufjs`和`axios`。仓库因此撤回该依赖，审计恢复为0个已知漏洞。
 
-当前Seedream适配器继续直接调用官方REST端点，并保留请求Schema、官方主机锁定、参考图主机白名单、Base64上限、图片魔数检查和来源哈希。生产请求使用 120 秒确定性超时；成功响应按“配置的图片上限对应 Base64 长度 + 1 MiB envelope”流式读取，声明长度或 chunked 实际长度越界都会在 JSON 解析前拒绝并取消。直接 Model ID 必须与官方响应 `model` 一致；使用 `ep-` 推理接入点时允许响应解析为实际模型并将实际模型写入 provenance。这里的“优先官方实践”是优先官方协议和官方SDK评估，不意味着在官方SDK存在未修复高危依赖时仍强制采用。后续官方SDK修复依赖链后再重新评估迁移。
+当前Seedream适配器继续直接调用官方REST端点，并保留请求Schema、官方主机锁定、参考图主机白名单、Base64上限、图片魔数检查和来源哈希。生产请求使用 120 秒确定性超时；成功响应按“配置的图片上限对应 Base64 长度 + 1 MiB envelope”流式读取，声明长度或 chunked 实际长度越界都会在 JSON 解析前拒绝并取消。直接 Model ID 必须与官方响应 `model` 一致；使用 `ep-` 推理接入点时允许响应解析为实际模型并将实际模型写入 provenance。方舟官方没有给图片生成提供可核验的幂等键，因此默认不自动重试生图 POST；调用方只有在接受重复计费风险时才能显式配置有界重试。这里的“优先官方实践”是优先官方协议和官方SDK评估，不意味着在官方SDK存在未修复高危依赖时仍强制采用。后续官方SDK修复依赖链后再重新评估迁移。
 
 建议任务映射：
 
@@ -120,7 +120,7 @@ GAMEFORGE_TTS_PROVIDER=volcengine-speech
 
 Freesound API本身的使用条款与单条声音许可证是两个独立层次：免费API仅允许非商业用途，商业使用需要联系Freesound取得协议。因此适配器强制声明`non-commercial`或`commercial-agreement`，不会因为搜索结果是CC0就自动推断API可用于商业项目。
 
-当前已实现`FreesoundProvider`和条件注册的`search_sound_asset` MCP工具。它只调用官方`GET /apiv2/search/`一次，通过`Authorization: Token`传递服务端密钥，明确请求所需字段，默认筛选`Creative Commons 0`，可显式允许`Attribution`，并拒绝`Attribution NonCommercial`。结果返回官方页面URL、预览URL、作者、原始许可证文本和归因字符串；原始文件下载需要OAuth2，不属于当前只读Token适配器。
+当前已实现`FreesoundProvider`和条件注册的`search_sound_asset` MCP工具。它调用官方`GET /apiv2/search/`，通过`Authorization: Token`传递服务端密钥，明确请求所需字段，默认筛选`Creative Commons 0`，可显式允许`Attribution`，并拒绝`Attribution NonCommercial`。GET 搜索与 preview 下载可在 429、5xx、超时或网络失败时最多尝试三次；响应 JSON 限制为 4 MiB，preview 限制为 16 MiB，声明或流式实际长度超限都会取消 body。结果返回官方页面URL、预览URL、作者、原始许可证文本和归因字符串；原始文件下载需要OAuth2，不属于当前只读Token适配器。
 
 ### 独特音效：保留Provider边界
 
@@ -148,7 +148,7 @@ CodeArts Agent / Agent Team
        ├─ generate_game_project     已实现：dry-run + 原子新建固定模板
        ├─ request_image_asset       已实现：单次Seedream调用 + 安全资产落盘
        ├─ submit/query/materialize_voice_job 已实现：异步TTS作业三步工具
-       └─ search_sound_asset        已实现：单次检索 + 许可证与API用途过滤
+       └─ search_sound_asset        已实现：有界只读检索 + 许可证与API用途过滤
 
 Provider adapters
   ├─ LlmProvider
@@ -158,7 +158,7 @@ Provider adapters
   └─ AudioGenerationProvider
 ```
 
-MCP工具只执行一次明确调用、返回结构化结果并记录元数据，不在内部进行自主规划、反思或循环调用。失败重试采用固定次数和固定条件；任务拆解仍由CodeArts负责。
+MCP工具只执行一次明确业务操作、返回结构化结果并记录元数据，不在内部进行自主规划、反思或循环调用。共享传输层只对 408、429、5xx、超时和网络错误做最多三次的有界退避，并把认证、授权、配额、限流、调用方取消、超时、网络、服务端和请求错误分类为 `ProviderRequestError`；调用方取消立即停止，错误消息不读取或回显上游 body。Seedream 生图和 TTS submit 默认单次发送，因为官方没有幂等保证；TTS query/materialize 与 Freesound GET 可以安全重试。任务拆解与业务级重试仍由CodeArts负责。
 
 所有外部资产都进入统一Manifest，至少记录：
 
@@ -214,7 +214,7 @@ type AssetProvenance = {
 ## 2026-07-16 适配器结论补充
 
 - `request_image_asset` 已实现为“单次 Seedream 请求 + 安全资产落盘”，只有服务端同时具备方舟密钥、模型 ID、输出许可声明与项目根目录时才注册。
-- `import_sound_asset` 已实现为“单次 Freesound preview GET + 安全资产落盘”。preview 不需要 OAuth2；原始文件 `/download/` 需要 OAuth2，当前工具不会调用它。允许 CC0 与 Attribution，后者把作者、声音名称、原始页面和许可写入 provenance。
+- `import_sound_asset` 已实现为“有界 Freesound preview GET + 安全资产落盘”。只读下载遇到瞬时故障时可有限退避；preview 不需要 OAuth2，原始文件 `/download/` 需要 OAuth2，当前工具不会调用它。允许 CC0 与 Attribution，后者把作者、声音名称、原始页面和许可写入 provenance。
 - 豆包旧版单向流式 TTS 使用二进制 WebSocket `wss://openspeech.bytedance.com/api/v1/tts/ws_binary`，客户端必须拼接音频帧并识别结束序列；它不能按普通 JSON HTTP 适配器实现。
 - 长文本 TTS 是 `/api/v1/tts_async/submit` 与 `/query` 的异步作业，结果通常需等待数十分钟、最长可到 3 小时，且回调不保证到达。当前已经实现 `submit_voice_job`、`query_voice_job`、`materialize_voice_job` 三个确定性工具：作业句柄经 HMAC 签名并绑定 project ID、asset ID、voice type、格式和文本哈希；CodeArts 决定查询时机，MCP 内部不循环等待。submit/query 后以结构化 `voice.job.updated` 保存 signed handle 和状态，新 CodeArts 会话可从 Relay 回放后继续 query 或 materialize；Workbench 不保存或显示完整 handle，普通日志也不得包含它。素材化只接受配置白名单中的 HTTPS 音频主机，并检查 Content-Type、64 MiB 上限、媒体魔数、格式和 SHA-256。
 
@@ -223,6 +223,7 @@ type AssetProvenance = {
 ### 文本与代码
 
 - [阿里云百炼 OpenAI Chat 兼容接口](https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope)（访问日期：2026-07-16）
+- [阿里云百炼限流应对最佳实践](https://help.aliyun.com/zh/model-studio/rate-limiting-best-practices)（访问日期：2026-07-18）
 - [Qwen3官方仓库](https://github.com/QwenLM/Qwen3)
 - [Qwen3-Coder官方发布](https://qwenlm.github.io/blog/qwen3-coder/)
 - [阿里云百炼Function Calling](https://help.aliyun.com/zh/model-studio/qwen-function-calling)
@@ -252,6 +253,7 @@ type AssetProvenance = {
 ### 音效与音乐
 
 - [Freesound API](https://freesound.org/docs/api/)
+- [Freesound API Overview 与错误码](https://freesound.org/docs/api/overview.html)（访问日期：2026-07-18）
 - [Freesound API v2搜索资源](https://freesound.org/docs/api/resources_apiv2.html)
 - [Freesound Token鉴权](https://freesound.org/docs/api/authentication.html)
 - [Freesound API使用条款](https://freesound.org/docs/api/terms_of_use.html)

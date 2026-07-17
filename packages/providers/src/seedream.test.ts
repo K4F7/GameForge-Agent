@@ -274,4 +274,37 @@ describe("SeedreamProvider", () => {
     await expect(endpoint.execute({ assetId: "images/hero.jpg", prompt: "Hero" }))
       .resolves.toMatchObject({ provenance: { model: "doubao-seedream-other" } });
   });
+
+  it("retries transient server failures without changing the request body", async () => {
+    const success = () => new Response(JSON.stringify({
+      model: "doubao-seedream-4-0-250828",
+      data: [{ b64_json: encodeBase64(jpegBytes) }],
+    }), { status: 200 });
+    const fetchMock = vi.fn<FetchLike>()
+      .mockResolvedValueOnce(new Response("temporary", { status: 503 }))
+      .mockResolvedValueOnce(success());
+    const provider = new SeedreamProvider({
+      apiKey,
+      model: "doubao-seedream-4-0-250828",
+      license: "provider-terms",
+      fetch: fetchMock,
+      retry: { baseDelayMs: 0, maxDelayMs: 0, sleep: async () => undefined },
+    });
+    await expect(provider.execute({ assetId: "images/hero.jpg", prompt: "Hero" })).resolves.toBeDefined();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(fetchMock.mock.calls[1]?.[1]?.body);
+  });
+
+  it("does not retry billable image generation unless explicitly configured", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response("temporary", { status: 503 }));
+    const provider = new SeedreamProvider({
+      apiKey,
+      model: "doubao-seedream-4-0-250828",
+      license: "provider-terms",
+      fetch: fetchMock,
+    });
+    await expect(provider.execute({ assetId: "images/hero.jpg", prompt: "Hero" }))
+      .rejects.toMatchObject({ kind: "server", retryable: true, attempts: 1 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
 });

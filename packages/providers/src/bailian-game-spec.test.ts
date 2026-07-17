@@ -79,4 +79,17 @@ describe("BailianGameSpecProvider", () => {
     expect(message).toContain("HTTP 401");
     expect(message).not.toContain(apiKey);
   });
+
+  it("retries a transient rate limit with a bounded policy", async () => {
+    const fetchMock = vi.fn<FetchLike>()
+      .mockResolvedValueOnce(new Response("busy", { status: 429 }))
+      .mockResolvedValueOnce(response(validSpec));
+    const result = await new BailianGameSpecProvider({
+      apiKey,
+      fetch: fetchMock,
+      retry: { baseDelayMs: 0, maxDelayMs: 0, sleep: async () => undefined },
+    }).execute({ prompt: "制作一个简单且完整的安全训练小游戏规格。" });
+    expect(result.spec.title).toBe(validSpec.title);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

@@ -6,6 +6,7 @@ import {
 } from "@gameforge/contracts";
 import { z } from "zod";
 import type { FetchLike } from "./seedream.js";
+import { fetchProvider, type ProviderRetryOptions } from "./transport.js";
 
 const SUBMIT_ENDPOINT = "https://openspeech.bytedance.com/api/v1/tts_async/submit";
 const QUERY_ENDPOINT = "https://openspeech.bytedance.com/api/v1/tts_async/query";
@@ -79,6 +80,7 @@ export type VolcengineAsyncTtsOptions = {
   allowedAudioHosts: ReadonlyArray<string>;
   fetch?: FetchLike;
   timeoutMs?: number;
+  retry?: ProviderRetryOptions;
 };
 
 export class VolcengineAsyncTtsProvider {
@@ -91,6 +93,7 @@ export class VolcengineAsyncTtsProvider {
   readonly #allowedAudioHosts: ReadonlySet<string>;
   readonly #fetch: FetchLike;
   readonly #timeoutMs: number;
+  readonly #retry: ProviderRetryOptions | undefined;
 
   constructor(options: VolcengineAsyncTtsOptions) {
     this.#apiToken = required(options.apiToken, "Volcengine speech API token");
@@ -105,6 +108,7 @@ export class VolcengineAsyncTtsProvider {
       throw new Error("TTS timeout must be an integer between 1000 and 60000 milliseconds.");
     }
     this.#timeoutMs = timeoutMs;
+    this.#retry = options.retry;
   }
 
   async submit(request: SubmitAsyncTtsRequest): Promise<AsyncTtsJobResult> {
@@ -128,7 +132,7 @@ export class VolcengineAsyncTtsProvider {
         sentence_interval: input.sentenceInterval,
         ...(input.style === undefined ? {} : { style: input.style }),
       }),
-    });
+    }, false);
     const parsed = await parseApiResponse(response, "submit");
     if (parsed.task_id === undefined || parsed.task_status === undefined) {
       throw new Error("TTS submit response did not contain a task ID and status.");
@@ -187,6 +191,7 @@ export class VolcengineAsyncTtsProvider {
     }
     const declaredLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(declaredLength) && declaredLength > MAX_AUDIO_BYTES) {
+      if (response.body !== null) await response.body.cancel().catch(() => undefined);
       throw new Error("TTS audio exceeds the byte limit.");
     }
     const bytes = await readBoundedBody(response, MAX_AUDIO_BYTES);
@@ -215,15 +220,15 @@ export class VolcengineAsyncTtsProvider {
     return parseApiResponse(response, "query");
   }
 
-  async #request(url: string, init: RequestInit): Promise<Response> {
-    let response: Response;
-    try {
-      response = await this.#fetch(url, { ...init, signal: AbortSignal.timeout(this.#timeoutMs) });
-    } catch {
-      throw new Error("TTS network request failed.");
-    }
-    if (!response.ok) throw new Error(`TTS request failed with HTTP ${response.status}.`);
-    return response;
+  async #request(url: string, init: RequestInit, retryable = true): Promise<Response> {
+    return fetchProvider({
+      provider: "TTS",
+      fetch: this.#fetch,
+      input: url,
+      init,
+      timeoutMs: this.#timeoutMs,
+      retry: retryable ? (this.#retry ?? {}) : { ...this.#retry, maxAttempts: 1 },
+    });
   }
 
   #headers(extra: Record<string, string> = {}): Record<string, string> {
@@ -297,6 +302,7 @@ async function parseApiResponse(response: Response, operation: string): Promise<
   try {
     const declaredLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BYTES) {
+      if (response.body !== null) await response.body.cancel().catch(() => undefined);
       throw new Error("oversized");
     }
     const text = await response.text();

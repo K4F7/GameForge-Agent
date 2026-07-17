@@ -1,8 +1,10 @@
 import { assetProvenanceSchema, type AssetProvenance } from "@gameforge/contracts";
 import { z } from "zod";
 import type { FreesoundFetchLike } from "./freesound.js";
+import { fetchProvider, type ProviderRetryOptions } from "./transport.js";
 
 const MAX_PREVIEW_BYTES = 16 * 1024 * 1024;
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 export const freesoundPreviewRequestSchema = z.strictObject({
   assetId: z.string().trim().min(1).max(160),
@@ -25,9 +27,17 @@ export class FreesoundPreviewProvider {
   readonly id = "freesound-preview";
   readonly capability = "sound-preview" as const;
   readonly #fetch: FreesoundFetchLike;
+  readonly #retry: ProviderRetryOptions | undefined;
+  readonly #timeoutMs: number;
 
-  constructor(options: { fetch?: FreesoundFetchLike } = {}) {
+  constructor(options: { fetch?: FreesoundFetchLike; timeoutMs?: number; retry?: ProviderRetryOptions } = {}) {
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) {
+      throw new Error("Freesound preview timeoutMs must be an integer between 1 and 60000.");
+    }
+    this.#timeoutMs = timeoutMs;
+    this.#retry = options.retry;
   }
 
   async execute(
@@ -41,10 +51,17 @@ export class FreesoundPreviewProvider {
       throw new Error("Freesound preview URL must use an official previews path.");
     }
 
-    const response = await this.#fetch(previewUrl, { method: "GET", redirect: "error" });
-    if (!response.ok) throw new Error(`Freesound preview request failed with HTTP ${response.status}.`);
+    const response = await fetchProvider({
+      provider: "Freesound preview",
+      fetch: this.#fetch,
+      input: previewUrl,
+      init: { method: "GET", redirect: "error" },
+      timeoutMs: this.#timeoutMs,
+      ...(this.#retry === undefined ? {} : { retry: this.#retry }),
+    });
     const declaredLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(declaredLength) && declaredLength > MAX_PREVIEW_BYTES) {
+      if (response.body !== null) await response.body.cancel().catch(() => undefined);
       throw new Error("Freesound preview exceeds the byte limit.");
     }
     const bytes = await readBoundedBody(response, MAX_PREVIEW_BYTES);
