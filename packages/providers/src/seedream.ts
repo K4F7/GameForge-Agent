@@ -9,6 +9,9 @@ import { z } from "zod";
 const DEFAULT_ENDPOINT = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
 const DEFAULT_MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
 const MAX_CONFIGURABLE_OUTPUT_BYTES = 64 * 1024 * 1024;
+const DEFAULT_TIMEOUT_MS = 120_000;
+const MAX_TIMEOUT_MS = 10 * 60_000;
+const RESPONSE_ENVELOPE_BYTES = 1024 * 1024;
 const TRUSTED_ENDPOINT_HOST = "ark.cn-beijing.volces.com";
 
 const httpsUrlSchema = z
@@ -70,6 +73,7 @@ export type SeedreamProviderOptions = {
   fetch?: FetchLike;
   allowedReferenceImageHosts?: ReadonlyArray<string>;
   maxOutputBytes?: number;
+  timeoutMs?: number;
 };
 
 export class SeedreamProvider
@@ -84,7 +88,9 @@ export class SeedreamProvider
   readonly #fetch: FetchLike;
   readonly #license: string;
   readonly #maxOutputBytes: number;
+  readonly #maxResponseBytes: number;
   readonly #model: string;
+  readonly #timeoutMs: number;
 
   constructor(options: SeedreamProviderOptions) {
     const apiKey = options.apiKey.trim();
@@ -127,6 +133,10 @@ export class SeedreamProvider
         `Seedream maxOutputBytes must be an integer between 1 and ${MAX_CONFIGURABLE_OUTPUT_BYTES}.`,
       );
     }
+    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) {
+      throw new Error(`Seedream timeoutMs must be an integer between 1 and ${MAX_TIMEOUT_MS}.`);
+    }
 
     this.#apiKey = apiKey;
     this.#allowedReferenceImageHosts = allowedReferenceImageHosts;
@@ -135,6 +145,8 @@ export class SeedreamProvider
     this.#endpoint = endpoint.href;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.#maxOutputBytes = maxOutputBytes;
+    this.#maxResponseBytes = Math.ceil(maxOutputBytes / 3) * 4 + RESPONSE_ENVELOPE_BYTES;
+    this.#timeoutMs = timeoutMs;
   }
 
   async execute(request: SeedreamImageRequest): Promise<SeedreamImageResult> {
@@ -163,20 +175,33 @@ export class SeedreamProvider
           : input.referenceImages;
     }
 
-    const response = await this.#fetch(this.#endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.#apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-    });
+    const signal = AbortSignal.timeout(this.#timeoutMs);
+    let response: Response;
+    try {
+      response = await this.#fetch(this.#endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.#apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+        signal,
+      });
+    } catch {
+      if (signal.aborted) throw new Error("Seedream request timed out.");
+      throw new Error("Seedream network request failed.");
+    }
 
     if (!response.ok) {
       throw new Error(`Seedream request failed with HTTP ${response.status}.`);
     }
 
-    const parsedResponse = seedreamResponseSchema.parse(await response.json());
+    const parsedResponse = seedreamResponseSchema.parse(
+      await readBoundedJson(response, this.#maxResponseBytes),
+    );
+    if (!this.#model.startsWith("ep-") && parsedResponse.model !== this.#model) {
+      throw new Error("Seedream response model did not match the requested model.");
+    }
     const firstImage = parsedResponse.data[0];
     if (firstImage?.b64_json === undefined) {
       throw new Error("Seedream response did not contain Base64 image data.");
@@ -275,4 +300,43 @@ async function sha256(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
+}
+
+async function readBoundedJson(response: Response, limit: number): Promise<unknown> {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > limit) {
+    throw new Error("Seedream response JSON exceeded the byte limit.");
+  }
+  if (response.body === null) throw new Error("Seedream response was empty.");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  let completed = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        completed = true;
+        break;
+      }
+      length += value.byteLength;
+      if (length > limit) throw new Error("Seedream response JSON exceeded the byte limit.");
+      chunks.push(value);
+    }
+  } finally {
+    if (!completed) await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+  if (length === 0) throw new Error("Seedream response was empty.");
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
+  } catch {
+    throw new Error("Seedream response was not valid bounded JSON.");
+  }
 }

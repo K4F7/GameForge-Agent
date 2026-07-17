@@ -71,7 +71,7 @@ GAMEFORGE_TTS_PROVIDER=volcengine-speech
 
 2026-07-16评估了官方`@volcengine/ark-runtime@1.0.10`。该版本已经导出`ArkRuntimeClient.withApiKey()`和`generateImages()`，比README中遗留的`createImage()`示例更接近当前图片API。但安装后执行`npm audit --registry=https://registry.npmjs.org`发现其传递依赖带来1个critical、5个high和1个moderate漏洞，且当时没有自动修复版本；问题链路包含旧版`protobufjs`和`axios`。仓库因此撤回该依赖，审计恢复为0个已知漏洞。
 
-当前Seedream适配器继续直接调用官方REST端点，并保留请求Schema、官方主机锁定、参考图主机白名单、Base64上限、图片魔数检查和来源哈希。这里的“优先官方实践”是优先官方协议和官方SDK评估，不意味着在官方SDK存在未修复高危依赖时仍强制采用。后续官方SDK修复依赖链后再重新评估迁移。
+当前Seedream适配器继续直接调用官方REST端点，并保留请求Schema、官方主机锁定、参考图主机白名单、Base64上限、图片魔数检查和来源哈希。生产请求使用 120 秒确定性超时；成功响应按“配置的图片上限对应 Base64 长度 + 1 MiB envelope”流式读取，声明长度或 chunked 实际长度越界都会在 JSON 解析前拒绝并取消。直接 Model ID 必须与官方响应 `model` 一致；使用 `ep-` 推理接入点时允许响应解析为实际模型并将实际模型写入 provenance。这里的“优先官方实践”是优先官方协议和官方SDK评估，不意味着在官方SDK存在未修复高危依赖时仍强制采用。后续官方SDK修复依赖链后再重新评估迁移。
 
 建议任务映射：
 
@@ -190,7 +190,7 @@ type AssetProvenance = {
 
 ## 实际结果
 
-已完成官方资料调研、架构决策、Provider配置、运行事件和资产Manifest契约，并实现Seedream文生图与Freesound搜索适配器。Seedream适配器已通过模拟HTTP响应验证Bearer请求、Base64解码、图片格式识别、SHA-256和资产来源记录；同时限制官方API主机、参考图主机白名单和最大响应字节数。Freesound适配器已通过模拟响应验证Token Header、许可证查询、预览选择、非商业许可证拒绝、官方端点限制和错误脱敏。MCP仅在服务端同时配置API密钥与用途声明时注册`search_sound_asset`。
+已完成官方资料调研、架构决策、Provider配置、运行事件和资产Manifest契约，并实现Seedream文生图与Freesound搜索适配器。Seedream适配器已通过模拟HTTP响应验证Bearer请求、超时/网络错误脱敏、受限 JSON、Base64解码、模型一致性、图片格式识别、SHA-256和资产来源记录；同时限制官方API主机、参考图主机白名单和最大响应字节数。Freesound适配器已通过模拟响应验证Token Header、许可证查询、预览选择、非商业许可证拒绝、官方端点限制和错误脱敏。MCP仅在服务端同时配置API密钥与用途声明时注册`search_sound_asset`。
 此外已经实现 Freesound preview 素材化、安全资产存储，以及火山异步长文本 TTS 的提交、查询和素材化闭环。Freesound preview 下载按 16 MiB 上限流式读取，缺少或伪造 `Content-Length` 的 chunked 响应也会在越界时取消，不会先执行无界 `arrayBuffer()`。TTS 适配器测试覆盖官方 Header/URL/字段、签名句柄、跨项目拒绝、下载主机白名单、格式识别、哈希与凭据脱敏；当前仍未使用真实付费账号验证音色效果和实际 CDN 主机。
 
 工作台侧已经增加严格的Wire RunEvent契约、连续序列批次校验、轮询回放函数和SSE客户端边界；它会忽略重复事件，并在序列缺口时要求回补。仓库现在包含只负责保存和发布事件的本地Run Relay，配置`VITE_AGENT_BASE_URL`后工作台可以创建或连接真实运行。Relay不执行游戏生成任务，也不实现Agent循环；任务执行和工具编排仍由CodeArts负责。未配置Relay时界面继续明确显示“事件演示 · 未连接Agent”。
