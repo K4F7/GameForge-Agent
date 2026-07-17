@@ -39,4 +39,4 @@ git diff --check
 - 哈希读取使用流式文件 API，不把完整资产复制到额外内存；
 - 哈希、大小与稳定性检查绑定同一已打开文件句柄；路径与句柄身份在哈希前后均复核，降低检查后替换的竞态窗口；
 - preview 的声明长度超过限制时在读取前拒绝；缺失或不可信声明长度时仍由流式硬上限兜底；
-- 当前加固不处理崩溃遗留的 `assets.lock`，该项仍需单独设计安全的 owner/过期恢复协议。
+- 本实验当时尚未处理崩溃遗留的 `assets.lock`；该历史边界已由后续 [`2026-07-18-asset-lock-recovery`](../2026-07-18-asset-lock-recovery/result.md) 的 owner metadata、同机 PID 与保守 TTL 协议关闭。

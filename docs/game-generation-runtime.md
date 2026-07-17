@@ -197,6 +197,10 @@ Workbench 页面加载时使用时间与浏览器 UUID 熵生成符合 `runIdSch
 
 `@gameforge/asset-store` 只接受已由生成器创建的项目，核验 `.gameforge/manifest.json`、项目 ID、真实目录、媒体魔数、大小、SHA-256、角色与 MIME 的对应关系。文件固定写入 `public/assets/`，清单使用互斥锁和临时文件更新；重复 asset ID、重复运行时角色、符号链接与路径越界都会被拒绝。
 
+`.gameforge/assets.lock` 使用 `open("wx")` 原子创建并写入 version、随机 token、PID、hostname 与毫秒时间戳，文件 mode 为 0600（Windows 按平台语义处理）。正常释放前同时核对已打开句柄的 device/inode 和路径 metadata token，路径被替换时不会无条件 unlink。发生 `EEXIST` 时先取得独立 recovery guard；只有主锁 metadata 完整、同一 hostname、年龄至少 10 分钟且 `process.kill(pid, 0)` 明确报告 PID 不存在时才回收。PID 存活/权限未知、时钟异常、近期锁、异地主机、符号链接、空文件和旧格式都保持锁定。recovery guard 自身使用同一 metadata 和保守 stale 规则，避免恢复进程崩溃后永久阻塞。
+
+该协议面向仓库声明的单机本地文件系统；Node 官方明确 `O_EXCL` 在某些网络文件系统上可能不可靠，hostname 也不是全局身份。项目不把它宣称为分布式锁，不提供 MCP 强制解锁工具。人工排障应先停止所有相关 MCP/CodeArts 进程并备份项目，再检查 metadata，而不是自动清理。
+
 CodeArts 重启后的 Manifest 恢复读取同样逐文件流式重算 SHA-256，并同时比对 Manifest entry 与 provenance 中的哈希；因此即使文件被替换为相同字节数，`get_project_assets` 也会拒绝恢复，而不会补发错误的 `asset.ready`。
 
 当前生成模板会在启动时读取 `public/assets/manifest.json`：存在 `player`、`collectible`、`hazard`、`background` 时加载图片；存在 `collect-sound` 和 `hit-sound` 时播放音频。浏览器运行时只接受契约内角色、同类型 MIME、`assets/` 内规范相对路径和唯一角色；损坏、重复或类型不匹配的条目被忽略。角色图片无论源分辨率如何，都会归一化显示尺寸和 Arcade Physics 碰撞体；背景仍按 960×540 场景缩放。清单缺失、为空或单项加载失败时继续使用程序化纹理与静音回退，因此媒体 Provider 不会成为玩法可运行性的硬依赖。

@@ -12,12 +12,30 @@ import {
 } from "@gameforge/contracts";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readFile, realpath, rename, rm, unlink, type FileHandle } from "node:fs/promises";
+import { hostname as systemHostname } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 
 const managedProjectSchema = z.object({ projectId: projectIdSchema });
 const IMAGE_MAX_BYTES = 32 * 1024 * 1024;
 const AUDIO_MAX_BYTES = 64 * 1024 * 1024;
+const LOCK_STALE_AFTER_MS = 10 * 60 * 1000;
+const LOCK_METADATA_MAX_BYTES = 4 * 1024;
+const assetLockMetadataSchema = z.strictObject({
+  version: z.literal(1),
+  token: z.string().uuid(),
+  pid: z.number().int().positive(),
+  hostname: z.string().trim().min(1).max(255),
+  createdAtMs: z.number().int().nonnegative(),
+});
+
+type AssetLockMetadata = z.infer<typeof assetLockMetadataSchema>;
+
+export type AssetLockRuntime = {
+  now(): number;
+  hostname: string;
+  isProcessAlive(pid: number): boolean;
+};
 
 export type StoreAssetRequest = {
   projectId: string;
@@ -34,12 +52,18 @@ export type StoreAssetResult = {
 
 export class ProjectAssetStore {
   readonly #projectsRoot: string;
+  readonly #lockRuntime: AssetLockRuntime;
 
-  constructor(options: { projectsRoot: string }) {
+  constructor(options: { projectsRoot: string; lockRuntime?: AssetLockRuntime }) {
     if (!path.isAbsolute(options.projectsRoot)) throw new Error("Asset projects root must be absolute.");
     const normalized = path.resolve(options.projectsRoot);
     if (path.parse(normalized).root === normalized) throw new Error("Asset projects root cannot be a filesystem root.");
     this.#projectsRoot = normalized;
+    this.#lockRuntime = options.lockRuntime ?? {
+      now: Date.now,
+      hostname: systemHostname(),
+      isProcessAlive: processIsAlive,
+    };
   }
 
   async read(projectIdInput: string): Promise<RuntimeAssetManifest> {
@@ -47,9 +71,11 @@ export class ProjectAssetStore {
     const project = await verifiedManagedProject(this.#projectsRoot, projectId);
     const publicDirectory = await verifiedDirectory(safeChild(project, "public"), "Project public directory");
     const assetsDirectory = await verifiedDirectory(safeChild(publicDirectory, "assets"), "Project assets directory");
-    const manifest = runtimeAssetManifestSchema.parse(
-      JSON.parse(await readFile(safeChild(assetsDirectory, "manifest.json"), "utf8")) as unknown,
-    );
+    const manifest = runtimeAssetManifestSchema.parse(await readVerifiedJson(
+      safeChild(assetsDirectory, "manifest.json"),
+      assetsDirectory,
+      "Runtime asset manifest",
+    ));
     if (manifest.projectId !== projectId) throw new Error("Runtime asset manifest project ID does not match.");
     for (const entry of manifest.assets) {
       const target = safeChild(publicDirectory, entry.path);
@@ -75,20 +101,15 @@ export class ProjectAssetStore {
 
     const metadataDirectory = await verifiedDirectory(safeChild(realProject, ".gameforge"), "Project metadata directory");
     const lockPath = safeChild(metadataDirectory, "assets.lock");
-    let lock;
-    try {
-      lock = await open(lockPath, "wx");
-    } catch (error) {
-      if (isNodeError(error, "EEXIST")) throw new Error("Asset manifest is locked by another writer.");
-      throw error;
-    }
+    const recoveryPath = safeChild(metadataDirectory, "assets.lock.recovery");
+    const lock = await acquireAssetLock(lockPath, recoveryPath, this.#lockRuntime);
 
     try {
       const publicDirectory = await verifiedDirectory(safeChild(realProject, "public"), "Project public directory");
       const assetsDirectory = await verifiedDirectory(safeChild(publicDirectory, "assets"), "Project assets directory");
       const manifestPath = safeChild(assetsDirectory, "manifest.json");
       const manifest = runtimeAssetManifestSchema.parse(
-        JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
+        await readVerifiedJson(manifestPath, assetsDirectory, "Runtime asset manifest"),
       );
       if (manifest.projectId !== projectId) throw new Error("Runtime asset manifest project ID does not match.");
       if (manifest.assets.some((asset) => asset.assetId === provenance.assetId)) {
@@ -135,9 +156,150 @@ export class ProjectAssetStore {
 
       return { entry, manifestRevision: nextManifest.revision };
     } finally {
-      await lock.close();
-      await unlink(lockPath).catch(() => undefined);
+      await releaseAssetLock(lockPath, lock);
     }
+  }
+}
+
+type OwnedAssetLock = { handle: FileHandle; token: string };
+
+async function acquireAssetLock(
+  lockPath: string,
+  recoveryPath: string,
+  runtime: AssetLockRuntime,
+): Promise<OwnedAssetLock> {
+  try {
+    return await createAssetLock(lockPath, runtime);
+  } catch (error) {
+    if (!isNodeError(error, "EEXIST")) throw error;
+  }
+
+  const recovery = await acquireRecoveryGuard(recoveryPath, runtime);
+  try {
+    const candidate = await readAssetLock(lockPath);
+    if (candidate.kind === "missing") return await createAssetLock(lockPath, runtime);
+    if (candidate.kind === "invalid") {
+      throw new Error("Asset manifest lock has unknown or legacy metadata; refusing automatic recovery.");
+    }
+    if (candidate.metadata.hostname !== runtime.hostname) {
+      throw new Error("Asset manifest lock belongs to another host; refusing automatic recovery.");
+    }
+    const age = runtime.now() - candidate.metadata.createdAtMs;
+    if (!Number.isSafeInteger(age) || age < LOCK_STALE_AFTER_MS) {
+      throw new Error("Asset manifest lock is too recent for crash recovery.");
+    }
+    if (runtime.isProcessAlive(candidate.metadata.pid)) {
+      throw new Error("Asset manifest is locked by an active writer.");
+    }
+    const current = await readAssetLock(lockPath);
+    if (current.kind !== "valid" || current.metadata.token !== candidate.metadata.token) {
+      throw new Error("Asset manifest lock changed during recovery; refusing to remove it.");
+    }
+    await unlink(lockPath);
+    try {
+      return await createAssetLock(lockPath, runtime);
+    } catch (error) {
+      if (isNodeError(error, "EEXIST")) throw new Error("Asset manifest lock was acquired by another writer during recovery.");
+      throw error;
+    }
+  } finally {
+    await releaseAssetLock(recoveryPath, recovery);
+  }
+}
+
+async function acquireRecoveryGuard(pathname: string, runtime: AssetLockRuntime): Promise<OwnedAssetLock> {
+  try {
+    return await createAssetLock(pathname, runtime);
+  } catch (error) {
+    if (!isNodeError(error, "EEXIST")) throw error;
+  }
+  const candidate = await readAssetLock(pathname);
+  if (candidate.kind !== "valid" || candidate.metadata.hostname !== runtime.hostname) {
+    throw new Error("Asset manifest lock recovery guard is active or has unknown ownership.");
+  }
+  const age = runtime.now() - candidate.metadata.createdAtMs;
+  if (!Number.isSafeInteger(age) || age < LOCK_STALE_AFTER_MS || runtime.isProcessAlive(candidate.metadata.pid)) {
+    throw new Error("Asset manifest lock recovery is already in progress.");
+  }
+  const current = await readAssetLock(pathname);
+  if (current.kind !== "valid" || current.metadata.token !== candidate.metadata.token) {
+    throw new Error("Asset manifest recovery guard changed; refusing to remove it.");
+  }
+  await unlink(pathname);
+  try {
+    return await createAssetLock(pathname, runtime);
+  } catch (error) {
+    if (isNodeError(error, "EEXIST")) throw new Error("Asset manifest lock recovery was claimed by another writer.");
+    throw error;
+  }
+}
+
+async function createAssetLock(lockPath: string, runtime: AssetLockRuntime): Promise<OwnedAssetLock> {
+  const handle = await open(lockPath, "wx", 0o600);
+  try {
+    const metadata = assetLockMetadataSchema.parse({
+      version: 1,
+      token: randomUUID(),
+      pid: process.pid,
+      hostname: runtime.hostname,
+      createdAtMs: runtime.now(),
+    });
+    await handle.writeFile(`${JSON.stringify(metadata)}\n`, "utf8");
+    await handle.sync();
+    return { handle, token: metadata.token };
+  } catch (error) {
+    await handle.close().catch(() => undefined);
+    await unlink(lockPath).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function releaseAssetLock(lockPath: string, lock: OwnedAssetLock): Promise<void> {
+  try {
+    const handleInfo = await lock.handle.stat({ bigint: true });
+    const pathInfo = await lstat(lockPath, { bigint: true }).catch(() => undefined);
+    const candidate = await readAssetLock(lockPath);
+    const owned = pathInfo !== undefined && pathInfo.isFile() && !pathInfo.isSymbolicLink() &&
+      pathInfo.dev === handleInfo.dev && pathInfo.ino === handleInfo.ino &&
+      candidate.kind === "valid" && candidate.metadata.token === lock.token;
+    if (owned) {
+      await unlink(lockPath).catch((error: unknown) => {
+        if (!isNodeError(error, "ENOENT")) throw error;
+      });
+    }
+  } finally {
+    await lock.handle.close();
+  }
+}
+
+type AssetLockRead =
+  | { kind: "missing" }
+  | { kind: "invalid" }
+  | { kind: "valid"; metadata: AssetLockMetadata };
+
+async function readAssetLock(lockPath: string): Promise<AssetLockRead> {
+  const info = await lstat(lockPath).catch((error: unknown) => {
+    if (isNodeError(error, "ENOENT")) return undefined;
+    throw error;
+  });
+  if (info === undefined) return { kind: "missing" };
+  if (!info.isFile() || info.isSymbolicLink() || info.size < 1 || info.size > LOCK_METADATA_MAX_BYTES) {
+    return { kind: "invalid" };
+  }
+  try {
+    const parsed = assetLockMetadataSchema.safeParse(JSON.parse(await readFile(lockPath, "utf8")) as unknown);
+    return parsed.success ? { kind: "valid", metadata: parsed.data } : { kind: "invalid" };
+  } catch {
+    return { kind: "invalid" };
+  }
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !isNodeError(error, "ESRCH");
   }
 }
 
@@ -153,7 +315,9 @@ async function verifiedManagedProject(projectsRoot: string, projectId: string): 
     throw new Error("Generated project escaped the configured projects root.");
   }
   const managedPath = safeChild(realProject, ".gameforge/manifest.json");
-  const managed = managedProjectSchema.parse(JSON.parse(await readFile(managedPath, "utf8")) as unknown);
+  const managed = managedProjectSchema.parse(
+    await readVerifiedJson(managedPath, realProject, "Generated project manifest"),
+  );
   if (managed.projectId !== projectId) throw new Error("Generated project manifest ID does not match.");
   return realProject;
 }
@@ -299,9 +463,43 @@ async function assertPathMatchesHandle(
     throw new Error(`Runtime asset file is missing or inconsistent: ${assetId}`);
   }
   const realTarget = await realpath(target);
-  if (!realTarget.startsWith(`${publicDirectory}${path.sep}`)) {
+  if (!isStrictChild(publicDirectory, realTarget)) {
     throw new Error(`Runtime asset file escaped the project: ${assetId}`);
   }
+}
+
+async function readVerifiedJson(target: string, root: string, label: string): Promise<unknown> {
+  const handle = await open(target, "r").catch(() => undefined);
+  if (handle === undefined) throw new Error(`${label} must be an existing real file.`);
+  try {
+    const handleInfo = await handle.stat({ bigint: true });
+    const pathInfo = await lstat(target, { bigint: true }).catch(() => undefined);
+    if (
+      !handleInfo.isFile() || pathInfo === undefined || !pathInfo.isFile() || pathInfo.isSymbolicLink() ||
+      pathInfo.dev !== handleInfo.dev || pathInfo.ino !== handleInfo.ino
+    ) {
+      throw new Error(`${label} must be an existing real file.`);
+    }
+    const realTarget = await realpath(target);
+    if (!isStrictChild(root, realTarget)) throw new Error(`${label} escaped its project directory.`);
+    const contents = await handle.readFile("utf8");
+    const after = await handle.stat({ bigint: true });
+    if (
+      after.dev !== handleInfo.dev || after.ino !== handleInfo.ino || after.size !== handleInfo.size ||
+      after.mtimeNs !== handleInfo.mtimeNs || after.ctimeNs !== handleInfo.ctimeNs
+    ) {
+      throw new Error(`${label} changed while being read.`);
+    }
+    return JSON.parse(contents) as unknown;
+  } finally {
+    await handle.close();
+  }
+}
+
+function isStrictChild(root: string, candidate: string): boolean {
+  const normalizedRoot = path.resolve(root).toLowerCase();
+  const normalizedCandidate = path.resolve(candidate).toLowerCase();
+  return normalizedCandidate.startsWith(`${normalizedRoot}${path.sep}`);
 }
 
 async function sha256Handle(handle: FileHandle): Promise<string> {

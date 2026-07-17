@@ -21,3 +21,7 @@
 交互 `watch` 新增方向键、j/k、PageUp/PageDown 滚动和可见行范围；Escape 序列支持跨 stdin data chunk 拼接，连续 `jj` 会产生两次滚动。空摘要范围显示 `0-0/0`，非 TTY/JSON 输出仍不裁剪、不含 ANSI。TUI 包当前 12 项测试通过。
 
 整仓验证：214 项测试、check、build、bundle budget、MCP doctor、browser doctor 和 `git diff --check` 均通过。`bun audit` 前两次因 registry `ConnectionClosed` 未得到结果，第三次成功返回 0 vulnerabilities；失败请求未被写成安全通过。
+
+## 当前整仓复验
+
+2026-07-18 在 Windows 工作树再次执行 frozen install、check、test、build、bundle budget、MCP/browser/desktop doctor、audit 和 `git diff --check`，全部通过。当前整仓为 239 项测试，其中 TUI 6 个测试文件、16 项测试；`bun audit --prod` 返回 0 vulnerabilities。这里更新的是本地回归数字，不替代仍待取得的 GitHub Ubuntu/macOS/Windows runner 证据。

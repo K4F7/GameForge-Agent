@@ -136,6 +136,8 @@ GAMEFORGE_CHROME_EXECUTABLE=C:\Program Files\Google\Chrome\Application\chrome.ex
 
 同一输出目录还注册 `get_project_assets`，用于 CodeArts 重启后读取并验证已落盘 Manifest，补发缺失的 `asset.ready`，而不是重复生成或下载已有素材。
 
+Asset Store 的互斥锁包含 0600 owner metadata。MCP 崩溃遗留的锁只有在 metadata 完整、hostname 与当前机器一致、PID 明确不存在且创建时间超过 10 分钟时才自动恢复；活进程、近期锁、异地主机、空锁或旧格式一律保守拒绝。不要用脚本无条件删除 `.gameforge/assets.lock`。
+
 验收工具只处理生成器托管的项目，动作脚本最多 100 步；运行时阻断外部网络，捕获控制台错误、页面异常和失败请求，并等待 telemetry 与非空白 Canvas 首帧后再读取 `window.__GAMEFORGE_TEST__` 和截图，避免把刚创建但尚未渲染的 Canvas 误报为通过。证据写入项目的 `.gameforge/verification/`。CodeArts 将验收摘要发布为 `verification.ready`，Workbench 显示胜负状态、诊断计数和项目内证据路径；绝对路径与诊断全文不进入浏览器事件流。CodeArts 可将 `start_game_preview` 返回的 URL 原样发布为 `preview.ready` RunEvent；Workbench 收到后自动切换预览。事件 URL 只接受 HTTPS 或 loopback HTTP，iframe 使用受限 sandbox。
 
 启用 Run Relay 生命周期工具：
