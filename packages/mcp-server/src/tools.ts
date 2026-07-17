@@ -427,6 +427,7 @@ async function gamePreviewResult(operation: () => Promise<unknown>): Promise<Cal
 
 export type ProjectGenerator = {
   execute(request: ProjectGenerationRequest): Promise<ProjectGenerationResult>;
+  recover?(projectId: string): Promise<{ projectId: string; status: "clean" | "rolled-back" | "committed"; planSha256: string }>;
 };
 
 export async function generateGameProjectTool(
@@ -448,6 +449,23 @@ export async function generateGameProjectTool(
           message: error instanceof Error ? error.message : "Project generation failed.",
         }),
       }],
+    };
+  }
+}
+
+export async function recoverGameProjectUpdateTool(
+  generator: Required<Pick<ProjectGenerator, "recover">>,
+  projectId: string,
+): Promise<CallToolResult> {
+  try {
+    return { content: [{ type: "text", text: JSON.stringify(await generator.recover(projectId), null, 2) }] };
+  } catch (error) {
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify({
+        error: "project_update_recovery_failed",
+        message: error instanceof Error ? error.message : "Project update recovery failed.",
+      }) }],
     };
   }
 }

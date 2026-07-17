@@ -35,6 +35,7 @@ import {
   searchSoundAssetTool,
   draftGameSpecTool,
   generateGameProjectTool,
+  recoverGameProjectUpdateTool,
   importSoundAssetTool,
   materializeVoiceJobTool,
   queryVoiceJobTool,
@@ -94,7 +95,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     },
     engineering: {
       assetStore: options.assetStore?.read !== undefined && options.assetStore.recover !== undefined,
-      generator: options.projectGenerator !== undefined,
+      generator: options.projectGenerator?.recover !== undefined,
       verifier: options.projectVerifier !== undefined,
       preview: options.projectPreviewManager !== undefined,
       runRelay: options.runRelayClient !== undefined,
@@ -188,6 +189,20 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         inputSchema: projectGenerationRequestSchema.shape,
       },
       async (request) => generateGameProjectTool(projectGenerator, request),
+    );
+  }
+
+  if (options.projectGenerator?.recover !== undefined) {
+    const recovery = { recover: options.projectGenerator.recover.bind(options.projectGenerator) };
+    server.registerTool(
+      "recover_game_project_update",
+      {
+        title: "Recover an interrupted managed project update",
+        description:
+          "Under the managed project update lock, validate the persisted transaction and either roll it back or finish cleanup according to the managed manifest. No model or Provider is called.",
+        inputSchema: { projectId: projectIdSchema },
+      },
+      async ({ projectId }) => recoverGameProjectUpdateTool(recovery, projectId),
     );
   }
 

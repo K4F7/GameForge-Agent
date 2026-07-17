@@ -1,6 +1,7 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { hostname } from "node:os";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { GameProjectGenerator } from "./generator.js";
@@ -158,6 +159,98 @@ describe("GameProjectGenerator", () => {
       expectedPlanSha256: created.plan.planSha256,
     })).resolves.toMatchObject({ operation: "update" });
     await expect(readFile(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rolls back or finalizes a persisted managed update from the manifest commit point", async () => {
+    for (const state of ["old", "new"] as const) {
+      const { generator, root } = await createGenerator();
+      const projectId = `txn-${state}`;
+      const project = path.join(root, projectId);
+      const oldSpec = { ...spec, title: `Old ${state}` };
+      const newSpec = { ...spec, title: `New ${state}` };
+      const created = await generator.execute({ projectId, spec: oldSpec, mode: "apply" });
+      const manifestPath = path.join(project, ".gameforge", "manifest.json");
+      const specPath = path.join(project, "game-spec.json");
+      const oldManifestText = await readFile(manifestPath, "utf8");
+      const oldManifest = JSON.parse(oldManifestText) as { planSha256: string; files: Array<{ path: string; bytes: number; sha256: string }> };
+      const oldSpecText = await readFile(specPath, "utf8");
+      await generator.execute({
+        projectId,
+        spec: newSpec,
+        operation: "update",
+        mode: "apply",
+        expectedPlanSha256: created.plan.planSha256,
+      });
+      const newManifestText = await readFile(manifestPath, "utf8");
+      const newManifest = JSON.parse(newManifestText) as { planSha256: string; files: Array<{ path: string; bytes: number; sha256: string }> };
+      const transactionId = state === "old"
+        ? "00000000-0000-4000-8000-000000000061"
+        : "00000000-0000-4000-8000-000000000062";
+      const oldFile = oldManifest.files.find((file) => file.path === "game-spec.json");
+      const newFile = newManifest.files.find((file) => file.path === "game-spec.json");
+      if (oldFile === undefined || newFile === undefined) throw new Error("Test manifest lacks game-spec metadata.");
+      await writeFile(`${specPath}.${transactionId}.bak`, oldSpecText);
+      if (state === "old") await writeFile(manifestPath, oldManifestText);
+      const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+      await writeFile(path.join(project, ".gameforge", "update.transaction.json"), `${JSON.stringify({
+        version: 1,
+        transactionId,
+        projectId,
+        oldManifestSha256: hash(oldManifestText),
+        newManifestSha256: hash(newManifestText),
+        oldPlanSha256: oldManifest.planSha256,
+        newPlanSha256: newManifest.planSha256,
+        files: [{ path: "game-spec.json", action: "update", old: oldFile, new: newFile }],
+      }, null, 2)}\n`);
+
+      await expect(generator.recover(projectId)).resolves.toMatchObject({
+        projectId,
+        status: state === "old" ? "rolled-back" : "committed",
+        planSha256: state === "old" ? oldManifest.planSha256 : newManifest.planSha256,
+      });
+      expect(JSON.parse(await readFile(specPath, "utf8"))).toMatchObject({ title: state === "old" ? oldSpec.title : newSpec.title });
+      await expect(readFile(`${specPath}.${transactionId}.bak`)).rejects.toMatchObject({ code: "ENOENT" });
+    }
+  });
+
+  it("recovers a managed delete without touching unknown files", async () => {
+    for (const state of ["old", "new"] as const) {
+      const { generator, root } = await createGenerator();
+      const projectId = `delete-${state}`;
+      const project = path.join(root, projectId);
+      await generator.execute({ projectId, spec, mode: "apply" });
+      await writeFile(path.join(project, "NOTES.md"), "keep me\n");
+      const manifestPath = path.join(project, ".gameforge", "manifest.json");
+      const oldManifestText = await readFile(manifestPath, "utf8");
+      const oldManifest = JSON.parse(oldManifestText) as {
+        planSha256: string; files: Array<{ path: string; bytes: number; sha256: string }>;
+      };
+      const oldFile = oldManifest.files.find((file) => file.path === ".npmrc");
+      if (oldFile === undefined) throw new Error("Test manifest lacks .npmrc metadata.");
+      const newManifest = { ...oldManifest, planSha256: "b".repeat(64), files: oldManifest.files.filter((file) => file.path !== ".npmrc") };
+      const newManifestText = `${JSON.stringify(newManifest, null, 2)}\n`;
+      const transactionId = state === "old"
+        ? "00000000-0000-4000-8000-000000000063"
+        : "00000000-0000-4000-8000-000000000064";
+      const npmrcPath = path.join(project, ".npmrc");
+      await rename(npmrcPath, `${npmrcPath}.${transactionId}.bak`);
+      if (state === "new") await writeFile(manifestPath, newManifestText);
+      const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+      await writeFile(path.join(project, ".gameforge", "update.transaction.json"), `${JSON.stringify({
+        version: 1,
+        transactionId,
+        projectId,
+        oldManifestSha256: hash(oldManifestText),
+        newManifestSha256: hash(newManifestText),
+        oldPlanSha256: oldManifest.planSha256,
+        newPlanSha256: newManifest.planSha256,
+        files: [{ path: ".npmrc", action: "delete", old: oldFile }],
+      }, null, 2)}\n`);
+      await expect(generator.recover(projectId)).resolves.toMatchObject({ status: state === "old" ? "rolled-back" : "committed" });
+      if (state === "old") expect(await readFile(npmrcPath, "utf8")).toContain("registry=");
+      else await expect(readFile(npmrcPath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await readFile(path.join(project, "NOTES.md"), "utf8")).toBe("keep me\n");
+    }
   });
 
   it("keeps untrusted GameSpec text out of executable source", async () => {

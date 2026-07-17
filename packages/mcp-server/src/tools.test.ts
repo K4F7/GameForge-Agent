@@ -9,6 +9,7 @@ import {
   getProjectAssetsTool,
   recoverProjectAssetsTool,
   generateGameProjectTool,
+  recoverGameProjectUpdateTool,
   importSoundAssetTool,
   completeGameRunTool,
   createGameRunTool,
@@ -177,6 +178,19 @@ describe("validation tool handlers", () => {
       mode: "dry-run",
       plan: { projectId: "safety-sprint", files: [{ path: "src/main.ts" }] },
     });
+  });
+
+  it("recovers one managed project update without invoking a model or provider", async () => {
+    const calls: string[] = [];
+    const result = await recoverGameProjectUpdateTool({
+      async recover(projectId) {
+        calls.push(projectId);
+        return { projectId, status: "rolled-back", planSha256: "a".repeat(64) };
+      },
+    }, "safety-sprint");
+    expect(result.isError).not.toBe(true);
+    expect(calls).toEqual(["safety-sprint"]);
+    expect(readJsonResult(result)).toMatchObject({ status: "rolled-back" });
   });
 
   it("performs exactly one relay operation per lifecycle tool call", async () => {

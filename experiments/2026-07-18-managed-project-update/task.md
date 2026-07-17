@@ -14,3 +14,4 @@
 6. Manifest 最后切换，普通异常逆序回滚；
 7. update lock 含 owner metadata，只保守恢复同机、过期且死亡 PID 的锁；
 8. MCP 与 CodeArts Skill 保持 dry-run → ask → apply，事件仍由 CodeArts 连续发布。
+9. update 在任何模板临时文件前写持久事务日志；显式恢复按旧/新 Manifest 提交点整批回滚或清理，不调用模型或 Provider。

@@ -1,9 +1,11 @@
 import {
   generatedProjectPlanSchema,
+  generatedProjectFileSchema,
   managedGeneratedProjectManifestSchema,
   projectUpdateSummarySchema,
   projectGenerationRequestSchema,
   projectGenerationResultSchema,
+  projectIdSchema,
   type GameSpec,
   type GeneratedProjectPlan,
   type ProjectGenerationRequest,
@@ -15,6 +17,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { link, mkdir, lstat, open, readFile, realpath, rename, rm, unlink } from "node:fs/promises";
 import { hostname as systemHostname } from "node:os";
 import path from "node:path";
+import { z } from "zod";
 import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
 
 const GENERATOR_VERSION = "0.7.0";
@@ -30,10 +33,33 @@ type UpdateInspection = {
 
 const PRESERVED_UPDATE_PATHS = new Set(["public/assets/manifest.json"]);
 const UPDATE_LOCK_STALE_AFTER_MS = 10 * 60 * 1000;
+const UPDATE_TRANSACTION_MAX_BYTES = 128 * 1024;
 type OwnedUpdateLock = { handle: Awaited<ReturnType<typeof open>>; token: string };
+const updateTransactionFileSchema = z.strictObject({
+  path: generatedProjectFileSchema.shape.path,
+  action: z.enum(["add", "update", "delete"]),
+  old: generatedProjectFileSchema.optional(),
+  new: generatedProjectFileSchema.optional(),
+});
+const updateTransactionSchema = z.strictObject({
+  version: z.literal(1),
+  transactionId: z.string().uuid(),
+  projectId: projectIdSchema,
+  oldManifestSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  newManifestSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  oldPlanSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  newPlanSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  files: z.array(updateTransactionFileSchema).max(30),
+});
+type UpdateTransaction = z.infer<typeof updateTransactionSchema>;
 
 export type GameProjectGeneratorOptions = {
   outputRoot: string;
+};
+export type ProjectUpdateRecoveryResult = {
+  projectId: string;
+  status: "clean" | "rolled-back" | "committed";
+  planSha256: string;
 };
 
 export class GameProjectGenerator {
@@ -96,6 +122,23 @@ export class GameProjectGenerator {
 
     const outputPath = await this.#apply(input.projectId, generated.files);
     return projectGenerationResultSchema.parse({ mode: "apply", operation: "create", plan, outputPath });
+  }
+
+  async recover(projectIdInput: string): Promise<ProjectUpdateRecoveryResult> {
+    const projectId = projectIdSchema.parse(projectIdInput);
+    const root = await verifiedRoot(this.#outputRoot);
+    const target = await verifiedManagedProject(root, projectId);
+    const lockPath = safeRelativeFile(target, ".gameforge/update.lock");
+    const lock = await acquireUpdateLock(lockPath);
+    try {
+      const status = await recoverProjectUpdate(target, projectId);
+      const manifest = managedGeneratedProjectManifestSchema.parse(JSON.parse(
+        await readManagedText(target, ".gameforge/manifest.json"),
+      ) as unknown);
+      return { projectId, status, planSha256: manifest.planSha256 };
+    } finally {
+      await releaseUpdateLock(lockPath, lock);
+    }
   }
 
   async #apply(projectId: string, files: ReadonlyArray<GeneratedFile>): Promise<string> {
@@ -209,6 +252,41 @@ export class GameProjectGenerator {
       const desired = new Map(files.map((file) => [file.path, file]));
       const current = new Map(inspection.manifest.files.map((file) => [file.path, file]));
       const transactionId = randomUUID();
+      const managedManifest = desired.get(".gameforge/manifest.json");
+      if (managedManifest === undefined) throw new Error("Generated update manifest is missing from the plan.");
+      const transactionPath = safeRelativeFile(inspection.target, ".gameforge/update.transaction.json");
+      if (await exists(transactionPath)) {
+        throw new Error("Generated project has an unfinished update transaction; recover it before applying another update.");
+      }
+      const transaction = updateTransactionSchema.parse({
+        version: 1,
+        transactionId,
+        projectId,
+        oldManifestSha256: inspection.manifestFileSha256,
+        newManifestSha256: managedManifest.sha256,
+        oldPlanSha256: inspection.manifest.planSha256,
+        newPlanSha256: managedManifestContent(managedManifest.content).planSha256,
+        files: [
+          ...inspection.summary.updatedPaths.map((filePath) => {
+            const old = current.get(filePath);
+            const next = desired.get(filePath);
+            if (next === undefined) throw new Error(`Generated update file is missing from the plan: ${filePath}`);
+            return {
+              path: filePath,
+              action: old === undefined ? "add" as const : "update" as const,
+              ...(old === undefined ? {} : { old }),
+              new: generatedFileMetadata(next),
+            };
+          }),
+          ...inspection.summary.deletedPaths.map((filePath) => ({
+            path: filePath,
+            action: "delete" as const,
+            old: current.get(filePath),
+          })),
+        ],
+      });
+      validateUpdateTransaction(transaction);
+      await writeSynced(transactionPath, `${JSON.stringify(transaction, null, 2)}\n`);
       const applied: Array<{ destination: string; backup?: string }> = [];
       const temporaries: string[] = [];
       try {
@@ -248,8 +326,6 @@ export class GameProjectGenerator {
           await rename(destination, backup);
           applied.push({ destination, backup });
         }
-        const managedManifest = desired.get(".gameforge/manifest.json");
-        if (managedManifest === undefined) throw new Error("Generated update manifest is missing from the plan.");
         const manifestDestination = await safeManagedDestination(inspection.target, managedManifest.path);
         const manifestTemporary = `${manifestDestination}.${transactionId}.tmp`;
         const manifestBackup = `${manifestDestination}.${transactionId}.bak`;
@@ -276,11 +352,17 @@ export class GameProjectGenerator {
         if (rollbackErrors.length > 0) {
           throw new AggregateError([error, ...rollbackErrors], "Generated project update failed and rollback encountered errors.");
         }
+        await rm(transactionPath, { force: true }).catch(() => undefined);
         throw error;
       }
+      let cleanupComplete = true;
       for (const item of applied) {
-        if (item.backup !== undefined) await rm(item.backup, { force: true }).catch(() => undefined);
+        if (item.backup !== undefined) {
+          const removed = await rm(item.backup, { force: true }).then(() => true, () => false);
+          cleanupComplete &&= removed;
+        }
       }
+      if (cleanupComplete) await rm(transactionPath, { force: true }).catch(() => undefined);
       return { outputPath: inspection.target, update: inspection.summary };
     } finally {
       await releaseUpdateLock(lockPath, lock);
@@ -412,6 +494,181 @@ async function verifiedRoot(outputRoot: string): Promise<string> {
     throw new Error("Game project output root must be a real directory, not a symbolic link.");
   }
   return realpath(outputRoot);
+}
+
+async function verifiedManagedProject(root: string, projectId: string): Promise<string> {
+  const target = safeChild(root, projectId);
+  const info = await lstat(target).catch(() => undefined);
+  if (info === undefined || !info.isDirectory() || info.isSymbolicLink()) {
+    throw new Error(`Generated project does not exist: ${projectId}`);
+  }
+  const realTarget = await realpath(target);
+  if (path.dirname(realTarget).toLowerCase() !== root.toLowerCase()) {
+    throw new Error("Generated project escaped the configured output root.");
+  }
+  return realTarget;
+}
+
+function generatedFileMetadata(file: GeneratedFile): { path: string; bytes: number; sha256: string } {
+  return { path: file.path, bytes: file.bytes, sha256: file.sha256 };
+}
+
+function managedManifestContent(content: string): ManagedGeneratedProjectManifest {
+  return managedGeneratedProjectManifestSchema.parse(JSON.parse(content) as unknown);
+}
+
+function validateUpdateTransaction(transaction: UpdateTransaction): void {
+  const paths = new Set<string>();
+  for (const item of transaction.files) {
+    if (paths.has(item.path)) throw new Error(`Generated update transaction repeats a path: ${item.path}`);
+    paths.add(item.path);
+    if (item.old?.path !== undefined && item.old.path !== item.path) throw new Error("Update old metadata path mismatch.");
+    if (item.new?.path !== undefined && item.new.path !== item.path) throw new Error("Update new metadata path mismatch.");
+    if (
+      (item.action === "add" && (item.old !== undefined || item.new === undefined)) ||
+      (item.action === "update" && (item.old === undefined || item.new === undefined)) ||
+      (item.action === "delete" && (item.old === undefined || item.new !== undefined))
+    ) throw new Error(`Generated update transaction metadata is invalid for ${item.action}: ${item.path}`);
+    if (PRESERVED_UPDATE_PATHS.has(item.path) || item.path === ".gameforge/manifest.json") {
+      throw new Error(`Generated update transaction contains a protected path: ${item.path}`);
+    }
+  }
+}
+
+async function recoverProjectUpdate(
+  target: string,
+  projectId: string,
+): Promise<"clean" | "rolled-back" | "committed"> {
+  const transactionPath = safeRelativeFile(target, ".gameforge/update.transaction.json");
+  const info = await lstat(transactionPath).catch((error: unknown) => {
+    if (isNodeError(error, "ENOENT")) return undefined;
+    throw error;
+  });
+  if (info === undefined) return "clean";
+  if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || info.size < 1 || info.size > UPDATE_TRANSACTION_MAX_BYTES) {
+    throw new Error("Generated update transaction log is invalid.");
+  }
+  const transaction = updateTransactionSchema.parse(JSON.parse(await readManagedText(
+    target,
+    ".gameforge/update.transaction.json",
+  )) as unknown);
+  validateUpdateTransaction(transaction);
+  if (transaction.projectId !== projectId) throw new Error("Generated update transaction belongs to another project.");
+  const manifestPath = safeRelativeFile(target, ".gameforge/manifest.json");
+  const manifestBackup = `${manifestPath}.${transaction.transactionId}.bak`;
+  const manifestTemporary = `${manifestPath}.${transaction.transactionId}.tmp`;
+  const manifestHash = await managedFileHash(target, ".gameforge/manifest.json");
+  const committed = manifestHash === transaction.newManifestSha256;
+  const rolledBack = manifestHash === transaction.oldManifestSha256 || (
+    manifestHash === undefined && await rawFileMatches(manifestBackup, transaction.oldManifestSha256)
+  );
+  if (!committed && !rolledBack) {
+    throw new Error("Generated update transaction does not match the old or new managed manifest.");
+  }
+
+  if (committed) {
+    for (const item of transaction.files) await finalizeUpdateItem(target, transaction.transactionId, item);
+    await removeRawIfMatches(manifestBackup, transaction.oldManifestSha256);
+    await removeRawIfMatches(manifestTemporary, transaction.newManifestSha256);
+    await rm(transactionPath);
+    return "committed";
+  }
+
+  for (const item of [...transaction.files].reverse()) {
+    await rollbackUpdateItem(target, transaction.transactionId, item);
+  }
+  if (manifestHash === undefined) {
+    await restoreRawBackup(manifestBackup, manifestPath, transaction.oldManifestSha256);
+  } else {
+    await removeRawIfMatches(manifestBackup, transaction.oldManifestSha256);
+  }
+  await removeRawIfMatches(manifestTemporary, transaction.newManifestSha256);
+  await rm(transactionPath);
+  return "rolled-back";
+}
+
+async function finalizeUpdateItem(
+  root: string,
+  transactionId: string,
+  item: z.infer<typeof updateTransactionFileSchema>,
+): Promise<void> {
+  const destination = safeRelativeFile(root, item.path);
+  const temporary = `${destination}.${transactionId}.tmp`;
+  const backup = `${destination}.${transactionId}.bak`;
+  if (item.action === "delete") {
+    if (await exists(destination)) throw new Error(`Deleted managed file reappeared during recovery: ${item.path}`);
+  } else {
+    await assertGeneratedFile(root, item.new!, "new");
+  }
+  if (item.old !== undefined) await removeRawIfMatches(backup, item.old.sha256);
+  if (item.new !== undefined) await removeRawIfMatches(temporary, item.new.sha256);
+}
+
+async function rollbackUpdateItem(
+  root: string,
+  transactionId: string,
+  item: z.infer<typeof updateTransactionFileSchema>,
+): Promise<void> {
+  const destination = safeRelativeFile(root, item.path);
+  const temporary = `${destination}.${transactionId}.tmp`;
+  const backup = `${destination}.${transactionId}.bak`;
+  if (item.action === "add") {
+    if (await exists(destination)) await removeGeneratedIfMatches(root, item.new!, "new");
+  } else if (await exists(backup)) {
+    if (await exists(destination)) {
+      if (item.action === "delete") {
+        throw new Error(`Deleted managed file reappeared during rollback: ${item.path}`);
+      }
+      await removeGeneratedIfMatches(root, item.new!, "new");
+    }
+    await restoreRawBackup(backup, destination, item.old!.sha256);
+  } else {
+    await assertGeneratedFile(root, item.old!, "old");
+  }
+  if (item.new !== undefined) await removeRawIfMatches(temporary, item.new.sha256);
+}
+
+async function assertGeneratedFile(
+  root: string,
+  metadata: { path: string; bytes: number; sha256: string },
+  label: string,
+): Promise<void> {
+  const target = safeRelativeFile(root, metadata.path);
+  const info = await lstat(target).catch(() => undefined);
+  if (info === undefined || !info.isFile() || info.isSymbolicLink() || info.size !== metadata.bytes) {
+    throw new Error(`Generated update ${label} file is missing or inconsistent: ${metadata.path}`);
+  }
+  if (await managedFileHash(root, metadata.path) !== metadata.sha256) {
+    throw new Error(`Generated update ${label} file hash is inconsistent: ${metadata.path}`);
+  }
+}
+
+async function removeGeneratedIfMatches(
+  root: string,
+  metadata: { path: string; bytes: number; sha256: string },
+  label: string,
+): Promise<void> {
+  await assertGeneratedFile(root, metadata, label);
+  await rm(safeRelativeFile(root, metadata.path));
+}
+
+async function rawFileMatches(target: string, expectedHash: string): Promise<boolean> {
+  const info = await lstat(target).catch(() => undefined);
+  if (info === undefined || !info.isFile() || info.isSymbolicLink()) return false;
+  return sha256(await readFile(target, "utf8")) === expectedHash;
+}
+
+async function removeRawIfMatches(target: string, expectedHash: string): Promise<void> {
+  if (!await exists(target)) return;
+  if (!await rawFileMatches(target, expectedHash)) throw new Error(`Generated update artifact hash is inconsistent: ${target}`);
+  await rm(target);
+}
+
+async function restoreRawBackup(backup: string, destination: string, expectedHash: string): Promise<void> {
+  if (!await rawFileMatches(backup, expectedHash)) throw new Error("Generated update backup hash is inconsistent.");
+  if (await exists(destination)) throw new Error("Generated update destination exists during rollback.");
+  await link(backup, destination);
+  await unlink(backup);
 }
 
 async function readManagedText(root: string, filePath: string): Promise<string> {

@@ -80,6 +80,8 @@ bun run tui -- list
 
 `generate_game_project` 除安全新建外也支持受管更新。更新必须先 dry-run，再以返回的当前 plan SHA-256 做 apply CAS；只更新 Manifest 中哈希未变的生成器文件，运行时资产、`bun.lock`、未知文件和用户已修改代码都不会被覆盖。发生冲突时没有 force 开关，由 CodeArts 审阅并显式合并。
 
+受管 update 在任何模板临时文件写入前创建 0600 的 `.gameforge/update.transaction.json`，记录 add/update/delete 的旧/新哈希和旧/新 Manifest 提交点。进程中断后，`recover_game_project_update` 会在 update lock 内以当前托管 Manifest 哈希决定整批回滚或完成清理；第三种状态、陌生路径、符号链接或哈希冲突都会拒绝。恢复工具不调用模型、媒体 Provider 或 Relay，OpenCode 权限为 `ask`。
+
 示例游戏和生成模板先输出轻量加载壳，再异步加载 Phaser 游戏块；这会显著缩小首屏入口并改善首次绘制与长期缓存，但不会虚报 Phaser 总下载量减少。`bun run bundle:check` 根据 Vite manifest 分别约束初始、异步和总 raw/gzip 体积，预算超出时返回非零退出码。
 
 第二轮 Bun TUI MVP 位于 `apps/tui`，复用严格 Schema 的 Run Relay Client，不包含 Agent 循环。它支持提交/列出/查看 Task、回放/停止 Run，以及通过 SSE 实时观察连续 RunEvent；断线后从最后连续游标执行有限退避回放，终态自动退出。`--json` 在无 TTY 环境只向 stdout 逐行输出可机器处理的事件 JSON，恢复进度写入 stderr。完整命令见 [TUI 使用说明](docs/tui.md)。
