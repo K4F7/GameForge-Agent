@@ -15,3 +15,9 @@
 - `git diff --check`：通过。
 
 中文、日韩字符和常见 emoji 按终端双列宽度裁剪，避免 TTY 在窄窗口中因 JavaScript 字符串长度计算而溢出。远端三平台结果必须在提交并触发 GitHub Actions 后补录。
+
+## 日志滚动增量
+
+交互 `watch` 新增方向键、j/k、PageUp/PageDown 滚动和可见行范围；Escape 序列支持跨 stdin data chunk 拼接，连续 `jj` 会产生两次滚动。空摘要范围显示 `0-0/0`，非 TTY/JSON 输出仍不裁剪、不含 ANSI。TUI 包当前 12 项测试通过。
+
+整仓验证：214 项测试、check、build、bundle budget、MCP doctor、browser doctor 和 `git diff --check` 均通过。`bun audit` 前两次因 registry `ConnectionClosed` 未得到结果，第三次成功返回 0 vulnerabilities；失败请求未被写成安全通过。

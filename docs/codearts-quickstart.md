@@ -1,6 +1,6 @@
 # CodeArts Agent 快速开始
 
-更新日期：2026-07-16
+更新日期：2026-07-18
 
 ## 1. 选择使用形态
 
@@ -119,7 +119,7 @@ draft_game_spec({ prompt: task.prompt, language: task.language })
 
 确认 `spec.ready.spec.locale` 为 `en-US`、预览 HUD 显示 `Progress`/`Lives`，且浏览器 `document.documentElement.lang` 为 `en-US`。再用新 Run 做一次中文对照。Provider 会拒绝 locale 与请求 language 不一致的模型输出。
 
-本仓库的本地 MCP Client、Relay 和浏览器实验不能代替真实 CodeArts 使用。完成第一阶段前必须保存一份脱敏记录，至少证明：CodeArts 客户端版本、登录状态、已安装 `gameforge` MCP、Task ID/Run ID、`claim_game_task` 的 agent ID、实际工具调用摘要、最终 `run.completed` 与 Workbench 截图。当前机器已安装客户端，但尚未完成并记录该端到端实验，因此该项仍未通过。
+本仓库的本地 MCP Client、Relay 和浏览器实验不能代替真实 CodeArts 使用。第一阶段脱敏记录应至少证明：CodeArts 客户端版本、登录状态、已安装 `gameforge` MCP、Task ID/Run ID、`claim_game_task` 的 agent ID、实际工具调用摘要、最终 `run.completed` 与 Workbench/浏览器证据。该项已于 2026-07-18 使用 CodeArts 26.6.2 OAuth TUI 首次通过，记录见 `experiments/2026-07-18-codearts-real-e2e/`；本次媒体能力未启用，因此该实验不证明真实云 Provider 调用。
 
 官方 MCP 页面访问日期：2026-07-16。
 

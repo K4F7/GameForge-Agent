@@ -48,5 +48,5 @@ Verification: passed won score=2 lives=3
 
 - 当前不是基于 Ink/Blessed 的组件式全屏界面，而是零额外依赖的 Bun 终端 MVP；
 - 尚未在 macOS/Linux CI 验证；
-- 交互 TTY 的 resize、键盘快捷键和日志滚动留到第二阶段；
+- 后续 `2026-07-18-tui-cross-platform` 与本轮增量已补 resize、raw mode 清理、q/Ctrl-C、方向键、j/k、PageUp/PageDown 和日志滚动测试；本条保留为 MVP 当时的历史状态，不再代表当前能力；
 - TUI 有意不提供 Task claim 或 Run complete，避免复制 CodeArts 主智能体职责。

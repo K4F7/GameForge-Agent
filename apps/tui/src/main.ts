@@ -66,6 +66,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     }
     case "watch": {
       const history: WireRunEvent[] = [];
+      let scrollOffset = 0;
       const replay = await client.replayEvents({ runId: options.runId!, after: options.after });
       history.push(...replay.events);
       const render = (event?: WireRunEvent): void => {
@@ -75,7 +76,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
         }
         const summary = summarizeRun(history);
         const text = summary === null ? "Waiting for run events..." : formatSummary(summary);
-        process.stdout.write(renderWatchFrame(text, process.stdout));
+        process.stdout.write(renderWatchFrame(text, process.stdout, scrollOffset));
       };
       if (options.json) replay.events.forEach((event) => render(event)); else render();
       const cursor = replay.events.at(-1)?.sequence ?? options.after;
@@ -86,6 +87,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
         input: process.stdin,
         output: process.stdout,
         onResize: () => render(),
+        onScroll: (lines) => { scrollOffset = Math.max(0, scrollOffset + lines); render(); },
       });
       try {
         await streamRunEvents({
