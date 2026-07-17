@@ -114,6 +114,50 @@ async function stageInterruptedReplacement(
   return { transactionPath, backup, oldPath, newPath };
 }
 
+async function stageInterruptedCreate(
+  root: string,
+  manifestState: "old" | "new",
+): Promise<{ transactionPath: string; destination: string }> {
+  const project = path.join(root, "safety-sprint");
+  const assetsDirectory = path.join(project, "public", "assets");
+  const manifestPath = path.join(assetsDirectory, "manifest.json");
+  const oldManifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+    schemaVersion: "1.0"; projectId: string; revision: number; assets: unknown[];
+  };
+  const request = imageRequest();
+  const hash = createHash("sha256").update(jpeg).digest("hex");
+  const newEntry = {
+    assetId: request.provenance.assetId,
+    kind: "image",
+    role: "player",
+    path: "assets/images/hero.jpg",
+    mimeType: "image/jpeg",
+    bytes: jpeg.byteLength,
+    sha256: hash,
+    provenance: request.provenance,
+  };
+  const newManifest = { ...oldManifest, revision: 1, assets: [newEntry] };
+  const transactionId = "00000000-0000-4000-8000-000000000088";
+  const destination = path.join(project, "public", "assets", "images", "hero.jpg");
+  const transactionPath = path.join(project, ".gameforge", "assets.transaction.json");
+  await mkdir(path.dirname(destination), { recursive: true });
+  await writeFile(destination, jpeg);
+  if (manifestState === "new") await writeFile(manifestPath, `${JSON.stringify(newManifest, null, 2)}\n`);
+  const canonicalHash = (value: unknown) => createHash("sha256").update(`${JSON.stringify(value, null, 2)}\n`).digest("hex");
+  await writeFile(transactionPath, `${JSON.stringify({
+    version: 1,
+    transactionId,
+    projectId: "safety-sprint",
+    operation: "create",
+    oldRevision: 0,
+    newRevision: 1,
+    oldManifestSha256: canonicalHash(oldManifest),
+    newManifestSha256: canonicalHash(newManifest),
+    newEntry,
+  }, null, 2)}\n`);
+  return { transactionPath, destination };
+}
+
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -266,6 +310,25 @@ describe("ProjectAssetStore", () => {
     await expect(store.store(other)).resolves.toMatchObject({ manifestRevision: 2 });
     expect(await readFile(staged.oldPath)).toEqual(Buffer.from(jpeg));
     await expect(readFile(staged.backup)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(staged.transactionPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("removes an interrupted create orphan when the old manifest is authoritative", async () => {
+    const { root, store } = await fixture();
+    const staged = await stageInterruptedCreate(root, "old");
+    await expect(store.recover("safety-sprint")).resolves.toMatchObject({ revision: 0, assets: [] });
+    await expect(readFile(staged.destination)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(staged.transactionPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("finalizes an interrupted create when the new manifest is authoritative", async () => {
+    const { root, store } = await fixture();
+    const staged = await stageInterruptedCreate(root, "new");
+    await expect(store.recover("safety-sprint")).resolves.toMatchObject({
+      revision: 1,
+      assets: [{ assetId: "images/hero.jpg", role: "player" }],
+    });
+    expect(await readFile(staged.destination)).toEqual(Buffer.from(jpeg));
     await expect(readFile(staged.transactionPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 

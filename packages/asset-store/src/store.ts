@@ -29,18 +29,24 @@ const assetLockMetadataSchema = z.strictObject({
   hostname: z.string().trim().min(1).max(255),
   createdAtMs: z.number().int().nonnegative(),
 });
-const assetTransactionSchema = z.strictObject({
+const assetTransactionBase = {
   version: z.literal(1),
   transactionId: z.string().uuid(),
   projectId: projectIdSchema,
-  operation: z.literal("replace"),
   oldRevision: z.number().int().nonnegative(),
   newRevision: z.number().int().positive(),
   oldManifestSha256: z.string().regex(/^[a-f0-9]{64}$/),
   newManifestSha256: z.string().regex(/^[a-f0-9]{64}$/),
-  oldEntry: runtimeAssetManifestSchema.shape.assets.element,
   newEntry: runtimeAssetManifestSchema.shape.assets.element,
-});
+};
+const assetTransactionSchema = z.discriminatedUnion("operation", [
+  z.strictObject({ ...assetTransactionBase, operation: z.literal("create") }),
+  z.strictObject({
+    ...assetTransactionBase,
+    operation: z.literal("replace"),
+    oldEntry: runtimeAssetManifestSchema.shape.assets.element,
+  }),
+]);
 
 type AssetLockMetadata = z.infer<typeof assetLockMetadataSchema>;
 type AssetTransaction = z.infer<typeof assetTransactionSchema>;
@@ -212,7 +218,17 @@ export class ProjectAssetStore {
           : manifest.assets.map((asset, index) => index === existingIndex ? entry : asset),
       });
       if (mode === "create") {
-        await commitCreatedAsset(destination, manifestPath, assetsDirectory, bytes, nextManifest);
+        await commitCreatedAsset(
+          destination,
+          manifestPath,
+          assetsDirectory,
+          transactionPath,
+          projectId,
+          manifest,
+          entry,
+          bytes,
+          nextManifest,
+        );
       } else {
         if (existing === undefined) throw new Error("Asset replacement target disappeared.");
         const oldDestination = safeChild(publicDirectory, existing.path);
@@ -253,13 +269,30 @@ async function commitCreatedAsset(
   destination: string,
   manifestPath: string,
   assetsDirectory: string,
+  transactionPath: string,
+  projectId: string,
+  oldManifest: RuntimeAssetManifest,
+  newEntry: RuntimeAssetEntry,
   bytes: Uint8Array,
   manifest: RuntimeAssetManifest,
 ): Promise<void> {
-  const assetTemporary = `${destination}.${randomUUID()}.tmp`;
-  const manifestTemporary = safeChild(assetsDirectory, `.manifest.${randomUUID()}.tmp`);
+  const transactionId = randomUUID();
+  const assetTemporary = `${destination}.${transactionId}.tmp`;
+  const manifestTemporary = safeChild(assetsDirectory, `.manifest.${transactionId}.tmp`);
   let assetCommitted = false;
+  const transaction = assetTransactionSchema.parse({
+    version: 1,
+    transactionId,
+    projectId,
+    operation: "create",
+    oldRevision: oldManifest.revision,
+    newRevision: manifest.revision,
+    oldManifestSha256: sha256(manifestBytes(oldManifest)),
+    newManifestSha256: sha256(manifestBytes(manifest)),
+    newEntry,
+  });
   try {
+    await writeSynced(transactionPath, Buffer.from(`${JSON.stringify(transaction, null, 2)}\n`, "utf8"), 0o600);
     await writeSynced(assetTemporary, bytes);
     await writeSynced(manifestTemporary, manifestBytes(manifest));
     await link(assetTemporary, destination);
@@ -267,11 +300,22 @@ async function commitCreatedAsset(
     await unlink(assetTemporary);
     await rename(manifestTemporary, manifestPath);
   } catch (error) {
-    await rm(assetTemporary, { force: true });
-    await rm(manifestTemporary, { force: true });
-    if (assetCommitted) await unlink(destination).catch(() => undefined);
+    const rollbackErrors: unknown[] = [];
+    await rm(assetTemporary, { force: true }).catch((cleanupError: unknown) => rollbackErrors.push(cleanupError));
+    await rm(manifestTemporary, { force: true }).catch((cleanupError: unknown) => rollbackErrors.push(cleanupError));
+    if (assetCommitted) {
+      await unlink(destination).catch((cleanupError: unknown) => rollbackErrors.push(cleanupError));
+    }
+    await rm(transactionPath, { force: true }).catch((cleanupError: unknown) => rollbackErrors.push(cleanupError));
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...rollbackErrors],
+        "Asset creation failed and rollback encountered additional filesystem errors.",
+      );
+    }
     throw error;
   }
+  await rm(transactionPath, { force: true }).catch(() => undefined);
 }
 
 async function commitReplacedAsset(
@@ -372,9 +416,7 @@ async function recoverAssetTransaction(
     await readVerifiedJson(manifestPath, assetsDirectory, "Runtime asset manifest"),
   );
   const currentHash = sha256(manifestBytes(currentManifest));
-  const oldDestination = safeChild(publicDirectory, transaction.oldEntry.path);
   const newDestination = safeChild(publicDirectory, transaction.newEntry.path);
-  const backup = `${oldDestination}.${transaction.transactionId}.bak`;
   const assetTemporary = `${newDestination}.${transaction.transactionId}.tmp`;
   const manifestTemporary = safeChild(assetsDirectory, `.manifest.${transaction.transactionId}.tmp`);
 
@@ -384,7 +426,11 @@ async function recoverAssetTransaction(
     manifestContainsEntry(currentManifest, transaction.newEntry)
   ) {
     await assertTransactionAsset(newDestination, publicDirectory, transaction.newEntry, "new");
-    await removeTransactionAssetIfPresent(backup, publicDirectory, transaction.oldEntry, "backup");
+    if (transaction.operation === "replace") {
+      const oldDestination = safeChild(publicDirectory, transaction.oldEntry.path);
+      const backup = `${oldDestination}.${transaction.transactionId}.bak`;
+      await removeTransactionAssetIfPresent(backup, publicDirectory, transaction.oldEntry, "backup");
+    }
     await removeTransactionAssetIfPresent(assetTemporary, publicDirectory, transaction.newEntry, "temporary");
     await removeManifestTemporaryIfPresent(manifestTemporary, assetsDirectory, transaction.newManifestSha256);
     await rm(transactionPath);
@@ -394,9 +440,21 @@ async function recoverAssetTransaction(
   if (
     currentManifest.revision !== transaction.oldRevision ||
     currentHash !== transaction.oldManifestSha256 ||
-    !manifestContainsEntry(currentManifest, transaction.oldEntry)
+    (transaction.operation === "create"
+      ? currentManifest.assets.some((entry) => entry.assetId === transaction.newEntry.assetId)
+      : !manifestContainsEntry(currentManifest, transaction.oldEntry))
   ) throw new Error("Asset transaction does not match the old or new manifest; refusing automatic recovery.");
 
+  if (transaction.operation === "create") {
+    await removeTransactionAssetIfPresent(newDestination, publicDirectory, transaction.newEntry, "new");
+    await removeTransactionAssetIfPresent(assetTemporary, publicDirectory, transaction.newEntry, "temporary");
+    await removeManifestTemporaryIfPresent(manifestTemporary, assetsDirectory, transaction.newManifestSha256);
+    await rm(transactionPath);
+    return;
+  }
+
+  const oldDestination = safeChild(publicDirectory, transaction.oldEntry.path);
+  const backup = `${oldDestination}.${transaction.transactionId}.bak`;
   const backupExists = await pathExists(backup);
   if (oldDestination === newDestination) {
     if (backupExists && await pathExists(newDestination)) {
@@ -426,7 +484,7 @@ function validateAssetTransaction(transaction: AssetTransaction, projectId: stri
   if (transaction.newRevision !== transaction.oldRevision + 1) {
     throw new Error("Asset transaction revisions are not consecutive.");
   }
-  if (transaction.oldEntry.assetId !== transaction.newEntry.assetId) {
+  if (transaction.operation === "replace" && transaction.oldEntry.assetId !== transaction.newEntry.assetId) {
     throw new Error("Asset transaction entries do not identify the same asset.");
   }
 }

@@ -140,7 +140,7 @@ GAMEFORGE_CHROME_EXECUTABLE=C:\Program Files\Google\Chrome\Application\chrome.ex
 
 图片、Freesound preview 和已完成的 TTS 素材都支持显式替换：先读取 Manifest，再对同一 `assetId` 传入 `mode: "replace"` 与当前 `expectedRevision`。Asset Store 会在锁内再次执行 revision CAS、校验旧文件哈希并切换文件与 Manifest；成功后 revision 增加且仍发布 `asset.ready`。明显 stale 的图片/音效替换会在云 Provider 调用前拒绝，TTS 会先本地验签提取 assetId。替换不会按角色猜测目标，也不会覆盖未纳入 Manifest 的现有文件。
 
-替换在修改文件前写入 0600 的 `.gameforge/assets.transaction.json`。若 MCP 进程在切换中途终止，`recover_project_assets` 会在写锁内验证日志、Manifest revision/规范哈希和旧/新媒体哈希：旧 Manifest 仍权威时回滚，新 Manifest 已权威时完成清理；未知版本、第三种状态或任何哈希冲突均保守拒绝。该工具不调用云 Provider，OpenCode 权限继承未匹配 `gameforge_*` 的默认 `ask`。
+首次创建和替换都会在任何临时媒体写入前创建 0600 的 `.gameforge/assets.transaction.json`。若 MCP 进程在切换中途终止，`recover_project_assets` 会在写锁内验证日志、Manifest revision/规范哈希和媒体哈希：旧 Manifest 仍权威时删除属于未提交 create 的孤儿，或回滚 replace；新 Manifest 已权威时完成清理。未知版本、第三种状态或任何哈希冲突均保守拒绝。该工具不调用云 Provider，OpenCode 权限继承未匹配 `gameforge_*` 的默认 `ask`。
 
 Asset Store 的互斥锁包含 0600 owner metadata。MCP 崩溃遗留的锁只有在 metadata 完整、hostname 与当前机器一致、PID 明确不存在且创建时间超过 10 分钟时才自动恢复；活进程、近期锁、异地主机、空锁或旧格式一律保守拒绝。不要用脚本无条件删除 `.gameforge/assets.lock`。
 
