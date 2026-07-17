@@ -91,6 +91,8 @@ GameForge 核心不实现为 OpenCode Plugin。核心由客户端无关的 contr
 
 可提交的 [`opencode.json.example`](opencode.json.example) 不包含绝对路径或密钥。复制为本地配置前设置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 和 `GAMEFORGE_RUN_RELAY_URL`；权限默认让校验/查询类工具直接执行，让项目生成、资产导入、预览启停和 Run 终态操作请求确认。跨平台动态启动器见 `integrations/`。
 
+Workbench 的 iframe、CSP、预览 origin allowlist 与未来桌面壳最小权限见 [Workbench 安全边界](docs/workbench-security.md)。远程预览必须在 `VITE_GAME_PREVIEW_ORIGINS` 中显式列出；任何 Provider 密钥都不得放入浏览器可见的 `VITE_*` 环境变量。
+
 仓库统一使用 Bun 1.3.14 或更高版本和 `bun.lock`；仓库级 `.npmrc` 固定 npm 官方 registry，以确保 Phaser 4.2.1 与安全审计元数据可复现。不要再生成或提交 npm、pnpm、Yarn 的并行锁文件。
 
 启用阿里云百炼 Qwen 的结构化 GameSpec 草拟工具时，在启动 MCP 服务的进程环境中设置：

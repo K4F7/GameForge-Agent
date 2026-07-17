@@ -10,6 +10,7 @@ import {
 import { connectRunEventStream, createGameTask, fetchRunEvents, stopRun } from "./run-client.js";
 import { createWorkbenchRunId } from "./run-id.js";
 import { createMapView, createSceneNodes } from "./design-view.js";
+import { configuredPreviewOrigins, isAllowedPreviewUrl, previewFramePolicy, previewWindowRel, safePreviewUrl } from "./preview-security.js";
 
 const configuredPreviewUrl = gamePreviewUrlSchema.safeParse(
   import.meta.env.VITE_GAME_PREVIEW_URL ?? "http://localhost:5173/",
@@ -17,6 +18,7 @@ const configuredPreviewUrl = gamePreviewUrlSchema.safeParse(
 const fallbackPreviewUrl = configuredPreviewUrl.success
   ? configuredPreviewUrl.data
   : "http://localhost:5173/";
+const previewOrigins = configuredPreviewOrigins(import.meta.env.VITE_GAME_PREVIEW_ORIGINS);
 const configuredAgentBaseUrl = import.meta.env.VITE_AGENT_BASE_URL?.trim();
 const agentBaseUrl = configuredAgentBaseUrl === undefined || configuredAgentBaseUrl.length === 0
   ? (import.meta.env.DEV ? "http://127.0.0.1:8787/" : null)
@@ -79,7 +81,9 @@ export function App(): React.JSX.Element {
     const completed = runState.phases.filter((phase) => phase.status === "succeeded").length;
     return Math.round((completed / runState.phases.length) * 100);
   }, [runState.phases]);
-  const previewUrl = runState.preview?.url ?? fallbackPreviewUrl;
+  const previewCandidate = runState.preview?.url;
+  const previewAllowed = previewCandidate === undefined || isAllowedPreviewUrl(previewCandidate, previewOrigins);
+  const previewUrl = safePreviewUrl(previewCandidate, fallbackPreviewUrl, previewOrigins);
   const previewHost = new URL(previewUrl).host;
   const sceneNodes = useMemo(
     () => runState.spec === null ? [] : createSceneNodes(runState.spec, runState.assets),
@@ -424,7 +428,7 @@ export function App(): React.JSX.Element {
             <div className="preview-actions">
               <span>960 × 540</span>
               <button type="button" onClick={() => setPreviewKey((value) => value + 1)} aria-label="重新加载游戏预览">↻</button>
-              <a href={previewUrl} target="_blank" rel="noreferrer" aria-label="在新窗口打开游戏预览">↗</a>
+              <a href={previewUrl} target="_blank" rel={previewWindowRel} aria-label="在新窗口打开游戏预览">↗</a>
             </div>
           </div>
 
@@ -440,12 +444,12 @@ export function App(): React.JSX.Element {
                   className="game-frame"
                   src={previewUrl}
                   title="生成游戏预览"
-                  sandbox="allow-scripts allow-pointer-lock"
-                  referrerPolicy="no-referrer"
-                  allow="fullscreen"
+                  {...previewFramePolicy}
                 />
                 <div className="preview-help">
-                  {runState.preview === null ? (
+                  {!previewAllowed ? (
+                    <>运行事件中的预览 origin 未获授权，已回退到本地预览。配置 <code>VITE_GAME_PREVIEW_ORIGINS</code> 后重试。</>
+                  ) : runState.preview === null ? (
                     <>请同时运行 <code>bun run dev:game</code>；等待 CodeArts 发布运行预览。</>
                   ) : (
                     <>运行产物 <code>{runState.preview.projectId}</code> · URL 已通过安全契约校验</>

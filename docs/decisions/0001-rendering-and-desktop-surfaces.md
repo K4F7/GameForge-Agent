@@ -39,6 +39,8 @@ Tauri 能复用 Workbench 且安装体积较小，但系统 WebView 差异、Rus
 
 只有 TUI 共享 controller 稳定且以下检查通过，才开始 Tauri spike：Windows/macOS/Linux CI、WebView 中预览 iframe 的 CSP/sandbox、最小文件权限、安装包签名与更新策略。任何平台无法满足时，保持 Web Workbench，并用 Electron 做同范围对照而非直接迁移。
 
+Web Workbench 的 CSP、预览 origin allowlist、iframe 权限和桌面最小权限基线见 [Workbench 与桌面壳安全边界](../workbench-security.md)。该基线完成不等于 Tauri 三平台 WebView、签名或更新机制已经验收。
+
 ## 验证
 
 - `apps/game/package.json` 只保留 Phaser 默认依赖；核心 packages 不新增渲染或桌面依赖。
