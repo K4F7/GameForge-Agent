@@ -29,12 +29,13 @@ bun run tui -- stop my-run
 - 浏览器 verification 的胜负、分数和生命；
 - 阶段状态与最近 8 条日志。
 
-传入 `--json` 后输出逐行 JSON，不写 ANSI 控制字符。`watch --json` 先回放历史事件，再通过 SSE 输出实时事件；收到 `run.completed`、`run.stopped` 或不可修复的 `phase.failed` 后自动退出。重复 sequence 被忽略，序列缺口会作为错误退出，不静默跳过。
+传入 `--json` 后 stdout 只输出逐行事件 JSON，不写 ANSI 控制字符。`watch --json` 先回放历史事件，再通过 SSE 输出实时事件；恢复等待说明只写 stderr，不污染事件管道。收到 `run.completed`、`run.stopped` 或不可修复的 `phase.failed` 后自动退出。重复 sequence 被忽略；序列缺口、非终态 EOF、网络错误、HTTP 429/5xx 会从最后连续游标按 0.5/1/2/4/8 秒有限退避重新回放，缺失事件补齐后再建流。HTTP 409/410、协议错误或预算耗尽会非零退出，不静默跳过或无限重试。
 
 ## 安全和职责边界
 
 - 参数先经过 CLI 边界校验，协议数据继续由 contracts Schema 和 `RunRelayClient` 验证；
 - Relay 请求带超时并区分 timeout、network、HTTP 和 protocol 错误；
+- TUI watch 恢复只执行确定性 replay GET 与 SSE，不认领/完成 Task，也不调用模型或 MCP；
 - TUI 不读取媒体文件、密钥、CodeArts 会话或浏览器截图；
 - `stop` 是显式用户命令；TUI 不自动停止或完成 Run；
 - TUI 不提供 claim/complete 命令，避免终端界面冒充 CodeArts 执行者。

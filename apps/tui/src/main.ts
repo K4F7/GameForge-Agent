@@ -4,8 +4,8 @@ import { RunRelayClient } from "@gameforge/run-relay/client";
 import type { WireRunEvent } from "@gameforge/contracts";
 import { parseArgs } from "./args.js";
 import { formatSummary, summarizeRun } from "./summary.js";
-import { streamRunEvents } from "./stream.js";
 import { attachTerminalControls, renderWatchFrame } from "./terminal.js";
+import { watchRun } from "./watch.js";
 
 const help = `GameForge TUI
 
@@ -67,22 +67,17 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     case "watch": {
       const history: WireRunEvent[] = [];
       let scrollOffset = 0;
-      const replay = await client.replayEvents({ runId: options.runId!, after: options.after });
-      history.push(...replay.events);
+      let watchStatus = "正在连接 Run Relay";
       const render = (event?: WireRunEvent): void => {
         if (options.json) {
           if (event !== undefined) process.stdout.write(`${JSON.stringify(event)}\n`);
           return;
         }
         const summary = summarizeRun(history);
-        const text = summary === null ? "Waiting for run events..." : formatSummary(summary);
+        const body = summary === null ? "Waiting for run events..." : formatSummary(summary);
+        const text = `${body}\n\n${watchStatus}`;
         process.stdout.write(renderWatchFrame(text, process.stdout, scrollOffset));
       };
-      if (options.json) replay.events.forEach((event) => render(event)); else render();
-      const cursor = replay.events.at(-1)?.sequence ?? options.after;
-      const terminal = replay.events.at(-1);
-      if (terminal?.type === "run.completed" || terminal?.type === "run.stopped" ||
-          (terminal?.type === "phase.failed" && !terminal.repairable)) return;
       const controls = options.json ? undefined : attachTerminalControls({
         input: process.stdin,
         output: process.stdout,
@@ -90,15 +85,23 @@ export async function runCli(argv: readonly string[]): Promise<void> {
         onScroll: (lines) => { scrollOffset = Math.max(0, scrollOffset + lines); render(); },
       });
       try {
-        await streamRunEvents({
+        if (!options.json) render();
+        const result = await watchRun({
+          client,
           baseUrl: options.baseUrl,
           runId: options.runId!,
-          after: cursor,
+          after: options.after,
           onEvent: (event) => { history.push(event); render(event); },
+          onRetry: (retry) => {
+            watchStatus = `Relay 断线；${retry.delayMs}ms 后第 ${retry.attempt} 次恢复（游标 ${retry.cursor}）`;
+            if (options.json) process.stderr.write(`${watchStatus}\n`); else render();
+          },
           ...(controls === undefined ? {} : { signal: controls.signal }),
         });
-      } catch (error) {
-        if (controls?.signal.aborted !== true) throw error;
+        if (!options.json && !result.aborted) {
+          watchStatus = result.terminal ? `运行已到终态，最后游标 ${result.cursor}` : `观察结束，最后游标 ${result.cursor}`;
+          render();
+        }
       } finally {
         controls?.close();
       }

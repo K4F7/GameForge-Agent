@@ -80,7 +80,7 @@ bun run tui -- list
 
 示例游戏和生成模板先输出轻量加载壳，再异步加载 Phaser 游戏块；这会显著缩小首屏入口并改善首次绘制与长期缓存，但不会虚报 Phaser 总下载量减少。`bun run bundle:check` 根据 Vite manifest 分别约束初始、异步和总 raw/gzip 体积，预算超出时返回非零退出码。
 
-第二轮 Bun TUI MVP 位于 `apps/tui`，复用严格 Schema 的 Run Relay Client，不包含 Agent 循环。它支持提交/列出/查看 Task、回放/停止 Run，以及通过 SSE 实时观察连续 RunEvent；`--json` 在无 TTY 环境逐行输出可机器处理的 JSON。完整命令见 [TUI 使用说明](docs/tui.md)。
+第二轮 Bun TUI MVP 位于 `apps/tui`，复用严格 Schema 的 Run Relay Client，不包含 Agent 循环。它支持提交/列出/查看 Task、回放/停止 Run，以及通过 SSE 实时观察连续 RunEvent；断线后从最后连续游标执行有限退避回放，终态自动退出。`--json` 在无 TTY 环境只向 stdout 逐行输出可机器处理的事件 JSON，恢复进度写入 stderr。完整命令见 [TUI 使用说明](docs/tui.md)。
 
 Tauri 2 桌面 spike 位于 `apps/desktop`，只封装现有 Workbench，不新增 Agent 循环、自定义 Rust command 或 Tauri plugin。`bun run doctor:desktop` 静态校验零权限 capability、CSP、loopback 开发地址和 Workbench 构建；Tauri Schema、Cargo 和图标由真实 `desktop:build` 验证。Windows 本机构建需进入 MSVC 开发环境后运行该命令。当前只验证了不打安装包的 Windows 可执行文件，签名、自动更新和 macOS/Linux 仍不在已验收范围。完整说明见 [桌面壳说明](docs/desktop.md)。
 
