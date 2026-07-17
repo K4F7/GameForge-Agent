@@ -9,6 +9,7 @@
 ```powershell
 bun run tui -- list
 bun run tui -- submit --run-id my-run --prompt "Create a complete browser safety game." --language en-US
+bun run tui -- submit --run-id improve-run --project-id existing-game --prompt "Add a second level and keep existing assets."
 bun run tui -- task task-00000000-0000-0000-0000-000000000000
 bun run tui -- run my-run
 bun run tui -- watch my-run

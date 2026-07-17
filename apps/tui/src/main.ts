@@ -10,7 +10,7 @@ import { watchRun } from "./watch.js";
 const help = `GameForge TUI
 
 Usage:
-  bun run tui -- submit --run-id ID --prompt TEXT [--language zh-CN|en-US]
+  bun run tui -- submit --run-id ID --prompt TEXT [--project-id PROJECT_ID] [--language zh-CN|en-US]
   bun run tui -- list [--status STATUS] [--limit N]
   bun run tui -- task TASK_ID
   bun run tui -- run RUN_ID [--after N]
@@ -35,6 +35,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
         runId: options.runId!,
         prompt: options.prompt!,
         language: options.language,
+        ...(options.projectId === undefined ? {} : { projectId: options.projectId }),
       });
       output(created, `Queued ${created.task.taskId}\nRun ${created.task.runId} (${created.task.language})`);
       return;

@@ -24,7 +24,9 @@ describe("TUI relay integration", () => {
       runId: "tui-integration",
       prompt: "Create a complete deterministic browser safety game.",
       language: "en-US",
+      projectId: "safety-game",
     });
+    expect(created.task.projectId).toBe("safety-game");
     expect((await client.listTasks({ limit: 5 }))[0]?.taskId).toBe(created.task.taskId);
     const replay = await client.replayEvents({ runId: created.task.runId, after: 0 });
     expect(summarizeRun(replay.events)).toMatchObject({ status: "running", locale: "en-US" });

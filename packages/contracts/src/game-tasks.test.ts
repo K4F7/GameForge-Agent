@@ -10,10 +10,12 @@ describe("game task contracts", () => {
     expect(createGameTaskRequestSchema.parse({
       runId: "run-1",
       prompt: "  制作一个可以收集装备并避开危险的小游戏。  ",
+      projectId: " safety-game ",
     })).toEqual({
       runId: "run-1",
       prompt: "制作一个可以收集装备并避开危险的小游戏。",
       language: "zh-CN",
+      projectId: "safety-game",
     });
     expect(listGameTasksRequestSchema.parse({})).toEqual({ limit: 20 });
   });

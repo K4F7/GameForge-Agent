@@ -69,6 +69,7 @@ export function App(): React.JSX.Element {
     "制作一个90秒的俯视角安全训练小游戏：玩家收集5件防护装备，避开移动叉车，在倒计时结束前抵达出口。",
   );
   const [taskLanguage, setTaskLanguage] = useState<"zh-CN" | "en-US">("zh-CN");
+  const [projectId, setProjectId] = useState("");
   const [previewKey, setPreviewKey] = useState(0);
   const [relayRunId, setRelayRunId] = useState(() => createWorkbenchRunId());
   const [relayState, setRelayState] = useState<"disconnected" | "connecting" | "connected" | "error">("disconnected");
@@ -236,6 +237,7 @@ export function App(): React.JSX.Element {
         runId: relayRunId,
         prompt,
         language: taskLanguage,
+        ...(projectId.trim() === "" ? {} : { projectId: projectId.trim() }),
       });
       setTaskId(created.task.taskId);
       dispatch(created.event);
@@ -258,6 +260,7 @@ export function App(): React.JSX.Element {
     const nextRunId = createWorkbenchRunId();
     dispatch({ type: "ui.reset" });
     setRelayRunId(nextRunId);
+    setProjectId("");
     setTaskId(null);
     setRelayMessage(`已准备新任务 ${nextRunId}`);
   };
@@ -359,6 +362,14 @@ export function App(): React.JSX.Element {
                     value={relayRunId}
                     disabled={relayState === "connecting" || relayState === "connected"}
                     onChange={(event) => setRelayRunId(event.target.value)}
+                  />
+                  <label htmlFor="relay-project-id">继续项目（可选）</label>
+                  <input
+                    id="relay-project-id"
+                    value={projectId}
+                    placeholder="留空则创建新项目"
+                    disabled={relayState === "connecting" || relayState === "connected"}
+                    onChange={(event) => setProjectId(event.target.value)}
                   />
                   <p role={relayState === "error" ? "alert" : "status"} aria-live={relayState === "error" ? "assertive" : "polite"}>{relayMessage}</p>
                   {taskId !== null && <p className="task-receipt">Task <code>{taskId}</code></p>}

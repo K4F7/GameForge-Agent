@@ -27,10 +27,14 @@ describe("TaskInbox", () => {
       runId: "run-retry",
       prompt: "Create a browser game with an idempotent task handoff.",
       language: "en-US" as const,
+      projectId: "managed-game",
     };
     const first = inbox.create(input);
     const retried = inbox.create(input);
     expect(retried).toEqual(first);
+    expect(retried.task.projectId).toBe("managed-game");
+    expect(() => inbox.create({ ...input, projectId: "another-game" }))
+      .toThrow("different task request");
     expect(() => inbox.create({ ...input, prompt: "Create a different browser game." }))
       .toThrow("different task request");
   });

@@ -54,6 +54,7 @@ describe("run event client", () => {
           runId: "run-1",
           prompt: "制作一个可以收集装备并避开危险的浏览器小游戏。",
           language: "zh-CN",
+          projectId: "safety-game",
           status: "queued",
           createdAt: emittedAt,
         },
@@ -64,14 +65,16 @@ describe("run event client", () => {
       baseUrl: "http://127.0.0.1:8787/",
       runId: "run-1",
       prompt: "制作一个可以收集装备并避开危险的浏览器小游戏。",
+      projectId: "safety-game",
       fetch: fetchMock,
     });
     expect(result).toMatchObject({
-      task: { taskId, status: "queued" },
+      task: { taskId, status: "queued", projectId: "safety-game" },
       event: { type: "run.started", language: "zh-CN" },
     });
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://127.0.0.1:8787/tasks");
     expect(fetchMock.mock.calls[0]?.[1]?.body).toContain('"language":"zh-CN"');
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toContain('"projectId":"safety-game"');
   });
 
   it("creates a relay run without sending credentials", async () => {

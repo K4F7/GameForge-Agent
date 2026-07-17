@@ -25,6 +25,7 @@ export type CreateRunOptions = {
 export type CreateGameTaskOptions = CreateRunOptions & {
   prompt: string;
   language?: "zh-CN" | "en-US";
+  projectId?: string;
 };
 
 export async function createGameTask(options: CreateGameTaskOptions): Promise<{
@@ -36,6 +37,7 @@ export async function createGameTask(options: CreateGameTaskOptions): Promise<{
     runId: options.runId,
     prompt: options.prompt,
     ...(options.language === undefined ? {} : { language: options.language }),
+    ...(options.projectId === undefined ? {} : { projectId: options.projectId }),
   });
   const response = await (options.fetch ?? globalThis.fetch)(new URL("tasks", baseUrl), {
     method: "POST",

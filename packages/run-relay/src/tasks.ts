@@ -45,7 +45,8 @@ export class TaskInbox {
     if (existingTaskId !== undefined) {
       const existing = this.#tasks.get(existingTaskId);
       if (existing === undefined) throw new Error("Task inbox run index is inconsistent.");
-      if (existing.prompt !== request.prompt || existing.language !== request.language) {
+      if (existing.prompt !== request.prompt || existing.language !== request.language ||
+          existing.projectId !== request.projectId) {
         throw new TaskInboxError(
           409,
           "task_run_conflict",
@@ -63,6 +64,7 @@ export class TaskInbox {
       runId: request.runId,
       prompt: request.prompt,
       language: request.language,
+      ...(request.projectId === undefined ? {} : { projectId: request.projectId }),
       status: "queued",
       createdAt: new Date().toISOString(),
     });

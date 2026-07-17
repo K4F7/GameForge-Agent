@@ -8,6 +8,7 @@ export type CliOptions = {
   runId?: string;
   taskId?: string;
   prompt?: string;
+  projectId?: string;
   after: number;
 };
 
@@ -49,6 +50,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
       case "--run-id": options.runId = value; break;
       case "--task-id": options.taskId = value; break;
       case "--prompt": options.prompt = value; break;
+      case "--project-id": options.projectId = value; break;
       case "--after": options.after = integer(value, 0, Number.MAX_SAFE_INTEGER, "after"); break;
       default: throw new Error(`Unknown option: ${current}`);
     }

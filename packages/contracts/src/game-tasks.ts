@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { runEventSchema, runIdSchema } from "./run-events.js";
+import { projectIdSchema } from "./project-generation.js";
 
 export const gameTaskIdSchema = z
   .string()
@@ -22,6 +23,7 @@ export const createGameTaskRequestSchema = z.strictObject({
   runId: runIdSchema,
   prompt: gameTaskPromptSchema,
   language: gameTaskLanguageSchema.default("zh-CN"),
+  projectId: projectIdSchema.optional(),
 });
 
 export const claimGameTaskRequestSchema = z.strictObject({ agentId: gameTaskAgentIdSchema });
@@ -36,6 +38,7 @@ export const gameTaskSchema = z.strictObject({
   runId: runIdSchema,
   prompt: gameTaskPromptSchema,
   language: gameTaskLanguageSchema,
+  projectId: projectIdSchema.optional(),
   status: gameTaskStatusSchema,
   createdAt: z.string().datetime({ offset: true }),
   claimedAt: z.string().datetime({ offset: true }).optional(),

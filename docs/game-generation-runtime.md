@@ -61,7 +61,7 @@ update 在写任何临时模板文件前创建 0600、128 KiB 上限的严格 `.
 GAMEFORGE_PROJECT_OUTPUT_ROOT=D:\GameForgeGenerated
 ```
 
-未配置时不注册`generate_game_project`。新建时建议先调用默认 create `mode: "dry-run"`，再以完全相同的`projectId`和GameSpec调用`mode: "apply"`。已有受管项目使用 `operation: "update"` dry-run，并把返回的 `currentPlanSha256` 作为 apply 的 `expectedPlanSha256`；冲突必须由 CodeArts 审阅，不得强制覆盖。完整 generator capability 同时注册显式 `recover_game_project_update`，该工具只做确定性磁盘恢复。工具不会接受模型输出的任意文件内容。
+未配置时不注册`generate_game_project`。收件箱 Task 的可选 `projectId` 是迭代目标的权威来源：存在时必须使用同一 ID 做 `operation: "update"` dry-run，并把返回的 `currentPlanSha256` 作为 apply 的 `expectedPlanSha256`；不存在时才走默认 create `mode: "dry-run"`，再以完全相同的`projectId`和GameSpec调用`mode: "apply"`。不得从 Prompt、目录或旧 Run 猜测项目，冲突必须由 CodeArts 审阅，不得强制覆盖。完整 generator capability 同时注册显式 `recover_game_project_update`，该工具只做确定性磁盘恢复。工具不会接受模型输出的任意文件内容。
 
 同一配置还会注册 `start_game_preview` 和 `stop_game_preview`。预览管理器复用浏览器验收器的受控 Vite 配置，只绑定 `127.0.0.1` 随机端口、固定 Phaser 入口、关闭依赖自动发现，不读取或执行生成项目的 `vite.config.ts`。它先验证真实目录、符号链接边界和 `.gameforge/manifest.json`；默认最多保留 5 个会话，相同项目的并发启动会合并，启动与关闭均有超时。MCP 进程收到 SIGINT/SIGTERM 时关闭所有预览。
 

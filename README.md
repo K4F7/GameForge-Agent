@@ -190,11 +190,11 @@ GAMEFORGE_TTS_AUDIO_HOSTS=<控制台/真实 query 响应确认的音频 CDN 主�
 
 Workbench 的 SSE 出错或出现 sequence 缺口时会关闭旧连接，从最后连续游标执行 Schema 回放，再重建 stream；自动恢复采用 0.5/1/2/4/8 秒有限退避，409/410 游标冲突直接停止。耗尽后界面显示“恢复连接”，由用户从同一游标显式重试。该循环只恢复确定性 RunEvent，不调用模型或 MCP 工具。
 
-Task 创建以 Run ID 作为幂等键：网络响应丢失后，以完全相同的 Run ID、Prompt 和语言重试会返回原 Task 与原始 `run.started`，不会重复排队；同 Run ID 携带不同内容会返回稳定的 `task_run_conflict`。一个 Run ID 只代表一次不可变任务，完成新需求时应使用新的 Run ID。
+Task 创建以 Run ID 作为幂等键：网络响应丢失后，以完全相同的 Run ID、Prompt、语言和可选 `projectId` 重试会返回原 Task 与原始 `run.started`，不会重复排队；同 Run ID 携带不同内容会返回稳定的 `task_run_conflict`。`projectId` 存在时 CodeArts 必须更新该受管项目，不存在时才创建新项目；不得从 Prompt 或目录猜测。一个 Run ID 只代表一次不可变任务，完成新需求时应使用新的 Run ID。
 
 Workbench 可选择 `zh-CN` 或 `en-US`。语言随 Task 进入权威 `run.started`，因此重连与事件回放可以恢复选择；CodeArts 必须把 Task 的 Prompt 与 language 原样传给 `draft_game_spec`。百炼返回的 `GameSpec.locale` 不匹配时会被拒绝，生成项目的静态 HTML `lang`、无障碍标签和 Phaser HUD/控制提示均随 locale 输出；旧规格缺少 locale 时仍默认中文。
 
-Workbench 会为每次页面会话准备唯一 Run ID；连接期间输入锁定。若提交响应不确定，直接保留当前 ID 重试；若要开始不同需求，先停止或等待当前 Run 终止，再点击“新任务”显式轮换 ID。不要手工修改已连接 Run 的 ID。
+Workbench 会为每次页面会话准备唯一 Run ID；连接期间输入锁定。若提交响应不确定，直接保留当前 ID 和项目选择重试；若要开始不同需求，先停止或等待当前 Run 终止，再点击“新任务”显式轮换 ID。不要手工修改已连接 Run 的 ID。
 
 当前机器已安装 CodeArts Agent 客户端；真实 CodeArts 端到端验收不能由本地 MCP Client 替代。可执行步骤、已通过证据与第二轮 TUI/GUI TODO 见 [路线图](docs/roadmap.md)。
 

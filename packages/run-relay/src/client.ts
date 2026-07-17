@@ -95,6 +95,7 @@ export class RunRelayClient {
     if (
       !parsed.success ||
       parsed.data.task.runId !== request.runId ||
+      parsed.data.task.projectId !== request.projectId ||
       parsed.data.event.type !== "run.started" ||
       parsed.data.event.runId !== request.runId
     ) {

@@ -58,12 +58,13 @@ describe("run relay HTTP server", () => {
         runId: "run-task-1",
         prompt: "制作一个可以收集装备并避开危险的浏览器小游戏。",
         language: "zh-CN",
+        projectId: "safety-game",
       }),
     });
     expect(createdResponse.status).toBe(201);
     const created = createGameTaskResponseSchema.parse(await createdResponse.json());
     expect(created).toMatchObject({
-      task: { runId: "run-task-1", status: "queued" },
+      task: { runId: "run-task-1", status: "queued", projectId: "safety-game" },
       event: { type: "run.started", sequence: 1 },
     });
 
@@ -74,6 +75,7 @@ describe("run relay HTTP server", () => {
         runId: "run-task-1",
         prompt: "制作一个可以收集装备并避开危险的浏览器小游戏。",
         language: "zh-CN",
+        projectId: "safety-game",
       }),
     });
     expect(retriedResponse.status).toBe(201);
@@ -84,8 +86,9 @@ describe("run relay HTTP server", () => {
       headers: { "Content-Type": "application/json", Origin: "http://localhost:4173" },
       body: JSON.stringify({
         runId: "run-task-1",
-        prompt: "制作一个内容不同但复用相同 Run ID 的浏览器小游戏。",
+        prompt: "制作一个可以收集装备并避开危险的浏览器小游戏。",
         language: "zh-CN",
+        projectId: "another-game",
       }),
     });
     expect(conflictingResponse.status).toBe(409);
