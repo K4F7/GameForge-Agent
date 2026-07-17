@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GameProjectGenerator } from "@gameforge/generator";
@@ -8,6 +8,7 @@ import { ProjectAssetStore, type AssetLockRuntime } from "./store.js";
 
 const roots: string[] = [];
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0xff, 0xd9]);
+const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const mp3 = new Uint8Array([0x49, 0x44, 0x33, 0x04]);
 const spec = {
   title: "Safety Sprint",
@@ -95,6 +96,70 @@ describe("ProjectAssetStore", () => {
     )) as { revision: number; assets: unknown[] };
     expect(manifest).toMatchObject({ revision: 1 });
     expect(manifest.assets).toHaveLength(1);
+  });
+
+  it("replaces an existing asset with revision CAS and removes the old path", async () => {
+    const { root, store } = await fixture();
+    const first = imageRequest();
+    first.provenance.assetId = "images/hero";
+    await expect(store.store(first)).resolves.toMatchObject({ manifestRevision: 1 });
+
+    const replacement = {
+      ...first,
+      bytes: png,
+      mimeType: "image/png" as const,
+      mode: "replace" as const,
+      expectedRevision: 1,
+      provenance: {
+        ...first.provenance,
+        model: "seedream-revised",
+        prompt: "Revised hero",
+        sha256: createHash("sha256").update(png).digest("hex"),
+      },
+    };
+    await expect(store.store(replacement)).resolves.toMatchObject({
+      manifestRevision: 2,
+      entry: { assetId: "images/hero", role: "player", path: "assets/images/hero.png" },
+    });
+    await expect(readFile(path.join(root, "safety-sprint", "public", "assets", "images", "hero.jpg")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(path.join(root, "safety-sprint", "public", "assets", "images", "hero.png")))
+      .toEqual(Buffer.from(png));
+    await expect(store.read("safety-sprint")).resolves.toMatchObject({
+      revision: 2,
+      assets: [{ assetId: "images/hero", role: "player", mimeType: "image/png" }],
+    });
+  });
+
+  it("rejects stale or missing replacement revisions without changing the asset", async () => {
+    const { root, store } = await fixture();
+    await store.store(imageRequest());
+    const replacement = {
+      ...imageRequest(),
+      bytes: png,
+      mimeType: "image/png" as const,
+      mode: "replace" as const,
+      provenance: {
+        ...imageRequest().provenance,
+        assetId: "images/hero.jpg",
+        sha256: createHash("sha256").update(png).digest("hex"),
+      },
+    };
+    await expect(store.store(replacement)).rejects.toThrow("expectedRevision");
+    await expect(store.store({ ...replacement, expectedRevision: 0 })).rejects.toThrow("revision conflict");
+    expect(await readFile(path.join(root, "safety-sprint", "public", "assets", "images", "hero.jpg")))
+      .toEqual(Buffer.from(jpeg));
+    await expect(store.read("safety-sprint")).resolves.toMatchObject({ revision: 1 });
+  });
+
+  it("never overwrites a destination file that already exists outside the manifest", async () => {
+    const { root, store } = await fixture();
+    const destination = path.join(root, "safety-sprint", "public", "assets", "images", "hero.jpg");
+    await mkdir(path.dirname(destination), { recursive: true });
+    await writeFile(destination, new Uint8Array([1, 2, 3, 4]));
+    await expect(store.store(imageRequest())).rejects.toThrow("already exists");
+    expect(await readFile(destination)).toEqual(Buffer.from([1, 2, 3, 4]));
+    await expect(store.read("safety-sprint")).resolves.toMatchObject({ revision: 0, assets: [] });
   });
 
   it("reads an authoritative manifest for event recovery and rejects inconsistent files", async () => {

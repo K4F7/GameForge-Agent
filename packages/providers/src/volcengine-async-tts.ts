@@ -72,6 +72,7 @@ export type AsyncTtsAudioResult = {
   mimeType: "audio/mpeg" | "audio/ogg" | "audio/wav";
   provenance: AssetProvenance;
 };
+export type AsyncTtsJobIdentity = { assetId: string; taskId: string };
 
 export type VolcengineAsyncTtsOptions = {
   apiToken: string;
@@ -169,6 +170,12 @@ export class VolcengineAsyncTtsProvider {
       ...(parsed.text_length === undefined ? {} : { textLength: parsed.text_length }),
       ...(parsed.url_expire_time === undefined ? {} : { audioUrlExpiresAt: parsed.url_expire_time }),
     };
+  }
+
+  async inspect(request: AsyncTtsJobRequest): Promise<AsyncTtsJobIdentity> {
+    const input = asyncTtsJobRequestSchema.parse(request);
+    const job = await this.#verifyJob(input.jobHandle, input.projectId);
+    return { assetId: job.assetId, taskId: job.taskId };
   }
 
   async materialize(request: AsyncTtsJobRequest): Promise<AsyncTtsAudioResult> {

@@ -281,6 +281,41 @@ describe("validation tool handlers", () => {
     expect(calls).toEqual(["generate:player", "store:safety-sprint:player"]);
   });
 
+  it("rejects a stale image replacement before calling the billable provider", async () => {
+    const calls: string[] = [];
+    const result = await requestImageAssetTool(
+      {
+        id: "volcengine-ark",
+        capability: "image",
+        async execute() {
+          calls.push("provider");
+          throw new Error("must not run");
+        },
+      },
+      {
+        async read(projectId) {
+          calls.push(`read:${projectId}`);
+          return { schemaVersion: "1.0", projectId, revision: 2, assets: [] };
+        },
+        async store() {
+          calls.push("store");
+          throw new Error("must not run");
+        },
+      },
+      {
+        projectId: "safety-sprint",
+        assetId: "images/player",
+        prompt: "A revised player sprite",
+        role: "player",
+        mode: "replace",
+        expectedRevision: 1,
+      },
+    );
+    expect(result.isError).toBe(true);
+    expect(calls).toEqual(["read:safety-sprint"]);
+    expect(JSON.stringify(readJsonResult(result))).toContain("revision conflict");
+  });
+
   it("reads the authoritative asset manifest exactly once", async () => {
     const calls: string[] = [];
     const result = await getProjectAssetsTool({
@@ -508,6 +543,39 @@ describe("validation tool handlers", () => {
       "materialize:safety-sprint",
       "store:safety-sprint:voice",
     ]);
+  });
+
+  it("checks a signed voice replacement before downloading audio", async () => {
+    const calls: string[] = [];
+    const provider = {
+      async submit() { throw new Error("unused"); },
+      async query() { throw new Error("unused"); },
+      async inspect() {
+        calls.push("inspect");
+        return { assetId: "voices/guide", taskId: "task-42" };
+      },
+      async materialize() {
+        calls.push("materialize");
+        throw new Error("must not download");
+      },
+    };
+    const result = await materializeVoiceJobTool(provider, {
+      async read(projectId) {
+        calls.push("read");
+        return { schemaVersion: "1.0", projectId, revision: 2, assets: [] };
+      },
+      async store() {
+        calls.push("store");
+        throw new Error("must not store");
+      },
+    }, {
+      projectId: "safety-sprint",
+      jobHandle: `${"a".repeat(80)}.${"b".repeat(43)}`,
+      mode: "replace",
+      expectedRevision: 1,
+    });
+    expect(result.isError).toBe(true);
+    expect(calls).toEqual(["inspect", "read"]);
   });
 
   it("executes one bounded browser verification and preserves failed reports", async () => {

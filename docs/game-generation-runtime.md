@@ -115,6 +115,8 @@ URL 契约只允许 HTTPS，或主机严格为 `localhost`、`127.0.0.1`、`[::1
 
 CodeArts 在 `validate_game_spec` 成功后发布 `spec.ready`；图片、音效或配音工具真正完成安全落盘后，原样使用返回的 `entry` 与 `manifestRevision` 发布 `asset.ready`。候选搜索结果、纯日志和未写入文件的 Provider 响应不能伪装成已就绪资产。
 
+素材迭代复用同一 `asset.ready` 契约。CodeArts 先读取 `get_project_assets`，再以明确 assetId、`mode: "replace"` 和当前 `expectedRevision` 调用原媒体工具；Asset Store 在同一写锁内再次 CAS，旧文件哈希必须与 Manifest 一致。成功时完整 entry 替换、revision 增加；Workbench reducer 按 assetId 归并新 entry，用户刷新 preview iframe 后模板重新获取 Manifest。revision 冲突不会自动重放 Provider。
+
 每个 Run 开始或恢复后，CodeArts 调用一次无参数 `get_gameforge_capabilities`；若回放中尚无 capability 事件，则原样发布 snapshot。快照不包含密钥或配置值。Qwen 以草拟 Provider 存在为 ready；Seedream 和 TTS 还要求 Asset Store；Freesound 要求搜索、preview 下载和 Asset Store 三者同时存在。工程能力分别反映 Asset Store、generator、verifier、preview、Run Relay 和 Task Inbox 的实际注入状态。
 
 `submit_voice_job` 和每次单次 `query_voice_job` 返回后，CodeArts 原样发布 `voice.job.updated`。恢复时按 projectId + assetId 选择 sequence 最新的事件，从中取得签名 handle：processing 可继续单次 query，succeeded 可 materialize，failed 保留证据并决定回退。Workbench 只保留并显示 project/asset/status，不把 handle 放入归约状态或界面；但 handle 仍存在于本地 Relay 事件流和状态文件，应把它视为受限 capability data，保护 Relay 文件与访问边界。
@@ -214,11 +216,13 @@ CodeArts 重启后的 Manifest 恢复读取同样逐文件流式重算 SHA-256�
 MCP 侧提供两个条件注册工具：
 
 - `request_image_asset`：执行一次 Seedream 官方请求，再将校验后的图片写入项目；MCP 输入只接受四个图片角色，无效的语音或音频角色在 Provider 调用前拒绝；
-- `import_sound_asset`：执行一次官方 Freesound preview GET，再记录来源、许可、署名和哈希。
+- `import_sound_asset`：执行一个官方 Freesound preview 导入操作，再记录来源、许可、署名和哈希；只读 GET 可按 Provider 传输策略有限退避。
 
 两者均不重试、不修改玩法代码，也不实现 Agent 循环。
 
 项目输出根配置后还注册只读 `get_project_assets`。它重新验证生成项目边界、严格 Manifest、项目 ID，以及每个引用文件存在、非符号链接、仍位于 `public/` 内；字节数、已打开句柄与路径身份、entry/provenance SHA-256 也必须一致。CodeArts 恢复 Run 时将它与已回放的 `asset.ready` 按 asset ID 对账，只为 Manifest 中缺少事件的 entry 补发当前 revision；这关闭了“媒体已落盘但事件发布前会话中断”的窗口，不会重复调用 Seedream、Freesound 或 TTS。
+
+替换提交先将新媒体与新 Manifest 写入同目录临时文件，再把旧媒体移到随机备份路径，以硬链接的 no-replace 语义发布新文件，最后原子替换 Manifest；普通异常会逆序恢复旧文件，清理失败会与原错误一起以 `AggregateError` 报告。成功后才清理备份。Node 没有跨文件事务：进程在文件切换与 Manifest 切换之间被强制终止时，仍可能遗留 `.bak`/`.tmp` 并需要后续事务日志恢复能力；当前不把这类 kill -9/断电场景写成已验收的崩溃原子性。
 
 ## 官方依据
 

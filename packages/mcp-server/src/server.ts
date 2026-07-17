@@ -294,11 +294,13 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       {
         title: "Generate and store a game image asset",
         description:
-          "Perform one official Seedream request and store the verified result in an existing generated project. Credentials stay in the server environment.",
+          "Perform one official Seedream request and store the verified result in an existing generated project. Set mode=replace with the current expectedRevision to overwrite the same assetId. Credentials stay in the server environment.",
         inputSchema: {
           projectId: projectIdSchema,
           ...seedreamImageRequestSchema.shape,
           role: imageRuntimeAssetRoleSchema.optional(),
+          mode: z.enum(["create", "replace"]).optional(),
+          expectedRevision: z.number().int().nonnegative().optional(),
         },
       },
       async (request) => requestImageAssetTool(imageProvider, assetStore, request),
@@ -313,11 +315,13 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       {
         title: "Import a licensed Freesound preview",
         description:
-          "Fetch one selected official Freesound preview, verify its bytes, and store it with source, license, attribution, and hash metadata.",
+          "Fetch one selected official Freesound preview, verify its bytes, and store it with source, license, attribution, and hash metadata. Replacement requires mode=replace and the current expectedRevision.",
         inputSchema: {
           projectId: projectIdSchema,
           ...freesoundPreviewRequestSchema.shape,
           role: z.enum(["collect-sound", "hit-sound", "bgm"]).optional(),
+          mode: z.enum(["create", "replace"]).optional(),
+          expectedRevision: z.number().int().nonnegative().optional(),
         },
       },
       async (request) => importSoundAssetTool(soundPreviewProvider, assetStore, request),
@@ -352,8 +356,12 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       {
         title: "Materialize one completed voice job",
         description:
-          "Query one completed TTS job, download its audio once from an allowed host, verify it, and store it as the project's voice asset.",
-        inputSchema: asyncTtsJobRequestSchema.shape,
+          "Query one completed TTS job, download its audio once from an allowed host, verify it, and store it as the project's voice asset. Replacement requires mode=replace and the current expectedRevision.",
+        inputSchema: {
+          ...asyncTtsJobRequestSchema.shape,
+          mode: z.enum(["create", "replace"]).optional(),
+          expectedRevision: z.number().int().nonnegative().optional(),
+        },
       },
       async (request) => materializeVoiceJobTool(asyncTtsProvider, assetStore, request),
     );

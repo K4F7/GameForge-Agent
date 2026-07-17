@@ -37,6 +37,9 @@ describe("VolcengineAsyncTtsProvider", () => {
     const tts = provider(fetchMock);
 
     const submitted = await tts.submit(baseRequest);
+    await expect(tts.inspect({ projectId: baseRequest.projectId, jobHandle: submitted.jobHandle }))
+      .resolves.toEqual({ assetId: baseRequest.assetId, taskId: "task-42" });
+    expect(fetchMock).toHaveBeenCalledOnce();
     const queried = await tts.query({ projectId: baseRequest.projectId, jobHandle: submitted.jobHandle });
 
     expect(submitted).toMatchObject({ taskId: "task-42", status: "processing" });

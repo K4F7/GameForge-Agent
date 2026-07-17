@@ -20,13 +20,14 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
 2. 调用 `generate_game_project` 的 `dry-run`，审阅文件计划；确认目标为空且路径正确后再以 `apply` 执行。
 3. 默认使用 Phaser、Vite 与程序化占位素材。仅在工具已注册且需求需要时：
    - `request_image_asset`：一次 Seedream 官方 API 请求并安全落盘；只选择 `player`、`collectible`、`hazard` 或 `background` 图片角色，语音和音频角色不会进入该工具 Schema；
-   - `search_sound_asset`：一次 Freesound 官方搜索，默认 CC0；
-   - `import_sound_asset`：一次预览下载并记录许可、署名和哈希；短音效使用 `collect-sound`/`hit-sound`，明确选作背景音乐的候选使用 `bgm`，工具会将后者记录为 `music`；
+   - `search_sound_asset`：一个 Freesound 官方搜索操作，默认 CC0；只读 HTTP 遇到明确瞬时故障时可做传输层有限退避；
+   - `import_sound_asset`：一个预览导入操作并记录许可、署名和哈希；只读下载可做传输层有限退避，短音效使用 `collect-sound`/`hit-sound`，明确选作背景音乐的候选使用 `bgm`，工具会将后者记录为 `music`；
    - `submit_voice_job`：提交一次火山长文本 TTS 作业；
    - `query_voice_job`：查询一次带签名且绑定项目的作业；
    - `materialize_voice_job`：成功后查询一次、下载一次并写入 `voice` 角色。
    `submit_voice_job` 返回后，立即把 `projectId`、`assetId`、原样 `jobHandle` 和 `status` 发布为下一条连续的 `voice.job.updated`；每次 `query_voice_job` 返回后用同一 project/asset/handle 发布新的 `voice.job.updated`。不要把 handle 写入普通日志。恢复 Task 时按 projectId + assetId 取 sequence 最新的 voice job 事件：`processing` 时由 CodeArts 决定何时单次 query，`succeeded` 时可直接 materialize，`failed` 时保留证据并决定回退，不自动重新提交。
    每次媒体落盘工具返回 `entry` 和 `manifestRevision` 后，将其与项目 ID 原样发布为下一条连续的 `asset.ready` RunEvent；不要从日志文本重建条目，也不要发布尚未落盘的候选素材。
+   若浏览器验收或用户反馈要求替换已有素材，先调用一次 `get_project_assets`，按明确的 `assetId` 找到目标并记录当前 `revision`；不得只凭角色猜测替换目标。随后对同一个媒体落盘工具设置 `mode: "replace"` 和 `expectedRevision: <当前 revision>`。图片和 Freesound 工具会在调用 Provider 前预检 revision 与 assetId；TTS 素材化会先在本地验签并读取 job 中的 assetId，再预检，均不会在明显 stale 时产生云调用或下载。成功后仍把返回的新 `entry` 与新 `manifestRevision` 发布为连续 `asset.ready`，并刷新现有预览以重新读取 Manifest。revision 冲突时重新读取一次 Manifest 并由 CodeArts 判断，不盲目重试 Provider；`create` 是默认模式，禁止用 replace 绕过未知资产或角色冲突。
    TTS 查询间隔由 CodeArts 判断，禁止在 MCP 内部轮询。
 4. CodeArts 亲自修改玩法代码；不要让 MCP 工具实现 Agent 循环或任意代码编辑。
 5. 每个阶段发布连续的阶段、日志和结构化产物事件（`spec.ready`、`asset.ready`、`preview.ready`）。若游标冲突，调用一次 `replay_game_run` 从已知游标读取服务端状态，再由 CodeArts 决定；不在客户端自动重试或轮询。
@@ -43,6 +44,7 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
 - CC BY 素材必须保留作者、原始页面与许可；默认排除 BY-NC。
 - 生成素材必须记录 provider、model、prompt、license 与 SHA-256。
 - 媒体工具失败时继续使用程序化占位素材，不阻断玩法实现。
+- 资产替换必须使用 Manifest revision CAS；不直接删除旧文件、不手工编辑 Manifest，也不把同角色的另一个 assetId 当成隐式替换。
 
 ## 实验记录
 

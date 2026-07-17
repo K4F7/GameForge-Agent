@@ -11,7 +11,7 @@ import {
   type RuntimeAssetRole,
 } from "@gameforge/contracts";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readFile, realpath, rename, rm, unlink, type FileHandle } from "node:fs/promises";
+import { link, lstat, mkdir, open, readFile, realpath, rename, rm, unlink, type FileHandle } from "node:fs/promises";
 import { hostname as systemHostname } from "node:os";
 import path from "node:path";
 import { z } from "zod";
@@ -43,6 +43,8 @@ export type StoreAssetRequest = {
   mimeType: RuntimeAssetMimeType;
   provenance: AssetProvenance;
   role?: RuntimeAssetRole;
+  mode?: "create" | "replace";
+  expectedRevision?: number;
 };
 
 export type StoreAssetResult = {
@@ -92,6 +94,18 @@ export class ProjectAssetStore {
     const provenance = assetProvenanceSchema.parse(request.provenance);
     const mimeType = runtimeAssetMimeTypeSchema.parse(request.mimeType);
     const role = request.role === undefined ? undefined : runtimeAssetRoleSchema.parse(request.role);
+    const mode = request.mode ?? "create";
+    if (mode !== "create" && mode !== "replace") throw new Error("Asset store mode must be create or replace.");
+    const expectedRevision = request.expectedRevision;
+    if (expectedRevision !== undefined && (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)) {
+      throw new Error("Expected asset manifest revision must be a non-negative safe integer.");
+    }
+    if (mode === "replace" && expectedRevision === undefined) {
+      throw new Error("Asset replacement requires expectedRevision.");
+    }
+    if (mode === "create" && expectedRevision !== undefined) {
+      throw new Error("expectedRevision is only valid for asset replacement.");
+    }
     const bytes = new Uint8Array(request.bytes);
     validateMedia(bytes, mimeType, provenance.kind, role);
     const actualHash = sha256(bytes);
@@ -112,20 +126,31 @@ export class ProjectAssetStore {
         await readVerifiedJson(manifestPath, assetsDirectory, "Runtime asset manifest"),
       );
       if (manifest.projectId !== projectId) throw new Error("Runtime asset manifest project ID does not match.");
-      if (manifest.assets.some((asset) => asset.assetId === provenance.assetId)) {
+      if (mode === "replace" && manifest.revision !== expectedRevision) {
+        throw new Error(`Asset manifest revision conflict: expected ${expectedRevision}, found ${manifest.revision}.`);
+      }
+      const existingIndex = manifest.assets.findIndex((asset) => asset.assetId === provenance.assetId);
+      if (mode === "create" && existingIndex !== -1) {
         throw new Error(`Runtime asset already exists: ${provenance.assetId}`);
       }
-      if (role !== undefined && manifest.assets.some((asset) => asset.role === role)) {
-        throw new Error(`Runtime asset role already exists: ${role}`);
+      if (mode === "replace" && existingIndex === -1) {
+        throw new Error(`Runtime asset does not exist for replacement: ${provenance.assetId}`);
       }
+      const existing = existingIndex === -1 ? undefined : manifest.assets[existingIndex];
+      const effectiveRole = role ?? existing?.role;
+      validateMedia(bytes, mimeType, provenance.kind, effectiveRole);
+      if (
+        effectiveRole !== undefined &&
+        manifest.assets.some((asset, index) => index !== existingIndex && asset.role === effectiveRole)
+      ) throw new Error(`Runtime asset role already exists: ${effectiveRole}`);
 
       const relativePath = assetPublicPath(provenance.assetId, mimeType);
       const destination = await safeAssetDestination(assetsDirectory, relativePath.slice("assets/".length));
-      if (await pathExists(destination)) throw new Error("Runtime asset file already exists.");
+      if (mode === "create" && await pathExists(destination)) throw new Error("Runtime asset file already exists.");
       const entry = runtimeAssetManifestSchema.shape.assets.element.parse({
         assetId: provenance.assetId,
         kind: provenance.kind,
-        ...(role === undefined ? {} : { role }),
+        ...(effectiveRole === undefined ? {} : { role: effectiveRole }),
         path: relativePath,
         mimeType,
         bytes: bytes.byteLength,
@@ -135,23 +160,35 @@ export class ProjectAssetStore {
       const nextManifest = runtimeAssetManifestSchema.parse({
         ...manifest,
         revision: manifest.revision + 1,
-        assets: [...manifest.assets, entry],
+        assets: mode === "create"
+          ? [...manifest.assets, entry]
+          : manifest.assets.map((asset, index) => index === existingIndex ? entry : asset),
       });
-
-      const assetTemporary = `${destination}.${randomUUID()}.tmp`;
-      const manifestTemporary = safeChild(assetsDirectory, `.manifest.${randomUUID()}.tmp`);
-      let assetCommitted = false;
-      try {
-        await writeSynced(assetTemporary, bytes);
-        await writeSynced(manifestTemporary, Buffer.from(`${JSON.stringify(nextManifest, null, 2)}\n`, "utf8"));
-        await rename(assetTemporary, destination);
-        assetCommitted = true;
-        await rename(manifestTemporary, manifestPath);
-      } catch (error) {
-        await rm(assetTemporary, { force: true });
-        await rm(manifestTemporary, { force: true });
-        if (assetCommitted) await unlink(destination).catch(() => undefined);
-        throw error;
+      if (mode === "create") {
+        await commitCreatedAsset(destination, manifestPath, assetsDirectory, bytes, nextManifest);
+      } else {
+        if (existing === undefined) throw new Error("Asset replacement target disappeared.");
+        const oldDestination = safeChild(publicDirectory, existing.path);
+        const oldHash = await verifiedAssetHash(
+          oldDestination,
+          publicDirectory,
+          existing.bytes,
+          existing.assetId,
+        );
+        if (oldHash !== existing.sha256 || oldHash !== existing.provenance.sha256) {
+          throw new Error(`Runtime asset file hash is inconsistent: ${existing.assetId}`);
+        }
+        if (oldDestination !== destination && await pathExists(destination)) {
+          throw new Error("Replacement asset destination already exists.");
+        }
+        await commitReplacedAsset(
+          oldDestination,
+          destination,
+          manifestPath,
+          assetsDirectory,
+          bytes,
+          nextManifest,
+        );
       }
 
       return { entry, manifestRevision: nextManifest.revision };
@@ -160,6 +197,84 @@ export class ProjectAssetStore {
     }
   }
 }
+
+async function commitCreatedAsset(
+  destination: string,
+  manifestPath: string,
+  assetsDirectory: string,
+  bytes: Uint8Array,
+  manifest: RuntimeAssetManifest,
+): Promise<void> {
+  const assetTemporary = `${destination}.${randomUUID()}.tmp`;
+  const manifestTemporary = safeChild(assetsDirectory, `.manifest.${randomUUID()}.tmp`);
+  let assetCommitted = false;
+  try {
+    await writeSynced(assetTemporary, bytes);
+    await writeSynced(manifestTemporary, manifestBytes(manifest));
+    await link(assetTemporary, destination);
+    assetCommitted = true;
+    await unlink(assetTemporary);
+    await rename(manifestTemporary, manifestPath);
+  } catch (error) {
+    await rm(assetTemporary, { force: true });
+    await rm(manifestTemporary, { force: true });
+    if (assetCommitted) await unlink(destination).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function commitReplacedAsset(
+  oldDestination: string,
+  destination: string,
+  manifestPath: string,
+  assetsDirectory: string,
+  bytes: Uint8Array,
+  manifest: RuntimeAssetManifest,
+): Promise<void> {
+  const transactionId = randomUUID();
+  const assetTemporary = `${destination}.${transactionId}.tmp`;
+  const oldBackup = `${oldDestination}.${transactionId}.bak`;
+  const manifestTemporary = safeChild(assetsDirectory, `.manifest.${transactionId}.tmp`);
+  let oldBackedUp = false;
+  let newCommitted = false;
+  let manifestCommitted = false;
+  try {
+    await writeSynced(assetTemporary, bytes);
+    await writeSynced(manifestTemporary, manifestBytes(manifest));
+    await rename(oldDestination, oldBackup);
+    oldBackedUp = true;
+    await link(assetTemporary, destination);
+    newCommitted = true;
+    await unlink(assetTemporary);
+    await rename(manifestTemporary, manifestPath);
+    manifestCommitted = true;
+  } catch (error) {
+    const rollbackErrors: unknown[] = [];
+    await rm(assetTemporary, { force: true }).catch((cleanupError: unknown) => rollbackErrors.push(cleanupError));
+    await rm(manifestTemporary, { force: true }).catch((cleanupError: unknown) => rollbackErrors.push(cleanupError));
+    if (!manifestCommitted) {
+      if (newCommitted) {
+        await rm(destination, { force: true }).catch((cleanupError: unknown) => rollbackErrors.push(cleanupError));
+      }
+      if (oldBackedUp) {
+        await rename(oldBackup, oldDestination).catch((rollbackError: unknown) => rollbackErrors.push(rollbackError));
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...rollbackErrors],
+        "Asset replacement failed and rollback encountered additional filesystem errors.",
+      );
+    }
+    throw error;
+  }
+  await rm(oldBackup, { force: true }).catch(() => undefined);
+}
+
+function manifestBytes(manifest: RuntimeAssetManifest): Uint8Array {
+  return Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+}
+
 
 type OwnedAssetLock = { handle: FileHandle; token: string };
 

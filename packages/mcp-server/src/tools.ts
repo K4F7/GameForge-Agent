@@ -149,6 +149,10 @@ export type AssetStore = {
 };
 
 export type AssetManifestReader = Required<Pick<AssetStore, "read">>;
+type AssetWriteControl = {
+  mode?: "create" | "replace" | undefined;
+  expectedRevision?: number | undefined;
+};
 
 export async function getProjectAssetsTool(
   reader: AssetManifestReader,
@@ -173,10 +177,11 @@ export async function requestImageAssetTool(
   request: SeedreamImageRequest & {
     projectId: string;
     role?: "player" | "collectible" | "hazard" | "background" | undefined;
-  },
+  } & AssetWriteControl,
 ): Promise<CallToolResult> {
   try {
-    const { projectId, role, ...generationRequest } = request;
+    const { projectId, role, mode, expectedRevision, ...generationRequest } = request;
+    await assertAssetWritePrecondition(store, projectId, generationRequest.assetId, mode, expectedRevision);
     const generated = await provider.execute(generationRequest);
     const stored = await store.store({
       projectId,
@@ -184,6 +189,8 @@ export async function requestImageAssetTool(
       mimeType: generated.mimeType,
       provenance: generated.provenance,
       ...(role === undefined ? {} : { role }),
+      ...(mode === undefined ? {} : { mode }),
+      ...(expectedRevision === undefined ? {} : { expectedRevision }),
     });
     return {
       content: [{ type: "text", text: JSON.stringify(stored, null, 2) }],
@@ -212,10 +219,11 @@ export async function importSoundAssetTool(
   request: FreesoundPreviewRequest & {
     projectId: string;
     role?: "collect-sound" | "hit-sound" | "bgm" | undefined;
-  },
+  } & AssetWriteControl,
 ): Promise<CallToolResult> {
   try {
-    const { projectId, role, ...previewRequest } = request;
+    const { projectId, role, mode, expectedRevision, ...previewRequest } = request;
+    await assertAssetWritePrecondition(store, projectId, previewRequest.assetId, mode, expectedRevision);
     const preview = await provider.execute(previewRequest, role === "bgm" ? "music" : "sound");
     const stored = await store.store({
       projectId,
@@ -223,6 +231,8 @@ export async function importSoundAssetTool(
       mimeType: preview.mimeType,
       provenance: preview.provenance,
       ...(role === undefined ? {} : { role }),
+      ...(mode === undefined ? {} : { mode }),
+      ...(expectedRevision === undefined ? {} : { expectedRevision }),
     });
     return { content: [{ type: "text", text: JSON.stringify(stored, null, 2) }] };
   } catch (error) {
@@ -243,6 +253,7 @@ export type AsyncTtsToolProvider = {
   submit(request: SubmitAsyncTtsRequest): Promise<AsyncTtsJobResult>;
   query(request: AsyncTtsJobRequest): Promise<AsyncTtsJobResult>;
   materialize(request: AsyncTtsJobRequest): Promise<AsyncTtsAudioResult>;
+  inspect?(request: AsyncTtsJobRequest): Promise<{ assetId: string; taskId: string }>;
 };
 
 export async function submitVoiceJobTool(
@@ -262,18 +273,56 @@ export async function queryVoiceJobTool(
 export async function materializeVoiceJobTool(
   provider: AsyncTtsToolProvider,
   store: AssetStore,
-  request: AsyncTtsJobRequest,
+  request: AsyncTtsJobRequest & AssetWriteControl,
 ): Promise<CallToolResult> {
   return ttsResult(async () => {
-    const audio = await provider.materialize(request);
+    const { mode, expectedRevision, ...jobRequest } = request;
+    if ((mode ?? "create") === "replace") {
+      if (provider.inspect === undefined) throw new Error("Voice replacement requires signed job inspection support.");
+      const identity = await provider.inspect(jobRequest);
+      await assertAssetWritePrecondition(
+        store,
+        request.projectId,
+        identity.assetId,
+        mode,
+        expectedRevision,
+      );
+    } else if (expectedRevision !== undefined) {
+      throw new Error("expectedRevision is only valid for asset replacement.");
+    }
+    const audio = await provider.materialize(jobRequest);
     return store.store({
       projectId: request.projectId,
       bytes: audio.bytes,
       mimeType: audio.mimeType,
       provenance: audio.provenance,
       role: "voice",
+      ...(mode === undefined ? {} : { mode }),
+      ...(expectedRevision === undefined ? {} : { expectedRevision }),
     });
   });
+}
+
+async function assertAssetWritePrecondition(
+  store: AssetStore,
+  projectId: string,
+  assetId: string,
+  mode: "create" | "replace" | undefined,
+  expectedRevision: number | undefined,
+): Promise<void> {
+  if ((mode ?? "create") !== "replace") {
+    if (expectedRevision !== undefined) throw new Error("expectedRevision is only valid for asset replacement.");
+    return;
+  }
+  if (expectedRevision === undefined) throw new Error("Asset replacement requires expectedRevision.");
+  if (store.read === undefined) throw new Error("Asset replacement requires a readable asset store.");
+  const manifest = await store.read(projectId);
+  if (manifest.revision !== expectedRevision) {
+    throw new Error(`Asset manifest revision conflict: expected ${expectedRevision}, found ${manifest.revision}.`);
+  }
+  if (!manifest.assets.some((asset) => asset.assetId === assetId)) {
+    throw new Error(`Runtime asset does not exist for replacement: ${assetId}`);
+  }
 }
 
 async function ttsResult(operation: () => Promise<unknown>): Promise<CallToolResult> {
