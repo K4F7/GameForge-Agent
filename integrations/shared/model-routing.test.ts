@@ -26,6 +26,14 @@ describe("committed model routing example", () => {
       ...policy.agent.story.primary,
       model: "huaweicloud-maas/GLM-5-INTERNAL",
     }])).toMatchObject({ status: "unavailable" });
+    const hy3 = policy.agent.coding.fallbacks.at(-1);
+    if (hy3 === undefined) throw new Error("Expected a committed Hy3 coding fallback.");
+    expect(hy3).toMatchObject({ provider: "tencent", model: "opencode/hy3-free" });
+    expect(resolveAgentModelRoute(policy.agent.coding, [hy3])).toMatchObject({
+      status: "selected",
+      source: "task-route-fallback",
+      target: { provider: "tencent", model: "opencode/hy3-free" },
+    });
     expect(policy.tools.sound.primary).toMatchObject({ provider: "freesound", mode: "retrieval" });
     expect(policy.tools.music).toMatchObject({
       availability: "enabled",

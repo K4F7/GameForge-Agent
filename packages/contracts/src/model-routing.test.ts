@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { modelRoutingPolicySchema, resolveAgentModelRoute, resolveExecutableModelTargets } from "./model-routing.js";
+import {
+  modelRoutingPolicySchema,
+  modelTargetSchema,
+  resolveAgentModelRoute,
+  resolveExecutableModelTargets,
+} from "./model-routing.js";
 
 const model = (provider: "bailian" | "moonshot" = "bailian") => ({
   provider,
@@ -110,6 +115,36 @@ describe("model routing policy", () => {
       source: "task-route-fallback",
       target: { provider: "moonshot", model: "kimi-k3" },
     });
+  });
+
+  it("selects an exact Tencent Hy3 cross-host fallback without alias guessing", () => {
+    const input = policy();
+    const hy3 = {
+      provider: "tencent" as const,
+      mode: "model" as const,
+      model: "opencode/hy3-free",
+      capabilities: ["code" as const, "tool-use" as const, "long-context" as const],
+    };
+    (input.agent.coding.fallbacks as unknown[]).push(hy3);
+    const parsed = modelRoutingPolicySchema.parse(input);
+    expect(resolveAgentModelRoute(parsed.agent.coding, [hy3])).toMatchObject({
+      status: "selected",
+      source: "task-route-fallback",
+      target: hy3,
+    });
+    expect(resolveAgentModelRoute(parsed.agent.coding, [{ ...hy3, model: "opencode/Hy3-free" }]))
+      .toMatchObject({ status: "unavailable" });
+    expect(() => modelTargetSchema.parse({ ...hy3, model: "opencode/Hy3-free" }))
+      .toThrow("supported domestic provider");
+  });
+
+  it("accepts the official Tencent Hy3 model ID as a domestic target", () => {
+    expect(modelTargetSchema.parse({
+      provider: "tencent",
+      mode: "model",
+      model: "tencent/Hy3",
+      capabilities: ["code", "tool-use", "long-context"],
+    })).toMatchObject({ provider: "tencent", model: "tencent/Hy3" });
   });
 
   it("treats host model IDs as case-sensitive opaque identifiers", () => {
