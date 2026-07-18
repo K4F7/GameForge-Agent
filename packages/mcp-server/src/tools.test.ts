@@ -24,6 +24,7 @@ import {
   stopGameRunTool,
   searchSoundAssetTool,
   buildDouyinMiniGameTool,
+  buildWechatMiniGameTool,
   validateAssetManifestTool,
   validateGameSpecTool,
   validateProviderConfigTool,
@@ -70,6 +71,30 @@ describe("validation tool handlers", () => {
     expect(parsed).not.toHaveProperty("outputPath");
     expect(parsed.buildEvent).toMatchObject({ type: "build.ready", projectId: "safe-game", assetManifestRevision: 2 });
     expect(parsed.buildEvent).not.toHaveProperty("outputPath");
+  });
+
+  it("returns a path-free WeChat build event from the wxgame artifact", async () => {
+    const result = await buildWechatMiniGameTool({
+      async build(projectId) {
+        return {
+          projectId,
+          cliVersion: "3.4.0",
+          outputPath: "D:/private/generated/safe-game/release/wxgame",
+          validation: {
+            platform: "wechat-mini-game", passed: true, projectId,
+            fileCount: 14, totalBytes: 1_113_109, mainPackageBytes: 1_113_109, subpackages: [],
+            deviceOrientation: "portrait",
+            capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+            allowedNetworkHosts: [], assetManifestRevision: 0, assetCount: 0,
+          },
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        };
+      },
+    }, "safe-game");
+    const parsed = readJsonResult(result) as { outputPath?: string; buildEvent?: Record<string, unknown> };
+    expect(parsed).not.toHaveProperty("outputPath");
+    expect(parsed.buildEvent).toMatchObject({ type: "build.ready", target: "wechat-mini-game" });
   });
 
   it("returns validated game specifications", () => {

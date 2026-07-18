@@ -136,6 +136,38 @@ describe("GameForge MCP server", () => {
     }
   });
 
+  it("registers the bounded WeChat wxgame build only when configured", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer({
+      wechatProjectBuilder: {
+        async build(projectId) {
+          return {
+            projectId, cliVersion: "3.4.0", outputPath: "D:/managed/safe-game/release/wxgame",
+            validation: {
+              platform: "wechat-mini-game", passed: true, projectId,
+              fileCount: 14, totalBytes: 1_113_109, mainPackageBytes: 1_113_109, subpackages: [],
+              deviceOrientation: "portrait",
+              capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+              allowedNetworkHosts: [], assetManifestRevision: 0, assetCount: 0,
+            },
+            stdoutTruncated: false, stderrTruncated: false,
+          };
+        },
+      },
+    });
+    const client = new Client({ name: "gameforge-wechat-builder-test", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("build_wechat_mini_game");
+      const result = await client.callTool({ name: "build_wechat_mini_game", arguments: { projectId: "safe-game" } });
+      expect(result.isError).not.toBe(true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("registers and invokes all deterministic validation tools", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer();

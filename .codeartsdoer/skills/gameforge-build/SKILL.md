@@ -19,6 +19,8 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
 
 ## 工作流
 
+平台规则：V1 未指定平台时仍默认 `douyin-mini-game`；用户明确要求微信小游戏时必须使用 `wechat-mini-game`，明确要求浏览器参考版时才使用 `web`。抖音与微信均复用五种 LayaAir 玩法源工程；完成媒体落盘后按 target 分别调用一次 `build_douyin_mini_game`（`bytedancegame`）或 `build_wechat_mini_game`（`wxgame`），并发布工具原样返回的无路径 `buildEvent`。两种工具都只做本地构建和静态校验，不登录、预览、上传或发布；DevTool 与真机证据必须另行记录。
+
 资产事务恢复同时覆盖首次创建与替换；不得把 create 中断留下的哈希匹配孤儿当作可忽略文件，也不得绕过 `recover_project_assets` 手工删除。
 
 1. 使用已认领 Task 的 `prompt` 和 `language`（或当前直接用户需求与明确语言）。若 `draft_game_spec` 已注册，优先把两者原样传入，转换为一次结构化 GameSpec 草案；Task 为 `zh-CN` 时 GameSpec `locale` 必须是 `zh-CN`，Task 为 `en-US` 时必须是 `en-US`。随后始终调用 `validate_game_spec`。若工具未注册，CodeArts 自行整理 GameSpec 并显式设置同一 `locale`；校验失败时由 CodeArts 修改输入后再次调用。验证成功后，将返回的规格原样发布为下一条连续的 `spec.ready` RunEvent，供 Workbench 展示；`draft_game_spec` 只发起一次百炼 Qwen 请求，不负责规划、重试或修复。
@@ -46,7 +48,7 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
 
 ## 资产边界
 
-- 资产只能通过 Asset Store 写入受管 target 的运行时资源树：Web 为 `public/assets/`，抖音 Laya 源工程为 `assets/resources/assets/`；Manifest 中的逻辑路径始终保持 `assets/...`，不得由 Agent 自行拼接物理路径。
+- 资产只能通过 Asset Store 写入受管 target 的运行时资源树：Web 为 `public/assets/`，抖音与微信 Laya 源工程均为 `assets/resources/assets/`；Manifest 中的逻辑路径始终保持 `assets/...`，不得由 Agent 自行拼接物理路径。
 - 不把 API key、token、账号或本地环境写入参数、日志、清单或仓库。
 - CC BY 素材必须保留作者、原始页面与许可；默认排除 BY-NC。
 - 生成素材必须记录 provider、model、prompt、license 与 SHA-256。

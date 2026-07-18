@@ -24,7 +24,9 @@ describe("project generation contracts", () => {
   it("accepts only explicit supported platform targets", () => {
     expect(projectGenerationRequestSchema.parse({ projectId: "safety-sprint", spec, target: "douyin-mini-game" }).target)
       .toBe("douyin-mini-game");
-    expect(projectGenerationRequestSchema.safeParse({ projectId: "safety-sprint", spec, target: "wechat-mini-game" }).success)
+    expect(projectGenerationRequestSchema.parse({ projectId: "safety-sprint", spec, target: "wechat-mini-game" }).target)
+      .toBe("wechat-mini-game");
+    expect(projectGenerationRequestSchema.safeParse({ projectId: "safety-sprint", spec, target: "unknown" }).success)
       .toBe(false);
   });
 

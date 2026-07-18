@@ -10,6 +10,7 @@ export type RunSummary = {
   previewUrl?: string;
   build?: {
     projectId: string;
+    target: "douyin-mini-game" | "wechat-mini-game";
     cliVersion: "3.4.0";
     fileCount: number;
     totalBytes: number;
@@ -54,6 +55,7 @@ export function summarizeRun(events: readonly WireRunEvent[]): RunSummary | null
       case "build.ready":
         summary.build = {
           projectId: event.projectId,
+          target: event.target,
           cliVersion: event.cliVersion,
           fileCount: event.fileCount,
           totalBytes: event.totalBytes,
@@ -92,7 +94,7 @@ export function formatSummary(summary: RunSummary): string {
   }
   if (summary.build !== undefined) {
     lines.push(
-      `Douyin build: LayaAir ${summary.build.cliVersion} ${summary.build.deviceOrientation} ` +
+      `${summary.build.target === "wechat-mini-game" ? "WeChat" : "Douyin"} build: LayaAir ${summary.build.cliVersion} ${summary.build.deviceOrientation} ` +
       `files=${summary.build.fileCount} main=${formatMiB(summary.build.mainPackageBytes)} ` +
       `total=${formatMiB(summary.build.totalBytes)} assets=${summary.build.assetCount}@r${summary.build.assetManifestRevision}`,
     );

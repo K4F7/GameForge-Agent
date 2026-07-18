@@ -55,7 +55,7 @@ export type VerificationState = {
 
 export type BuildState = {
   projectId: string;
-  target: "douyin-mini-game";
+  target: "douyin-mini-game" | "wechat-mini-game";
   cliVersion: "3.4.0";
   fileCount: number;
   totalBytes: number;
@@ -292,7 +292,7 @@ export function createDemoEvents(runId: string): ReadonlyArray<RunEvent> {
           sound: { provider: "freesound", ready: false },
           music: { provider: "minimax", ready: false },
         },
-        engineering: { assetStore: false, generator: true, douyinBuild: false, verifier: true, preview: true, runRelay: false, taskInbox: false },
+        engineering: { assetStore: false, generator: true, douyinBuild: false, wechatBuild: false, verifier: true, preview: true, runRelay: false, taskInbox: false },
       },
     },
     {

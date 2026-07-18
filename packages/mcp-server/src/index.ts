@@ -12,7 +12,7 @@ import {
 import { ProjectAssetStore } from "@gameforge/asset-store";
 import { GamePreviewManager, GameVerifier } from "@gameforge/game-verifier";
 import { GameProjectGenerator } from "@gameforge/generator";
-import { DouyinMiniGameBuilder } from "@gameforge/minigame-validator";
+import { DouyinMiniGameBuilder, WechatMiniGameBuilder } from "@gameforge/minigame-validator";
 import { RunRelayClient } from "@gameforge/run-relay/client";
 import { createServer } from "./server.js";
 import { McpToolAuditRecorder } from "./tool-audit.js";
@@ -144,7 +144,10 @@ const server = createServer({
         projectGenerator: new GameProjectGenerator({ outputRoot: projectOutputRoot }),
         ...(layaAirCliPath === undefined || layaAirCliPath.length === 0
           ? {}
-          : { douyinProjectBuilder: new DouyinMiniGameBuilder({ projectsRoot: projectOutputRoot, cliPath: layaAirCliPath }) }),
+          : {
+              douyinProjectBuilder: new DouyinMiniGameBuilder({ projectsRoot: projectOutputRoot, cliPath: layaAirCliPath }),
+              wechatProjectBuilder: new WechatMiniGameBuilder({ projectsRoot: projectOutputRoot, cliPath: layaAirCliPath }),
+            }),
         projectPreviewManager: previewManager as GamePreviewManager,
         projectVerifier: new GameVerifier({
           projectsRoot: projectOutputRoot,

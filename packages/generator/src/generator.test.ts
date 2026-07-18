@@ -129,6 +129,27 @@ describe("GameProjectGenerator", () => {
     expect(runtime).toContain('status: "running" | "won" | "lost"');
   });
 
+  it("creates the same playable Laya source with an explicit WeChat platform policy", async () => {
+    const { generator, root } = await createGenerator();
+    const genres = ["arcade", "platformer", "puzzle", "shooter", "strategy"] as const;
+    for (const genre of genres) {
+      const projectId = `wechat-${genre}`;
+      await expect(generator.execute({
+        projectId, target: "wechat-mini-game", spec: { ...spec, genre }, mode: "apply",
+      })).resolves.toMatchObject({ plan: { target: "wechat-mini-game" } });
+      expect(JSON.parse(await readFile(
+        path.join(root, projectId, "assets", "resources", "gameforge-platform.json"),
+        "utf8",
+      ))).toMatchObject({
+        target: "wechat-mini-game",
+        adapter: { engine: "layaair", version: "3.4.0" },
+        capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+      });
+      expect(await readFile(path.join(root, projectId, "src", "Main.ts"), "utf8"))
+        .toContain("telemetryHost.__GAMEFORGE_TEST__");
+    }
+  });
+
   it("rejects changing a managed project's platform target during update", async () => {
     const { generator } = await createGenerator();
     await generator.execute({ projectId: "target-locked", spec, mode: "apply" });

@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { DouyinMiniGameBuilder } from "./builder.js";
+import { DouyinMiniGameBuilder, WechatMiniGameBuilder } from "./builder.js";
 
 const roots: string[] = [];
 
@@ -10,7 +10,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-async function fixture(target: "web" | "douyin-mini-game" = "douyin-mini-game"): Promise<{ root: string; project: string; cli: string }> {
+async function fixture(target: "web" | "douyin-mini-game" | "wechat-mini-game" = "douyin-mini-game"): Promise<{ root: string; project: string; cli: string }> {
   const root = await mkdtemp(path.join(tmpdir(), "gameforge-laya-builder-"));
   roots.push(root);
   const project = path.join(root, "projects", "safe-game");
@@ -30,21 +30,20 @@ async function fixture(target: "web" | "douyin-mini-game" = "douyin-mini-game"):
 import { mkdir, writeFile } from "node:fs/promises";
 const args = process.argv.slice(2);
 if (args.includes("--version")) { console.log("LayaAir CLI 3.4.0"); process.exit(0); }
+const isWechat = args.includes("wxgame");
 const out = args[args.indexOf("--out") + 1];
 await mkdir(out, { recursive: true });
 await mkdir(out + "/resources", { recursive: true });
 await mkdir(out + "/resources/assets", { recursive: true });
-await writeFile(out + "/game.js", "const canvas = tt.createCanvas();\\n");
+await writeFile(out + "/game.js", isWechat ? "const canvas = wx.createCanvas();\\n" : "const canvas = tt.createCanvas();\\n");
 await writeFile(out + "/game.json", '{"deviceOrientation":"portrait"}\\n');
 await writeFile(out + "/project.config.json", '{"setting":{"es6":false}}\\n');
-await writeFile(out + "/resources/gameforge-platform.json", '${JSON.stringify({
-  schemaVersion: "1.0",
-  target: "douyin-mini-game",
+await writeFile(out + "/resources/gameforge-platform.json", JSON.stringify({
+  schemaVersion: "1.0", target: isWechat ? "wechat-mini-game" : "douyin-mini-game",
   adapter: { engine: "layaair", version: "3.4.0" },
   capabilities: { network: false, login: false, share: false, ads: false, payments: false },
-  allowedNetworkHosts: [],
-  remoteScripts: false,
-})}\\n');
+  allowedNetworkHosts: [], remoteScripts: false,
+}) + "\\n");
 await writeFile(out + "/resources/assets/manifest.json", '${JSON.stringify({ schemaVersion: "1.0", projectId: "safe-game", revision: 0, assets: [] })}\\n');
 console.log("Build end, result=Success");
 `);
@@ -59,6 +58,16 @@ describe("DouyinMiniGameBuilder", () => {
       projectId: "safe-game",
       cliVersion: "3.4.0",
       validation: { passed: true, platform: "douyin-mini-game" },
+    });
+  });
+
+  it("builds a managed WeChat project through the fixed wxgame target", async () => {
+    const { root, cli } = await fixture("wechat-mini-game");
+    const builder = new WechatMiniGameBuilder({ projectsRoot: root, cliPath: process.execPath, cliPrefixArgs: [cli] });
+    await expect(builder.build("safe-game")).resolves.toMatchObject({
+      projectId: "safe-game",
+      cliVersion: "3.4.0",
+      validation: { passed: true, platform: "wechat-mini-game" },
     });
   });
 

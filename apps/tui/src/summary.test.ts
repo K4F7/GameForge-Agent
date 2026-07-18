@@ -45,6 +45,10 @@ describe("terminal run summary", () => {
     expect(summary?.build).toMatchObject({ cliVersion: "3.4.0", fileCount: 16, assetCount: 1 });
     expect(formatSummary(summary!)).toContain("Douyin build: LayaAir 3.4.0 portrait files=16");
     expect(formatSummary(summary!)).toContain("Verification: passed won score=2 lives=3");
+    const wechat = summarizeRun(events.map((event) => event.type === "build.ready"
+      ? { ...event, target: "wechat-mini-game" as const }
+      : event));
+    expect(formatSummary(wechat!)).toContain("WeChat build: LayaAir 3.4.0 portrait files=16");
   });
 
   it("returns null when a replay page does not contain the start event", () => {

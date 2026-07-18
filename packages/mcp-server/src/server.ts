@@ -69,6 +69,7 @@ import {
   getGameforgeCapabilitiesTool,
   getProjectAssetsTool,
   buildDouyinMiniGameTool,
+  buildWechatMiniGameTool,
   recoverProjectAssetsTool,
   type GameSpecDraftProvider,
   type ProjectGenerator,
@@ -80,6 +81,7 @@ import {
   type ProjectVerifier,
   type ProjectPreviewManager,
   type DouyinProjectBuilder,
+  type WechatProjectBuilder,
 } from "./tools.js";
 import type { ToolAuditContextBinder, ToolAuditRecorder } from "./tool-audit.js";
 
@@ -94,6 +96,7 @@ export type CreateServerOptions = {
   projectPreviewManager?: ProjectPreviewManager;
   projectGenerator?: ProjectGenerator;
   douyinProjectBuilder?: DouyinProjectBuilder;
+  wechatProjectBuilder?: WechatProjectBuilder;
   runRelayClient?: RunRelayToolClient;
   taskRelayClient?: TaskRelayToolClient;
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
@@ -137,6 +140,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       assetStore: options.assetStore?.read !== undefined && options.assetStore.recover !== undefined,
       generator: options.projectGenerator?.recover !== undefined,
       douyinBuild: options.douyinProjectBuilder !== undefined,
+      wechatBuild: options.wechatProjectBuilder !== undefined,
       verifier: options.projectVerifier !== undefined,
       preview: options.projectPreviewManager !== undefined,
       runRelay: options.runRelayClient !== undefined,
@@ -274,7 +278,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       {
         title: "Generate a deterministic managed game project",
         description:
-          "Create or safely update a fixed, versioned Web Phaser or Douyin LayaAir source project from a validated GameSpec. Defaults to create dry-run. Update apply requires the current plan hash returned by update dry-run and refuses modified managed files or target changes.",
+          "Create or safely update a fixed, versioned Web Phaser, Douyin LayaAir, or WeChat LayaAir source project from a validated GameSpec. Defaults to create dry-run. Update apply requires the current plan hash returned by update dry-run and refuses modified managed files or target changes.",
         inputSchema: projectGenerationRequestSchema.shape,
       },
       async (request) => generateGameProjectTool(projectGenerator, request),
@@ -290,6 +294,18 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         inputSchema: { projectId: projectIdSchema },
       },
       async ({ projectId }) => buildDouyinMiniGameTool(options.douyinProjectBuilder as DouyinProjectBuilder, projectId),
+    );
+  }
+
+  if (options.wechatProjectBuilder !== undefined) {
+    registerTool(
+      "build_wechat_mini_game",
+      {
+        title: "Build and validate a managed WeChat mini-game",
+        description: "Run the fixed LayaAir wxgame build once for a managed project, then apply deterministic offline artifact validation. This never logs in, previews, uploads, audits, or publishes.",
+        inputSchema: { projectId: projectIdSchema },
+      },
+      async ({ projectId }) => buildWechatMiniGameTool(options.wechatProjectBuilder as WechatProjectBuilder, projectId),
     );
   }
 

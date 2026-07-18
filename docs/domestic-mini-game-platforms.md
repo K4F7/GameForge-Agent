@@ -33,7 +33,7 @@
 5. 开发者工具导入/预览的人工或受控 CLI 证据；
 6. 真机验收记录，与浏览器 Chrome 证据并列而不是互相替代。
 
-生成器 0.12.0 已将 `gameforge-platform.json` 和运行时资产 Manifest 放入 Laya `assets/resources/`，官方构建后位于产物 `resources/`；五种 GameSpec genre 已分别通过 LayaAir 3.4.0 构建。第一版模板声明离线运行，网络、登录、分享、广告和支付全部关闭；静态校验器会把实际远程 URL 和常见 `tt.*` 用法与声明交叉核对，并校验每个发布媒体的字节数与 SHA-256。域名校验只能证明产物内运行时 URL 使用 HTTPS、非本地/IP/端口且出现在声明中，不能证明开发者后台已配置合法域名或服务器满足 TLS 1.2，这两项仍属于账号级平台验收。
+生成器 0.13.0 已将 target-specific `gameforge-platform.json` 和运行时资产 Manifest 放入 Laya `assets/resources/`，官方构建后位于产物 `resources/`；抖音和微信两个 target 的五种 GameSpec genre 均已分别通过 LayaAir 3.4.0 构建。第一版模板声明离线运行，网络、登录、分享、广告和支付全部关闭；静态校验器会把实际远程 URL 以及常见 `tt.*`/`wx.*` 用法与声明交叉核对，并校验每个发布媒体的字节数与 SHA-256。域名校验只能证明产物内运行时 URL 使用 HTTPS、非本地/IP/端口且出现在声明中，不能证明开发者后台已配置合法域名或服务器满足 TLS 1.2，这两项仍属于账号级平台验收。
 
 ## 引擎判断
 
@@ -41,7 +41,7 @@
 
 抖音官方明确写明 Cocos、Laya、Egret 已完成适配并可直接导出抖音小游戏，也提供 Unity WebGL/Wasm、Godot专题和原生 JavaScript/单 Canvas 路线，但没有指定唯一推荐引擎。GameForge V1 选择当前官方下载页的 LayaAir 3.4.0 作为首选抖音生成后端：它使用 TypeScript，输出 `game.js`、`game.json`、`projectconfig.json`、`microgame-adapter.js`，并提供可脚本化的 `bytedancegame` 构建任务。Cocos Creator 3.8 LTS 作为成熟编辑器/Asset Bundle 分包备选；Unity WebGL 需要 C#/Unity/StarkSDK 和 Wasm 工具链，留给已有 Unity 项目而非 TS 第一版。LayaAir 3.x IDE 官方明确要求登录账号，且发布器不以 npm 包或 GitHub release 独立提供，因此安装和首次登录是本地工具链前置。
 
-本机随后安装并只读核验 Layabox 官方 `layaair-cli` 3.4.0。与完整 IDE 不同，CLI 直接提供 `create`、`build`、`validate`、`run`，内置 2D/3D 空项目，并在真实项目中列出 `bytedancegame`、`wxgame`、OPPO、vivo、支付宝、淘宝等构建目标。使用内置 2D 空项目挂载纯代码 `Laya.Scene` 后，`build bytedancegame` 成功输出官方适配库和根文件；GameForge 校验报告为 33 个文件、2,341,386 bytes、无分包、portrait。该结果证明本地构建链可用，不证明抖音 IDE 或真机运行。
+本机随后安装并只读核验 Layabox 官方 `layaair-cli` 3.4.0。与完整 IDE 不同，CLI 直接提供 `create`、`build`、`validate`、`run`，内置 2D/3D 空项目，并在真实项目中列出 `bytedancegame`、`wxgame`、OPPO、vivo、支付宝、淘宝等构建目标。使用受管 Laya 源工程后，`build bytedancegame` 与 `build wxgame` 都成功输出各自官方适配库和根文件；微信五种 genre 的校验产物均为 14 个文件、约 1.06 MiB、无分包、portrait。该结果证明两个本地构建链可用，不证明抖音/微信 DevTool 或真机运行。
 
 抖音 CLI 需要区分：`tt-ide-cli` 暴露 `tma`，官方 Lite 文档只把它用于小程序；小游戏对应 `tt-minigame-ide-cli` 的 `tmg`。`tmg` 2.1.1 提供 login/open/preview/upload/build-npm，但没有独立的本地小游戏 build/validate；preview 明确先上传再扫码，并从 2.0.0 起默认收集行为数据，可用 `tmg set-config --allow-report-event no` 关闭。故本地门禁不安装或调用它，避免在未授权时登录/上传。官方新 `ttmg dev` 能启动编译和预检查，但仍要求 DevTool、Chrome、有效 AppID、登录与网络，不能替代平台工具。
 

@@ -4,6 +4,8 @@
 
 产品第一版以可发布的抖音小游戏为首要目标，微信小游戏为第二导出目标；现有 Phaser + Vite 浏览器项目是快速预览与自动验收基线，不等同于平台发布产物。平台范围与验收门槛见 [ADR-0002](docs/decisions/0002-domestic-mini-game-v1.md) 和 [国内小游戏平台调研](docs/domestic-mini-game-platforms.md)。
 
+当前生成器已支持 `web`、`douyin-mini-game` 和 `wechat-mini-game`。两个小游戏 target 复用严格 GameSpec、五种 LayaAir 玩法和统一 Asset Store，但分别使用官方 CLI 的 `bytedancegame`/`wxgame` 构建目标、独立平台策略与 `tt.*`/`wx.*` capability 静态校验。CLI 构建通过不替代各自开发者工具与真机验收。
+
 当前阶段聚焦三件事：
 
 1. 以CodeArts Agent作为需求理解、规划和多智能体编排中枢。

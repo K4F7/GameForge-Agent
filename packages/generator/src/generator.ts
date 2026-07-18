@@ -7,6 +7,7 @@ import {
   projectGenerationResultSchema,
   projectIdSchema,
   douyinPlatformPolicySchema,
+  wechatPlatformPolicySchema,
   type GameSpec,
   type GamePlatformTarget,
   type GeneratedProjectPlan,
@@ -23,7 +24,7 @@ import { z } from "zod";
 import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
 import { douyinRuntimeSource } from "./douyin-template.js";
 
-const GENERATOR_VERSION = "0.12.0";
+const GENERATOR_VERSION = "0.13.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 
 type GeneratedFile = { path: string; content: string; bytes: number; sha256: string };
@@ -382,7 +383,7 @@ export class GameProjectGenerator {
   }
 }
 
-function createGeneratedFiles(projectId: string, spec: GameSpec, target: "web" | "douyin-mini-game"): {
+function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePlatformTarget): {
   files: ReadonlyArray<GeneratedFile>;
   specSha256: string;
   planSha256: string;
@@ -427,7 +428,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: "web" |
       include: ["src", "vite.config.ts", "game-spec.json"],
     }, null, 2)}\n`),
     file("vite.config.ts", 'import { defineConfig } from "vite";\n\nexport default defineConfig({ base: "./", build: { manifest: true } });\n'),
-  ] : createDouyinSourceFiles(projectId, specContent)).sort((left, right) => left.path.localeCompare(right.path));
+  ] : createLayaSourceFiles(projectId, specContent, target)).sort((left, right) => left.path.localeCompare(right.path));
 
   const specSha256 = sha256(specContent);
   const planSha256 = sha256(JSON.stringify({
@@ -459,17 +460,24 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: "web" |
   return { files, specSha256, planSha256 };
 }
 
-function createDouyinSourceFiles(projectId: string, specContent: string): GeneratedFile[] {
+function createLayaSourceFiles(
+  projectId: string,
+  specContent: string,
+  target: Exclude<GamePlatformTarget, "web">,
+): GeneratedFile[] {
   const sceneUuid = "11111111-1111-4111-8111-111111111111";
   const runtimeUuid = "22222222-2222-4222-8222-222222222222";
-  const platformPolicy = douyinPlatformPolicySchema.parse({
+  const platformPolicyInput = {
     schemaVersion: "1.0",
-    target: "douyin-mini-game",
+    target,
     adapter: { engine: "layaair", version: "3.4.0" },
     capabilities: { network: false, login: false, share: false, ads: false, payments: false },
     allowedNetworkHosts: [],
     remoteScripts: false,
-  });
+  };
+  const platformPolicy = target === "douyin-mini-game"
+    ? douyinPlatformPolicySchema.parse(platformPolicyInput)
+    : wechatPlatformPolicySchema.parse(platformPolicyInput);
   return [
     file(`${projectId}.laya`, '{\n  "version": "3.4.0"\n}\n'),
     file("game-spec.json", specContent),

@@ -48,7 +48,7 @@ export function redactEnvironmentValues(message: string, environment: NodeJS.Pro
 
 export function expectedConditionalTools(snapshot: {
   providers: { spec: { ready: boolean }; image: { ready: boolean }; tts: { ready: boolean }; sound: { ready: boolean }; music: { ready: boolean } };
-  engineering: { assetStore: boolean; generator: boolean; douyinBuild: boolean; verifier: boolean; preview: boolean; runRelay: boolean; taskInbox: boolean };
+  engineering: { assetStore: boolean; generator: boolean; douyinBuild: boolean; wechatBuild: boolean; verifier: boolean; preview: boolean; runRelay: boolean; taskInbox: boolean };
 }): ReadonlyArray<string> {
   return [
     ...(snapshot.providers.spec.ready ? ["draft_game_spec"] : []),
@@ -59,6 +59,7 @@ export function expectedConditionalTools(snapshot: {
     ...(snapshot.engineering.assetStore ? ["get_project_assets", "recover_project_assets"] : []),
     ...(snapshot.engineering.generator ? ["generate_game_project", "recover_game_project_update"] : []),
     ...(snapshot.engineering.douyinBuild ? ["build_douyin_mini_game"] : []),
+    ...(snapshot.engineering.wechatBuild ? ["build_wechat_mini_game"] : []),
     ...(snapshot.engineering.verifier ? ["verify_game_project"] : []),
     ...(snapshot.engineering.preview ? ["start_game_preview", "stop_game_preview"] : []),
     ...(snapshot.engineering.runRelay

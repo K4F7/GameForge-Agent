@@ -599,8 +599,8 @@ export function App(): React.JSX.Element {
           <div className="progress-caption"><span>阶段进度</span><strong>{progress}%</strong></div>
 
           {runState.build !== null && (
-            <section className="verification-card passed build-card" aria-label="抖音小游戏构建报告">
-              <header><span>DOUYIN ARTIFACT</span><strong>构建通过</strong></header>
+            <section className="verification-card passed build-card" aria-label={`${runState.build.target === "wechat-mini-game" ? "微信" : "抖音"}小游戏构建报告`}>
+              <header><span>{runState.build.target === "wechat-mini-game" ? "WECHAT" : "DOUYIN"} ARTIFACT</span><strong>构建通过</strong></header>
               <div className="verification-outcome"><b>LayaAir {runState.build.cliVersion}</b><span>{runState.build.deviceOrientation}</span></div>
               <dl>
                 <div><dt>文件</dt><dd>{runState.build.fileCount}</dd></div>

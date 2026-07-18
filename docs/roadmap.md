@@ -6,7 +6,7 @@
 
 第一版首要发布目标已从泛浏览器游戏收窄为抖音小游戏；微信小游戏是第二导出目标。浏览器 Phaser 项目继续承担快速预览和 Chrome 回归，但不能作为小游戏平台验收。决策与官方约束见 [ADR-0002](./decisions/0002-domestic-mini-game-v1.md)。
 
-- [x] 为生成请求、计划和 Manifest 增加显式 `web` / `douyin-mini-game` target；旧请求默认 `web`，未实现平台 target 会明确失败；
+- [x] 为生成请求、计划和 Manifest 增加显式 `web` / `douyin-mini-game` / `wechat-mini-game` target；旧请求默认 `web`，未实现平台 target 会明确失败；
 - [x] 完成 Phaser 4 抖音小游戏无 DOM 兼容性 spike；动态导入与初始化触发广泛浏览器依赖，按 ADR 停止 shim 路线；
 - [x] 使用 LayaAir CLI 3.4.0 内置 2D 空项目完成首个 `bytedancegame` 可玩原型：移动、收集、计时、胜负，主包约 2.34 MiB；
 - [x] 将已验证的 Laya 3.4.0 项目结构提炼为确定性 `douyin-mini-game` GameSpec 生成后端；0.12.0 已开放 arcade/platformer/puzzle/shooter/strategy 五种机制并逐个通过官方 CLI 构建；
@@ -19,7 +19,8 @@
 - [ ] 在抖音小游戏开发者工具完成原型导入、预览和上传前检查；
 - [ ] 在真实抖音客户端扫码运行并记录脱敏截图、日志、包体和人工干预；
 - [x] 研判 CLI 自动化边界：本地生成/构建/静态门禁可 no-GUI；中国抖音小游戏最终预览、提审与发布没有公开的完整 no-GUI 链路；
-- [ ] 抖音闭环稳定后实现微信小游戏 target；快手暂不进入 V1 发布门禁。
+- [x] 实现 `wechat-mini-game` 第二导出 target：复用同一 Laya TypeScript 玩法和 Asset Store，增加固定 `wxgame` 构建、微信策略/API 静态校验、MCP capability 与 target-aware Workbench/TUI；五种 genre 已逐一通过真实 LayaAir CLI 3.4.0 构建；
+- [ ] 在微信开发者工具导入 `release/wxgame`，完成编译、预览与真机扫码证据；快手暂不进入 V1 发布门禁。
 
 ## 第一轮：真实 CodeArts 闭环
 
@@ -60,7 +61,7 @@
 - [x] 显示阶段进度、最近日志、GameSpec locale、资产与验证摘要；
 - [x] 支持从游标回放后连接 SSE，显式报告序列缺口和 Relay 断线；
 - [x] 支持按 Task ID 自动解析 Run 并跟随至终态，无需用户猜测 Run ID；
-- [x] Workbench 与 TUI 消费持久化 `build.ready`，显示抖音 CLI、包体、方向、能力和媒体 revision，不泄露绝对输出路径；
+- [x] Workbench 与 TUI 消费持久化 `build.ready`，按 target 显示抖音/微信 CLI、包体、方向、能力和媒体 revision，不泄露绝对输出路径；
 - [x] 保持 URL 只允许 HTTPS 或 loopback HTTP，禁止凭据、query 和 fragment；
 - [x] 增加 Windows/macOS/Linux CI，以及交互 TTY 的退出键、resize 重绘和 raw mode 清理测试。
 

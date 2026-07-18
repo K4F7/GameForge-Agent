@@ -238,6 +238,7 @@ describe("run event contracts", () => {
       stderrTruncated: false,
     } as const;
     expect(runEventSchema.safeParse(event).success).toBe(true);
+    expect(runEventSchema.safeParse({ ...event, target: "wechat-mini-game" }).success).toBe(true);
     expect(runEventSchema.safeParse({ ...event, outputPath: "D:/generated/safety-sprint/release" }).success).toBe(false);
     expect(runEventSchema.safeParse({ ...event, mainPackageBytes: 4 * 1024 * 1024 + 1 }).success).toBe(false);
   });
@@ -256,7 +257,7 @@ describe("run event contracts", () => {
           sound: { provider: "freesound", ready: false },
           music: { provider: "minimax", ready: false },
         },
-        engineering: { assetStore: true, generator: true, douyinBuild: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+        engineering: { assetStore: true, generator: true, douyinBuild: true, wechatBuild: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
       },
     }).success).toBe(true);
   });

@@ -695,7 +695,9 @@ async function verifiedManagedProject(projectsRoot: string, projectId: string): 
 }
 
 async function verifiedRuntimeAssetLayout(project: ManagedAssetProject): Promise<RuntimeAssetLayout> {
-  const runtimeRelative = project.target === "web" ? "public" : "assets/resources";
+  const layaTarget = project.target === "douyin-mini-game" || project.target === "wechat-mini-game";
+  const runtimeRelative = project.target === "web" ? "public" : layaTarget ? "assets/resources" : undefined;
+  if (runtimeRelative === undefined) throw new Error("Generated project target has no managed asset layout.");
   const runtimeLabel = project.target === "web" ? "Project public directory" : "Project Laya resources directory";
   const runtimeDirectory = await verifiedDirectory(safeChild(project.directory, runtimeRelative), runtimeLabel);
   const assetsDirectory = await verifiedDirectory(safeChild(runtimeDirectory, "assets"), "Project assets directory");

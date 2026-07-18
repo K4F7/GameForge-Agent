@@ -14,7 +14,7 @@ GameForge把“理解需求”和“生成工程”分开：
 
 ## 项目生成器
 
-`@gameforge/generator` 0.12.0 在生成请求、计划和托管 Manifest 中记录显式 target。旧请求默认 `web`，继续生成独立的 Phaser 4 + Vite + TypeScript 项目；`douyin-mini-game` 生成固定 LayaAir 3.4.0 TypeScript 源工程，并保持 GameSpec 的 arcade/platformer/puzzle/shooter/strategy genre。跨 target update 会明确失败。固定 Web 输出包括：
+`@gameforge/generator` 0.13.0 在生成请求、计划和托管 Manifest 中记录显式 target。旧请求默认 `web`，继续生成独立的 Phaser 4 + Vite + TypeScript 项目；`douyin-mini-game` 与 `wechat-mini-game` 生成固定 LayaAir 3.4.0 TypeScript 源工程，并保持 GameSpec 的 arcade/platformer/puzzle/shooter/strategy genre。跨 target update 会明确失败。固定 Web 输出包括：
 
 - `game-spec.json`
 - `src/main.ts`
@@ -39,9 +39,11 @@ GameForge把“理解需求”和“生成工程”分开：
 
 抖音 Laya 后端采用同一五类语义但不引入额外物理模块：arcade 连续追踪移动；platformer 使用手写重力、地面/浮台落地和跳跃；puzzle 使用48px网格步进；shooter 使用有寿命的定向子弹并在清除危险物后获胜；strategy 以空格切换谨慎/突进速度，突进碰撞承受双倍伤害。五类均保留收集、生命、倒计时、触摸/键盘和素材回退。运行时把状态、genre、分数、生命、倒计时及实体坐标发布到无 DOM 的 `GameGlobal.__GAMEFORGE_TEST__`，供后续 DevTool 自动化读取；当前官方 CLI 构建证据不等同于真机玩法验收。
 
-抖音源工程固定输出 `<projectId>.laya`、启动场景及 UUID meta、Build/Player Settings、`src/Main.ts`、`assets/resources/game-spec.json`、严格的 `assets/resources/gameforge-platform.json`，以及初始 `assets/resources/assets/manifest.json`。运行时异步读取 JSON GameSpec 和媒体 Manifest，消费标题、目标、玩法参数及图片/音频角色；用户文本不插入可执行源码。平台策略默认 `network/login/share/ads/payments=false`、无远程域名且禁止远程脚本；后续启用能力必须同时修改声明并通过静态用法核验。生成器只负责确定性源文件，不内嵌或下载 LayaAir CLI。配置 `GAMEFORGE_LAYAIR_CLI` 后，`build_douyin_mini_game` 对托管 target 执行固定 3.4.0 `bytedancegame` 构建并调用 mini-game validator。Builder 使用绝对 CLI、受限子进程环境、120 秒超时、64 KiB/stdout/stderr 上限、项目构建锁和产物 realpath/符号链接检查；官方 CLI 即使以 0 退出，只要完整 stdout 或 stderr 流出现 `Build end, result=Failed` 也会判定失败，检测不受保存日志截断影响。它不返回原始日志，也不登录、预览、上传、提审或发布。
+Laya 源工程固定输出 `<projectId>.laya`、启动场景及 UUID meta、Build/Player Settings、`src/Main.ts`、`assets/resources/game-spec.json`、严格的 target-specific `assets/resources/gameforge-platform.json`，以及初始 `assets/resources/assets/manifest.json`。运行时异步读取 JSON GameSpec 和媒体 Manifest，消费标题、目标、玩法参数及图片/音频角色；用户文本不插入可执行源码。平台策略默认 `network/login/share/ads/payments=false`、无远程域名且禁止远程脚本；后续启用能力必须同时修改声明并通过 `tt.*` 或 `wx.*` 静态用法核验。生成器只负责确定性源文件，不内嵌或下载 LayaAir CLI。配置 `GAMEFORGE_LAYAIR_CLI` 后，`build_douyin_mini_game` 固定执行 `bytedancegame`，`build_wechat_mini_game` 固定执行 `wxgame`，随后调用对应 validator。Builder 使用绝对 CLI、受限子进程环境、120 秒超时、64 KiB/stdout/stderr 上限、项目构建锁和产物 realpath/符号链接检查；官方 CLI 即使以 0 退出，只要完整 stdout 或 stderr 流出现 `Build end, result=Failed` 也会判定失败，检测不受保存日志截断影响。它不返回原始日志，也不登录、预览、上传、提审或发布。
 
-抖音小游戏静态发布检查由 `@gameforge/minigame-validator` 提供。对已有平台工程执行 `bun run minigame:validate -- <绝对工程路径>`，会验证 `game.js`、`game.json`、`project.config.json`、平台策略、`resources/assets/manifest.json`、方向与超时字段、符号链接边界、允许的发布文件类型、分包根唯一性、4 MiB 主包和 20 MiB 总目录限制；每个发布媒体还必须存在于 `resources/<entry.path>`，并与 Manifest 的字节数和 SHA-256 一致。有界 builder 还把 Manifest projectId 与请求的受管项目绑定，拒绝跨项目替换。同时拒绝入口 DOM 依赖、远程 JavaScript（含 HTTP(S)、协议相对、data/blob/javascript scheme）、HTTP URL、IP/localhost/端口/未声明域名，以及应用代码中未声明的网络、登录、分享、广告和支付 API。普通 GameSpec、素材 prompt、provenance 与 license 中的文档网址不作为运行时网络访问，避免把元数据误报成远程请求。只有 SHA-256 与已验证的 LayaAir 3.4.0 `microgame-adapter.js` 和 `laya.adapter-bytedance.js` 完全一致时，通用适配器里的平台 API 才不计为游戏主动 capability；同名文件被修改会保守失败。读取文本文件时复核 realpath、文件身份和大小，调用方仍应在产物静止时校验，不能把它当成对同机恶意并发改写的沙箱。该检查是保守的静态门禁，不做完整 JavaScript 数据流分析、不运行抖音 Runtime，也不能替代开发者工具、后台合法域名配置、TLS 探测与真机验收。
+小游戏静态发布检查由 `@gameforge/minigame-validator` 提供。抖音产物执行 `bun run minigame:validate -- <绝对工程路径>`；微信产物执行 `bun run minigame:validate -- --target wechat-mini-game <绝对工程路径>`。两者都会验证 `game.js`、`game.json`、`project.config.json`、target-specific 平台策略、`resources/assets/manifest.json`、方向与超时字段、符号链接边界、允许的发布文件类型、分包根唯一性、4 MiB 主包和 20 MiB 总目录限制；每个发布媒体还必须存在于 `resources/<entry.path>`，并与 Manifest 的字节数和 SHA-256 一致。有界 builder 还把 Manifest projectId 与请求的受管项目绑定，拒绝跨项目替换。同时拒绝入口 DOM 依赖、远程 JavaScript、HTTP URL、IP/localhost/端口/未声明域名，以及应用代码中未声明的网络、登录、分享、广告和支付 API。只有 SHA-256 与真实 LayaAir 3.4.0 产物中已验证的抖音或微信平台适配器完全一致时，通用适配器里的平台 API 才不计为游戏主动 capability；同名文件被修改会保守失败。读取文本文件时复核 realpath、文件身份和大小。该检查是保守静态门禁，不做完整 JavaScript 数据流分析、不运行平台 Runtime，也不能替代开发者工具、后台合法域名配置、TLS 探测与真机验收。
+
+静态 API 与 URL 检查是词法门禁，不证明动态别名、反射或字符串拼接后的行为安全；CodeArts 不得据此自动开启商业 capability。Builder 与 validator 也不是针对同机恶意并发进程的沙箱：CLI、项目根和输出目录必须位于当前用户控制的受信任本地目录，验证期间不得由其他进程替换。平台账号、动态行为和运行时权限仍须在开发者工具与真机验收。
 
 GameSpec 可选 `gameplay` 对象提供四个有界核心参数：`collectibleCount` 1–10、`hazardCount` 0–6、`startingLives` 1–9、`movementSpeed` 100–360 px/s。旧规格缺少该对象时保持各 genre 的 0.2.x 默认值；百炼严格 JSON Schema 要求新草案显式给出四项。生成运行时用它们控制实际出生数量、生命和连续移动速度，platformer 与 arena 均消费同一规格，不只是 Workbench 展示字段。
 
@@ -125,7 +127,7 @@ URL 契约只允许 HTTPS，或主机严格为 `localhost`、`127.0.0.1`、`[::1
 - `voice.job.updated`：携带项目 ID、asset ID、签名异步作业 handle 与 processing/succeeded/failed；用于 CodeArts 中断恢复，不写入普通日志。
 - `verification.ready`：携带一次浏览器验收的有界摘要和项目内 PNG 路径；用于会话恢复和 Workbench 验收卡，不携带绝对路径或诊断全文。
 
-CodeArts 在 `validate_game_spec` 成功后发布 `spec.ready`；图片、音效或配音工具真正完成安全落盘后，原样使用返回的 `entry` 与 `manifestRevision` 发布 `asset.ready`。抖音构建和 validator 都成功后，把 `build_douyin_mini_game` 的无路径 `buildEvent` 补齐 Run envelope 后发布；MCP 对外响应不包含 builder 内部绝对 `outputPath`。候选搜索结果、纯日志、未写入文件的 Provider 响应或失败构建不能伪装成已就绪产物。
+CodeArts 在 `validate_game_spec` 成功后发布 `spec.ready`；图片、音效或配音工具真正完成安全落盘后，原样使用返回的 `entry` 与 `manifestRevision` 发布 `asset.ready`。目标平台构建和 validator 都成功后，把对应 build 工具的无路径 `buildEvent` 补齐 Run envelope 后发布；MCP 对外响应不包含 builder 内部绝对 `outputPath`。候选搜索结果、纯日志、未写入文件的 Provider 响应或失败构建不能伪装成已就绪产物。
 
 素材迭代复用同一 `asset.ready` 契约。CodeArts 先读取 `get_project_assets`，再以明确 assetId、`mode: "replace"` 和当前 `expectedRevision` 调用原媒体工具；Asset Store 在同一写锁内再次 CAS，旧文件哈希必须与 Manifest 一致。成功时完整 entry 替换、revision 增加；Workbench reducer 按 assetId 归并新 entry，用户刷新 preview iframe 后模板重新获取 Manifest。revision 冲突不会自动重放 Provider。
 
@@ -181,7 +183,7 @@ CodeArts 新会话调用一次不带 status 的 `list_game_tasks`，优先恢复
 VITE_AGENT_BASE_URL=http://127.0.0.1:8787/
 ```
 
-配置后工作台显示 Run ID 和 Prompt，“提交给 CodeArts”调用 `/tasks`，展示返回的 Task ID，并从 `run.started` 游标立即连接对应 SSE。连接已有 Run 仍可独立使用。GameSpec、资产面板和抖音构建卡分别只消费 `spec.ready`、`asset.ready` 与 `build.ready`，新 Run 会清空旧产物；构建卡显示 CLI 版本、方向、文件数、主包/总量、媒体数量和 Manifest revision，不显示主机路径。收到序列缺口时不会跳过事件，而是从最后连续游标自动回放并重建 stream；有限重试耗尽后显示手动恢复入口。收到 `preview.ready` 后，预览 iframe 自动切换到事件中的项目 URL；iframe 仅开放脚本与 pointer lock，不发送 referrer。未收到事件时才使用 `VITE_GAME_PREVIEW_URL`（默认 `http://localhost:5173/`）作为回退。
+配置后工作台显示 Run ID 和 Prompt，“提交给 CodeArts”调用 `/tasks`，展示返回的 Task ID，并从 `run.started` 游标立即连接对应 SSE。连接已有 Run 仍可独立使用。GameSpec、资产面板和 target-aware 小游戏构建卡分别只消费 `spec.ready`、`asset.ready` 与 `build.ready`，新 Run 会清空旧产物；构建卡显示平台、CLI 版本、方向、文件数、主包/总量、媒体数量和 Manifest revision，不显示主机路径。收到序列缺口时不会跳过事件，而是从最后连续游标自动回放并重建 stream；有限重试耗尽后显示手动恢复入口。收到 `preview.ready` 后，预览 iframe 自动切换到事件中的项目 URL；iframe 仅开放脚本与 pointer lock，不发送 referrer。未收到事件时才使用 `VITE_GAME_PREVIEW_URL`（默认 `http://localhost:5173/`）作为回退。
 
 ## 语言链路与生成运行时
 

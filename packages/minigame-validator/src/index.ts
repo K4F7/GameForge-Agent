@@ -4,9 +4,11 @@ import { isIP } from "node:net";
 import path from "node:path";
 import {
   douyinPlatformPolicySchema,
+  wechatPlatformPolicySchema,
   runtimeAssetManifestSchema,
   type DouyinPlatformPolicy,
   type RuntimeAssetManifest,
+  type WechatPlatformPolicy,
 } from "@gameforge/contracts";
 import { z } from "zod";
 
@@ -18,6 +20,10 @@ const PLATFORM_POLICY_PATH = "resources/gameforge-platform.json";
 const TRUSTED_ENGINE_SCRIPT_HASHES = new Map([
   ["microgame-adapter.js", "7a70507864ef92630a48b392aa214f1e669998ec79049dd8b02a0b3f316e7185"],
   ["libs/laya.adapter-bytedance.js", "ea1de2cb8eb5756a2ca94ea0777594c4cc50aacab0cbce7816f4bd7a9c0e7321"],
+]);
+const TRUSTED_WECHAT_ENGINE_SCRIPT_HASHES = new Map([
+  ["weapp-adapter.js", "6a3af86cc59ec711a28da7a2ae97678e308b17a4cb5f8f39e247826ded1adf49"],
+  ["libs/laya.adapter-weixin.js", "78544d00e828a2a1073696d2ffbb079cd8ffad10d8d84425cfd543f2df018650"],
 ]);
 const ALLOWED_FILE_EXTENSIONS = new Set([
   ".js", ".json", ".ls", ".txt", ".bin", ".wasm", ".map",
@@ -67,32 +73,52 @@ export type DouyinMiniGameValidationReport = {
   projectId: string;
 };
 
+export type WechatMiniGameValidationReport = Omit<DouyinMiniGameValidationReport, "platform"> & {
+  platform: "wechat-mini-game";
+};
+
 export async function validateDouyinMiniGameProject(
   projectRoot: string,
   options: { expectedProjectId?: string } = {},
 ): Promise<DouyinMiniGameValidationReport> {
-  if (!path.isAbsolute(projectRoot)) throw new Error("Douyin mini-game project root must be absolute.");
+  return await validateMiniGameProject(projectRoot, "douyin-mini-game", options) as DouyinMiniGameValidationReport;
+}
+
+export async function validateWechatMiniGameProject(
+  projectRoot: string,
+  options: { expectedProjectId?: string } = {},
+): Promise<WechatMiniGameValidationReport> {
+  return await validateMiniGameProject(projectRoot, "wechat-mini-game", options) as WechatMiniGameValidationReport;
+}
+
+async function validateMiniGameProject(
+  projectRoot: string,
+  platform: "douyin-mini-game" | "wechat-mini-game",
+  options: { expectedProjectId?: string },
+): Promise<DouyinMiniGameValidationReport | WechatMiniGameValidationReport> {
+  if (!path.isAbsolute(projectRoot)) throw new Error("Laya mini-game project root must be absolute.");
   const rootInfo = await lstat(projectRoot);
-  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error("Douyin mini-game project root must be a real directory.");
+  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error("Laya mini-game project root must be a real directory.");
   const root = await realpath(projectRoot);
   const gameEntry = await readRequiredFile(root, "game.js", MAX_TOTAL_BYTES);
-  if (gameEntry.text.trim().length === 0) throw new Error("Douyin mini-game game.js must not be empty.");
-  if (/\b(?:document|window)\s*\./.test(gameEntry.text)) throw new Error("Douyin mini-game entry must not depend on browser DOM globals.");
+  if (gameEntry.text.trim().length === 0) throw new Error("Laya mini-game game.js must not be empty.");
+  if (/\b(?:document|window)\s*\./.test(gameEntry.text)) throw new Error("Laya mini-game entry must not depend on browser DOM globals.");
   const gameConfig = gameConfigSchema.parse(JSON.parse((await readRequiredFile(root, "game.json", MAX_CONFIG_BYTES)).text) as unknown);
   projectConfigSchema.parse(JSON.parse((await readRequiredFile(root, "project.config.json", MAX_CONFIG_BYTES)).text) as unknown);
-  const platformPolicy = douyinPlatformPolicySchema.parse(
-    JSON.parse((await readRequiredFile(root, PLATFORM_POLICY_PATH, MAX_CONFIG_BYTES)).text) as unknown,
-  );
+  const policyInput = JSON.parse((await readRequiredFile(root, PLATFORM_POLICY_PATH, MAX_CONFIG_BYTES)).text) as unknown;
+  const platformPolicy = platform === "douyin-mini-game"
+    ? douyinPlatformPolicySchema.parse(policyInput)
+    : wechatPlatformPolicySchema.parse(policyInput);
   const subpackageRoots = normalizeSubpackageRoots(gameConfig.subPackages ?? []);
   const files = await walkFiles(root);
   const runtimeManifest = runtimeAssetManifestSchema.parse(
     JSON.parse((await readRequiredFile(root, "resources/assets/manifest.json", MAX_CONFIG_BYTES)).text) as unknown,
   );
   if (options.expectedProjectId !== undefined && runtimeManifest.projectId !== options.expectedProjectId) {
-    throw new Error("Douyin mini-game runtime asset manifest project ID mismatch.");
+    throw new Error("Laya mini-game runtime asset manifest project ID mismatch.");
   }
   await validatePublishedRuntimeAssets(root, runtimeManifest);
-  await validateArtifactPolicy(root, files, platformPolicy);
+  await validateArtifactPolicy(root, files, platformPolicy, platform);
   const packages = new Map(subpackageRoots.map((subpackageRoot) => [subpackageRoot, 0]));
   let mainPackageBytes = 0;
   let totalBytes = 0;
@@ -102,13 +128,13 @@ export async function validateDouyinMiniGameProject(
     if (matchedRoot === undefined) mainPackageBytes += file.bytes;
     else packages.set(matchedRoot, (packages.get(matchedRoot) ?? 0) + file.bytes);
   }
-  if (mainPackageBytes > MAX_MAIN_PACKAGE_BYTES) throw new Error(`Douyin mini-game main package exceeds 4 MiB: ${mainPackageBytes} bytes.`);
-  if (totalBytes > MAX_TOTAL_BYTES) throw new Error(`Douyin mini-game project exceeds 20 MiB: ${totalBytes} bytes.`);
+  if (mainPackageBytes > MAX_MAIN_PACKAGE_BYTES) throw new Error(`Laya mini-game main package exceeds 4 MiB: ${mainPackageBytes} bytes.`);
+  if (totalBytes > MAX_TOTAL_BYTES) throw new Error(`Laya mini-game project exceeds 20 MiB: ${totalBytes} bytes.`);
   for (const [subpackageRoot, bytes] of packages) {
-    if (bytes > MAX_TOTAL_BYTES) throw new Error(`Douyin mini-game subpackage exceeds 20 MiB: ${subpackageRoot}.`);
+    if (bytes > MAX_TOTAL_BYTES) throw new Error(`Laya mini-game subpackage exceeds 20 MiB: ${subpackageRoot}.`);
   }
   return {
-    platform: "douyin-mini-game",
+    platform,
     passed: true,
     fileCount: files.length,
     totalBytes,
@@ -123,16 +149,21 @@ export async function validateDouyinMiniGameProject(
   };
 }
 
-export { DouyinMiniGameBuilder, type DouyinMiniGameBuildResult } from "./builder.js";
+export {
+  DouyinMiniGameBuilder,
+  WechatMiniGameBuilder,
+  type DouyinMiniGameBuildResult,
+  type WechatMiniGameBuildResult,
+} from "./builder.js";
 
 async function readRequiredFile(root: string, relativePath: string, maximumBytes: number): Promise<{ text: string }> {
   const filePath = path.join(root, relativePath);
   const info = await lstat(filePath).catch(() => undefined);
-  if (info === undefined || !info.isFile() || info.isSymbolicLink()) throw new Error(`Douyin mini-game requires a regular ${relativePath}.`);
-  if (info.size > maximumBytes) throw new Error(`Douyin mini-game ${relativePath} exceeds its size limit.`);
+  if (info === undefined || !info.isFile() || info.isSymbolicLink()) throw new Error(`Laya mini-game requires a regular ${relativePath}.`);
+  if (info.size > maximumBytes) throw new Error(`Laya mini-game ${relativePath} exceeds its size limit.`);
   const actual = await realpath(filePath);
   if (pathKey(actual) !== pathKey(path.resolve(root, ...relativePath.split("/")))) {
-    throw new Error(`Douyin mini-game ${relativePath} escaped the project root.`);
+    throw new Error(`Laya mini-game ${relativePath} escaped the project root.`);
   }
   return { text: (await readStableProjectFile(root, relativePath, maximumBytes)).toString("utf8") };
 }
@@ -144,9 +175,9 @@ function pathKey(value: string): string {
 
 function normalizeSubpackageRoots(subpackages: ReadonlyArray<{ root: string }>): string[] {
   const roots = subpackages.map(({ root }) => root.replace(/\\/g, "/").replace(/\/$/, ""));
-  if (new Set(roots).size !== roots.length) throw new Error("Douyin mini-game subpackage roots must be unique.");
+  if (new Set(roots).size !== roots.length) throw new Error("Laya mini-game subpackage roots must be unique.");
   for (const root of roots) {
-    if (root === "." || root.includes("..") || path.posix.isAbsolute(root)) throw new Error("Douyin mini-game subpackage root is unsafe.");
+    if (root === "." || root.includes("..") || path.posix.isAbsolute(root)) throw new Error("Laya mini-game subpackage root is unsafe.");
   }
   return roots.sort((left, right) => right.length - left.length);
 }
@@ -158,17 +189,17 @@ async function walkFiles(root: string): Promise<Array<{ path: string; bytes: num
     for await (const entry of handle) {
       const absolute = path.join(directory, entry.name);
       const info = await lstat(absolute);
-      if (info.isSymbolicLink()) throw new Error(`Douyin mini-game project contains a symbolic link: ${entry.name}.`);
+      if (info.isSymbolicLink()) throw new Error(`Laya mini-game project contains a symbolic link: ${entry.name}.`);
       if (info.isDirectory()) await visit(absolute);
       else if (info.isFile()) {
         const relative = path.relative(root, absolute).replace(/\\/g, "/");
         const extension = path.posix.extname(relative).toLowerCase();
         if (!ALLOWED_FILE_EXTENSIONS.has(extension)) {
-          throw new Error(`Douyin mini-game project contains an unsupported file type: ${relative}.`);
+          throw new Error(`Laya mini-game project contains an unsupported file type: ${relative}.`);
         }
         files.push({ path: relative, bytes: info.size });
       }
-      else throw new Error(`Douyin mini-game project contains an unsupported filesystem entry: ${entry.name}.`);
+      else throw new Error(`Laya mini-game project contains an unsupported filesystem entry: ${entry.name}.`);
     }
   };
   await visit(root);
@@ -178,7 +209,8 @@ async function walkFiles(root: string): Promise<Array<{ path: string; bytes: num
 async function validateArtifactPolicy(
   root: string,
   files: ReadonlyArray<{ path: string }>,
-  policy: DouyinPlatformPolicy,
+  policy: DouyinPlatformPolicy | WechatPlatformPolicy,
+  platform: "douyin-mini-game" | "wechat-mini-game",
 ): Promise<void> {
   const allowedHosts = new Set(policy.allowedNetworkHosts);
   for (const file of files) {
@@ -188,13 +220,15 @@ async function validateArtifactPolicy(
     const content = await readStableProjectFile(root, file.path);
     const text = content.toString("utf8");
     if (extension === ".js" && containsRemoteScriptImport(text)) {
-      throw new Error(`Douyin mini-game must not load remote JavaScript: ${file.path}.`);
+      throw new Error(`Laya mini-game must not load remote JavaScript: ${file.path}.`);
     }
     for (const rawUrl of extractRemoteUrls(text)) {
-      if (isRemoteJavaScriptUrl(rawUrl)) throw new Error(`Douyin mini-game must not load remote JavaScript: ${file.path}.`);
+      if (isRemoteJavaScriptUrl(rawUrl)) throw new Error(`Laya mini-game must not load remote JavaScript: ${file.path}.`);
       validateRemoteUrl(rawUrl, allowedHosts, policy.capabilities.network, file.path);
     }
-    if (isApplicationJavaScript(file.path, content)) validateDeclaredCapabilities(text, policy.capabilities, file.path);
+    if (isApplicationJavaScript(file.path, content, platform)) {
+      validateDeclaredCapabilities(text, policy.capabilities, file.path, platform);
+    }
   }
 }
 
@@ -202,10 +236,10 @@ async function validatePublishedRuntimeAssets(root: string, manifest: RuntimeAss
   for (const entry of manifest.assets) {
     const relativePath = `resources/${entry.path}`;
     const content = await readStableProjectFile(root, relativePath, entry.bytes);
-    if (content.byteLength !== entry.bytes) throw new Error(`Douyin mini-game runtime asset size is inconsistent: ${entry.assetId}.`);
+    if (content.byteLength !== entry.bytes) throw new Error(`Laya mini-game runtime asset size is inconsistent: ${entry.assetId}.`);
     const digest = createHash("sha256").update(content).digest("hex");
     if (digest !== entry.sha256 || digest !== entry.provenance.sha256) {
-      throw new Error(`Douyin mini-game runtime asset hash is inconsistent: ${entry.assetId}.`);
+      throw new Error(`Laya mini-game runtime asset hash is inconsistent: ${entry.assetId}.`);
     }
   }
 }
@@ -231,26 +265,32 @@ function isRemoteJavaScriptUrl(rawUrl: string): boolean {
 }
 
 function validateRemoteUrl(rawUrl: string, allowedHosts: ReadonlySet<string>, networkDeclared: boolean, filePath: string): void {
-  if (rawUrl.startsWith("//")) throw new Error(`Douyin mini-game remote URL must explicitly use HTTPS: ${filePath}.`);
+  if (rawUrl.startsWith("//")) throw new Error(`Laya mini-game remote URL must explicitly use HTTPS: ${filePath}.`);
   const parsed = new URL(rawUrl);
-  if (parsed.protocol !== "https:") throw new Error(`Douyin mini-game remote URL must use HTTPS: ${filePath}.`);
+  if (parsed.protocol !== "https:") throw new Error(`Laya mini-game remote URL must use HTTPS: ${filePath}.`);
   if (parsed.username !== "" || parsed.password !== "" || parsed.port !== "") {
-    throw new Error(`Douyin mini-game remote URL must not contain credentials or a port: ${filePath}.`);
+    throw new Error(`Laya mini-game remote URL must not contain credentials or a port: ${filePath}.`);
   }
   const hostname = parsed.hostname.toLowerCase();
   if (hostname === "localhost" || isIP(hostname) !== 0 || !hostname.includes(".")) {
-    throw new Error(`Douyin mini-game remote URL host is unsafe: ${filePath}.`);
+    throw new Error(`Laya mini-game remote URL host is unsafe: ${filePath}.`);
   }
-  if (!networkDeclared) throw new Error(`Douyin mini-game uses a remote URL without declaring network capability: ${filePath}.`);
-  if (!allowedHosts.has(hostname)) throw new Error(`Douyin mini-game remote URL host is not declared: ${hostname}.`);
+  if (!networkDeclared) throw new Error(`Laya mini-game uses a remote URL without declaring network capability: ${filePath}.`);
+  if (!allowedHosts.has(hostname)) throw new Error(`Laya mini-game remote URL host is not declared: ${hostname}.`);
 }
 
-function isApplicationJavaScript(filePath: string, content: Buffer): boolean {
+function isApplicationJavaScript(
+  filePath: string,
+  content: Buffer,
+  platform: "douyin-mini-game" | "wechat-mini-game",
+): boolean {
   if (!filePath.endsWith(".js")) return false;
-  const trustedHash = TRUSTED_ENGINE_SCRIPT_HASHES.get(filePath);
+  const trustedHash = (platform === "douyin-mini-game"
+    ? TRUSTED_ENGINE_SCRIPT_HASHES
+    : TRUSTED_WECHAT_ENGINE_SCRIPT_HASHES).get(filePath);
   if (trustedHash === undefined) return true;
   const actualHash = createHash("sha256").update(content).digest("hex");
-  if (actualHash !== trustedHash) throw new Error(`Douyin mini-game trusted engine script hash mismatch: ${filePath}.`);
+  if (actualHash !== trustedHash) throw new Error(`Laya mini-game trusted engine script hash mismatch: ${filePath}.`);
   return false;
 }
 
@@ -258,17 +298,19 @@ function validateDeclaredCapabilities(
   text: string,
   capabilities: DouyinPlatformPolicy["capabilities"],
   filePath: string,
+  platform: "douyin-mini-game" | "wechat-mini-game",
 ): void {
+  const apiPattern = platform === "douyin-mini-game" ? ttApiPattern : wxApiPattern;
   const patterns: ReadonlyArray<[keyof typeof capabilities, RegExp]> = [
-    ["network", ttApiPattern("request|downloadFile|uploadFile|connectSocket")],
-    ["login", ttApiPattern("login")],
-    ["share", ttApiPattern("shareAppMessage|onShareAppMessage|showShareMenu")],
-    ["ads", ttApiPattern("create(?:RewardedVideo|Banner|Interstitial)Ad")],
-    ["payments", ttApiPattern("requestGamePayment|pay")],
+    ["network", apiPattern("request|downloadFile|uploadFile|connectSocket")],
+    ["login", apiPattern("login")],
+    ["share", apiPattern("shareAppMessage|onShareAppMessage|showShareMenu")],
+    ["ads", apiPattern("create(?:RewardedVideo|Banner|Interstitial)Ad")],
+    ["payments", apiPattern("requestMidasPayment|requestGamePayment|pay")],
   ];
   for (const [capability, pattern] of patterns) {
     if (!capabilities[capability] && pattern.test(text)) {
-      throw new Error(`Douyin mini-game uses undeclared ${capability} capability: ${filePath}.`);
+      throw new Error(`Laya mini-game uses undeclared ${capability} capability: ${filePath}.`);
     }
   }
 }
@@ -277,20 +319,24 @@ function ttApiPattern(names: string): RegExp {
   return new RegExp(`\\btt\\s*(?:\\?\\s*)?(?:\\.\\s*(?:${names})\\b|\\[\\s*["'](?:${names})["']\\s*\\])`);
 }
 
+function wxApiPattern(names: string): RegExp {
+  return new RegExp(`\\bwx\\s*(?:\\?\\s*)?(?:\\.\\s*(?:${names})\\b|\\[\\s*["'](?:${names})["']\\s*\\])`);
+}
+
 async function readStableProjectFile(root: string, relativePath: string, maximumBytes = MAX_TOTAL_BYTES): Promise<Buffer> {
   const expected = path.resolve(root, ...relativePath.split("/"));
   const before = await lstat(expected).catch(() => undefined);
   if (before === undefined || !before.isFile() || before.isSymbolicLink()) {
-    throw new Error(`Douyin mini-game project file became unsafe: ${relativePath}.`);
+    throw new Error(`Laya mini-game project file became unsafe: ${relativePath}.`);
   }
-  if (before.size > maximumBytes) throw new Error(`Douyin mini-game ${relativePath} exceeds its size limit.`);
+  if (before.size > maximumBytes) throw new Error(`Laya mini-game ${relativePath} exceeds its size limit.`);
   const actual = await realpath(expected);
-  if (pathKey(actual) !== pathKey(expected)) throw new Error(`Douyin mini-game ${relativePath} escaped the project root.`);
+  if (pathKey(actual) !== pathKey(expected)) throw new Error(`Laya mini-game ${relativePath} escaped the project root.`);
   const handle = await open(actual, "r");
   try {
     const opened = await handle.stat();
     if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino || opened.size !== before.size) {
-      throw new Error(`Douyin mini-game project file changed during validation: ${relativePath}.`);
+      throw new Error(`Laya mini-game project file changed during validation: ${relativePath}.`);
     }
     return await handle.readFile();
   } finally {

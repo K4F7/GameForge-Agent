@@ -3,7 +3,12 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { lstat, mkdir, open, readFile, realpath, unlink } from "node:fs/promises";
 import path from "node:path";
 import { managedGeneratedProjectManifestSchema, projectIdSchema } from "@gameforge/contracts";
-import { validateDouyinMiniGameProject, type DouyinMiniGameValidationReport } from "./index.js";
+import {
+  validateDouyinMiniGameProject,
+  validateWechatMiniGameProject,
+  type DouyinMiniGameValidationReport,
+  type WechatMiniGameValidationReport,
+} from "./index.js";
 
 const EXPECTED_LAYAAIR_VERSION = "3.4.0";
 const MAX_LOG_BYTES = 64 * 1024;
@@ -18,34 +23,44 @@ export type DouyinMiniGameBuildResult = {
   stderrTruncated: boolean;
 };
 
-export class DouyinMiniGameBuilder {
+export type WechatMiniGameBuildResult = Omit<DouyinMiniGameBuildResult, "validation"> & {
+  validation: WechatMiniGameValidationReport;
+};
+
+type BuilderOptions = { projectsRoot: string; cliPath: string; timeoutMs?: number; cliPrefixArgs?: string[] };
+
+class LayaMiniGameBuilder {
   readonly #projectsRoot: string;
   readonly #cliPath: string;
   readonly #timeoutMs: number;
   readonly #cliPrefixArgs: string[];
+  readonly #target: "douyin-mini-game" | "wechat-mini-game";
+  readonly #cliTarget: "bytedancegame" | "wxgame";
 
-  constructor(options: { projectsRoot: string; cliPath: string; timeoutMs?: number; cliPrefixArgs?: string[] }) {
+  constructor(options: BuilderOptions, target: "douyin-mini-game" | "wechat-mini-game") {
     if (!path.isAbsolute(options.projectsRoot) || path.parse(path.resolve(options.projectsRoot)).root === path.resolve(options.projectsRoot)) {
-      throw new Error("Douyin builder projects root must be an absolute non-root path.");
+      throw new Error("Laya builder projects root must be an absolute non-root path.");
     }
     if (!path.isAbsolute(options.cliPath)) throw new Error("LayaAir CLI path must be absolute.");
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 5_000 || timeoutMs > 300_000) {
-      throw new Error("Douyin builder timeout must be between 5000 and 300000 milliseconds.");
+      throw new Error("Laya builder timeout must be between 5000 and 300000 milliseconds.");
     }
     this.#projectsRoot = path.resolve(options.projectsRoot);
     this.#cliPath = path.resolve(options.cliPath);
     this.#timeoutMs = timeoutMs;
+    this.#target = target;
+    this.#cliTarget = target === "douyin-mini-game" ? "bytedancegame" : "wxgame";
     this.#cliPrefixArgs = options.cliPrefixArgs?.map((value) => {
       if (value.length === 0 || /[\0\r\n]/.test(value)) throw new Error("LayaAir CLI prefix argument is invalid.");
       return value;
     }) ?? [];
   }
 
-  async build(projectIdInput: string): Promise<DouyinMiniGameBuildResult> {
+  async build(projectIdInput: string): Promise<DouyinMiniGameBuildResult | WechatMiniGameBuildResult> {
     const projectId = projectIdSchema.parse(projectIdInput);
-    const { project, manifest } = await verifiedDouyinProject(this.#projectsRoot, projectId);
-    if (manifest.target !== "douyin-mini-game") throw new Error("LayaAir build requires a managed douyin-mini-game project.");
+    const { project, manifest } = await verifiedManagedProject(this.#projectsRoot, projectId);
+    if (manifest.target !== this.#target) throw new Error(`LayaAir build requires a managed ${this.#target} project.`);
     await verifiedCli(this.#cliPath);
     const lockPath = path.join(project, ".gameforge", "laya-build.lock");
     const lockToken = randomUUID();
@@ -60,15 +75,17 @@ export class DouyinMiniGameBuilder {
       if (!version.stdout.includes(EXPECTED_LAYAAIR_VERSION)) {
         throw new Error(`LayaAir CLI version mismatch; expected ${EXPECTED_LAYAAIR_VERSION}.`);
       }
-      const outputPath = path.join(project, "release", "bytedancegame");
+      const outputPath = path.join(project, "release", this.#cliTarget === "wxgame" ? "wxgame" : "bytedancegame");
       await verifyOptionalOutputDirectory(project, outputPath);
       const result = await this.#run([
-        "build", "bytedancegame", "--project", project, "--out", outputPath,
+        "build", this.#cliTarget, "--project", project, "--out", outputPath,
       ], project, this.#timeoutMs);
       if (result.reportedBuildFailure) {
         throw new Error("LayaAir CLI reported a failed build despite returning exit code zero.");
       }
-      const validation = await validateDouyinMiniGameProject(outputPath, { expectedProjectId: projectId });
+      const validation = this.#target === "douyin-mini-game"
+        ? await validateDouyinMiniGameProject(outputPath, { expectedProjectId: projectId })
+        : await validateWechatMiniGameProject(outputPath, { expectedProjectId: projectId });
       return {
         projectId,
         cliVersion: EXPECTED_LAYAAIR_VERSION,
@@ -76,7 +93,7 @@ export class DouyinMiniGameBuilder {
         validation,
         stdoutTruncated: result.stdoutTruncated,
         stderrTruncated: result.stderrTruncated,
-      };
+      } as DouyinMiniGameBuildResult | WechatMiniGameBuildResult;
     } finally {
       await lock.close().catch(() => undefined);
       const token = await readFile(lockPath, "utf8").catch(() => undefined);
@@ -97,6 +114,22 @@ export class DouyinMiniGameBuilder {
     });
     child.stdin.end();
     return await collectProcess(child, timeoutMs);
+  }
+}
+
+export class DouyinMiniGameBuilder {
+  readonly #delegate: LayaMiniGameBuilder;
+  constructor(options: BuilderOptions) { this.#delegate = new LayaMiniGameBuilder(options, "douyin-mini-game"); }
+  async build(projectId: string): Promise<DouyinMiniGameBuildResult> {
+    return await this.#delegate.build(projectId) as DouyinMiniGameBuildResult;
+  }
+}
+
+export class WechatMiniGameBuilder {
+  readonly #delegate: LayaMiniGameBuilder;
+  constructor(options: BuilderOptions) { this.#delegate = new LayaMiniGameBuilder(options, "wechat-mini-game"); }
+  async build(projectId: string): Promise<WechatMiniGameBuildResult> {
+    return await this.#delegate.build(projectId) as WechatMiniGameBuildResult;
   }
 }
 
@@ -190,7 +223,7 @@ async function verifiedCli(cliPath: string): Promise<void> {
   if (info === undefined || !info.isFile() || info.isSymbolicLink()) throw new Error("LayaAir CLI path must be a regular file.");
 }
 
-async function verifiedDouyinProject(projectsRootInput: string, projectId: string) {
+async function verifiedManagedProject(projectsRootInput: string, projectId: string) {
   await mkdir(projectsRootInput, { recursive: true });
   const rootInfo = await lstat(projectsRootInput);
   if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error("Projects root must be a real directory.");

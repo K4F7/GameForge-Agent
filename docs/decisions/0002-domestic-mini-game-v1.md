@@ -11,7 +11,7 @@ GameForge 第一版的可发布游戏目标是抖音小游戏；微信小游戏�
 
 - `web`：现有 Phaser 4 + Vite 参考运行时；
 - `douyin-mini-game`：抖音小游戏发布产物；
-- 后续 `wechat-mini-game`：复用平台无关游戏核心并替换平台 API；
+- `wechat-mini-game`：第二导出 target，复用平台无关游戏核心并切换到 Laya `wxgame` 与微信平台策略；
 - 快手及其他平台只有在官方工具链实验通过后才能进入可执行 target。
 
 抖音产物必须包含 `game.js`、`game.json` 和 `project.config.json`，不得依赖 DOM、HTML 入口或远程 JavaScript。平台差异通过薄 PlatformAdapter 隔离 Canvas、生命周期、输入、网络、音频、登录、分享、广告和支付；商业能力默认关闭，只有配置与资质均满足时才启用。

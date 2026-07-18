@@ -33,14 +33,14 @@ async function fixture(lockRuntime?: AssetLockRuntime): Promise<{ root: string; 
   return { root, store: new ProjectAssetStore({ projectsRoot: root, ...(lockRuntime === undefined ? {} : { lockRuntime }) }) };
 }
 
-async function douyinFixture(): Promise<{ root: string; store: ProjectAssetStore }> {
+async function layaFixture(target: "douyin-mini-game" | "wechat-mini-game" = "douyin-mini-game"): Promise<{ root: string; store: ProjectAssetStore }> {
   const temporary = await mkdtemp(path.join(tmpdir(), "gameforge-douyin-assets-test-"));
   roots.push(temporary);
   const root = path.join(temporary, "projects");
   await new GameProjectGenerator({ outputRoot: root }).execute({
     projectId: "safety-sprint",
     spec,
-    target: "douyin-mini-game",
+    target,
     mode: "apply",
   });
   return { root, store: new ProjectAssetStore({ projectsRoot: root }) };
@@ -177,7 +177,7 @@ afterEach(async () => {
 
 describe("ProjectAssetStore", () => {
   it("stores generated MiniMax music as the unique Laya BGM asset", async () => {
-    const { root, store } = await douyinFixture();
+    const { root, store } = await layaFixture();
     const hash = createHash("sha256").update(mp3).digest("hex");
     const stored = await store.store({
       projectId: "safety-sprint",
@@ -208,7 +208,7 @@ describe("ProjectAssetStore", () => {
   });
 
   it("stores the same logical asset paths in the Laya resources tree for Douyin projects", async () => {
-    const { root, store } = await douyinFixture();
+    const { root, store } = await layaFixture();
     await expect(store.store(imageRequest())).resolves.toMatchObject({
       manifestRevision: 1,
       entry: { path: "assets/images/hero.jpg", role: "player" },
@@ -234,6 +234,16 @@ describe("ProjectAssetStore", () => {
     });
     await expect(readFile(path.join(root, "safety-sprint", "public", "assets", "manifest.json")))
       .rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("uses the explicit Laya resources layout for WeChat projects", async () => {
+    const { root, store } = await layaFixture("wechat-mini-game");
+    await expect(store.store(imageRequest())).resolves.toMatchObject({
+      entry: { path: "assets/images/hero.jpg", role: "player" },
+    });
+    expect(await readFile(path.join(
+      root, "safety-sprint", "assets", "resources", "assets", "images", "hero.jpg",
+    ))).toEqual(Buffer.from(jpeg));
   });
 
   it("stores verified media and atomically advances the runtime manifest", async () => {

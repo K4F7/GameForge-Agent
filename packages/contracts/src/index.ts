@@ -9,3 +9,4 @@ export * from "./project-generation.js";
 export * from "./providers.js";
 export * from "./run-events.js";
 export * from "./runtime-assets.js";
+export * from "./wechat-platform.js";

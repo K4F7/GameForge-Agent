@@ -42,7 +42,7 @@ import type {
   RunEvent,
 } from "@gameforge/contracts";
 import type { ZodType } from "zod";
-import type { DouyinMiniGameBuildResult } from "@gameforge/minigame-validator";
+import type { DouyinMiniGameBuildResult, WechatMiniGameBuildResult } from "@gameforge/minigame-validator";
 
 function validationResult(
   schema: ZodType,
@@ -101,6 +101,10 @@ export type DouyinProjectBuilder = {
   build(projectId: string): Promise<DouyinMiniGameBuildResult>;
 };
 
+export type WechatProjectBuilder = {
+  build(projectId: string): Promise<WechatMiniGameBuildResult>;
+};
+
 export async function buildDouyinMiniGameTool(
   builder: DouyinProjectBuilder,
   projectId: string,
@@ -131,6 +135,40 @@ export async function buildDouyinMiniGameTool(
     return {
       isError: true,
       content: [{ type: "text", text: JSON.stringify({ code: "douyin_build_failed", message: "Douyin mini-game build failed." }) }],
+    };
+  }
+}
+
+export async function buildWechatMiniGameTool(
+  builder: WechatProjectBuilder,
+  projectId: string,
+): Promise<CallToolResult> {
+  try {
+    const result = await builder.build(projectId);
+    const buildEvent: Omit<Extract<RunEvent, { type: "build.ready" }>, "runId" | "sequence" | "emittedAt"> = {
+      type: "build.ready",
+      projectId: result.projectId,
+      target: "wechat-mini-game",
+      cliVersion: result.cliVersion,
+      passed: true,
+      fileCount: result.validation.fileCount,
+      totalBytes: result.validation.totalBytes,
+      mainPackageBytes: result.validation.mainPackageBytes,
+      subpackages: [...result.validation.subpackages],
+      deviceOrientation: result.validation.deviceOrientation,
+      capabilities: result.validation.capabilities,
+      allowedNetworkHosts: [...result.validation.allowedNetworkHosts],
+      assetManifestRevision: result.validation.assetManifestRevision,
+      assetCount: result.validation.assetCount,
+      stdoutTruncated: result.stdoutTruncated,
+      stderrTruncated: result.stderrTruncated,
+    };
+    const { outputPath: _outputPath, ...safeResult } = result;
+    return { content: [{ type: "text", text: JSON.stringify({ ...safeResult, buildEvent }, null, 2) }] };
+  } catch {
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify({ code: "wechat_build_failed", message: "WeChat mini-game build failed." }) }],
     };
   }
 }
