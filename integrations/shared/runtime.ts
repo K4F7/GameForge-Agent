@@ -1,4 +1,4 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, writeFile } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 
@@ -51,6 +51,17 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
       throw new Error("GAMEFORGE_RUN_RELAY_TOKEN must be unset or contain between 32 and 512 characters without newlines.");
     }
   }
+  const layaAirCliInput = process.env.GAMEFORGE_LAYAIR_CLI;
+  const layaAirCliPath = layaAirCliInput?.trim();
+  if (layaAirCliInput !== undefined) {
+    if (layaAirCliPath === undefined || layaAirCliPath.length === 0 || !path.isAbsolute(layaAirCliPath)) {
+      throw new Error("GAMEFORGE_LAYAIR_CLI must be unset or contain an absolute regular file path.");
+    }
+    const cliInfo = await lstat(layaAirCliPath).catch(() => undefined);
+    if (cliInfo === undefined || !cliInfo.isFile() || cliInfo.isSymbolicLink()) {
+      throw new Error("GAMEFORGE_LAYAIR_CLI must be unset or contain an absolute regular file path.");
+    }
+  }
   const config = {
     $schema: "https://opencode.ai/config.json",
     lsp: false,
@@ -65,6 +76,7 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
           ...(relayToken === undefined
             ? {}
             : { GAMEFORGE_RUN_RELAY_TOKEN: "{env:GAMEFORGE_RUN_RELAY_TOKEN}" }),
+          ...(layaAirCliPath === undefined ? {} : { GAMEFORGE_LAYAIR_CLI: layaAirCliPath }),
           GAMEFORGE_MCP_AUDIT_DIR: runtime.auditDirectory,
           GAMEFORGE_MODEL_ROUTING_POLICY: path.join(runtime.repoRoot, "config", "model-routing.example.json"),
         },

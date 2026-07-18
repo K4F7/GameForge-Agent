@@ -1,5 +1,6 @@
 import path from "node:path";
-import { access, readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { access, readFile, symlink, unlink } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { findRepoRoot, redactArguments, resolveRuntime, safeRelayUrl, writeRuntimeConfig } from "./runtime.js";
 
@@ -46,8 +47,11 @@ describe("integration runtime", () => {
   it("generates a per-client ignored MCP audit directory", async () => {
     const runtime = await resolveRuntime(import.meta.dirname, "codearts");
     const previousToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
+    const previousLayaCli = process.env.GAMEFORGE_LAYAIR_CLI;
+    let layaCliLink: string | undefined;
     try {
       delete process.env.GAMEFORGE_RUN_RELAY_TOKEN;
+      delete process.env.GAMEFORGE_LAYAIR_CLI;
       await writeRuntimeConfig(runtime);
       const config = JSON.parse(await readFile(runtime.configPath, "utf8")) as {
         mcp: { gameforge: { environment: Record<string, string>; cwd?: unknown } };
@@ -56,6 +60,7 @@ describe("integration runtime", () => {
       expect(runtime.auditDirectory).toContain(path.join("integrations", "codearts", "mcp-audit"));
       expect(config.mcp.gameforge.cwd).toBeUndefined();
       expect(config.mcp.gameforge.environment.GAMEFORGE_RUN_RELAY_TOKEN).toBeUndefined();
+      expect(config.mcp.gameforge.environment.GAMEFORGE_LAYAIR_CLI).toBeUndefined();
       expect(config.mcp.gameforge.environment.GAMEFORGE_MCP_AUDIT_DIR).toBe(runtime.auditDirectory);
       const policyPath = config.mcp.gameforge.environment.GAMEFORGE_MODEL_ROUTING_POLICY;
       if (policyPath === undefined) throw new Error("Expected generated model routing policy path.");
@@ -72,9 +77,32 @@ describe("integration runtime", () => {
       };
       expect(authenticatedConfig.mcp.gameforge.environment.GAMEFORGE_RUN_RELAY_TOKEN)
         .toBe("{env:GAMEFORGE_RUN_RELAY_TOKEN}");
+
+      process.env.GAMEFORGE_LAYAIR_CLI = "   ";
+      await expect(writeRuntimeConfig(runtime)).rejects.toThrow("must be unset or contain an absolute regular file path");
+      process.env.GAMEFORGE_LAYAIR_CLI = "relative-layaair.cmd";
+      await expect(writeRuntimeConfig(runtime)).rejects.toThrow("must be unset or contain an absolute regular file path");
+      process.env.GAMEFORGE_LAYAIR_CLI = runtime.repoRoot;
+      await expect(writeRuntimeConfig(runtime)).rejects.toThrow("must be unset or contain an absolute regular file path");
+      const builtMcpEntry = path.join(runtime.repoRoot, "packages", "mcp-server", "dist", "index.js");
+      if (process.platform !== "win32") {
+        layaCliLink = path.join(path.dirname(runtime.configPath), `layaair-${randomUUID()}`);
+        await symlink(builtMcpEntry, layaCliLink);
+        process.env.GAMEFORGE_LAYAIR_CLI = layaCliLink;
+        await expect(writeRuntimeConfig(runtime)).rejects.toThrow("must be unset or contain an absolute regular file path");
+      }
+      process.env.GAMEFORGE_LAYAIR_CLI = builtMcpEntry;
+      await writeRuntimeConfig(runtime);
+      const layaConfig = JSON.parse(await readFile(runtime.configPath, "utf8")) as {
+        mcp: { gameforge: { environment: Record<string, string> } };
+      };
+      expect(layaConfig.mcp.gameforge.environment.GAMEFORGE_LAYAIR_CLI).toBe(builtMcpEntry);
     } finally {
       if (previousToken === undefined) delete process.env.GAMEFORGE_RUN_RELAY_TOKEN;
       else process.env.GAMEFORGE_RUN_RELAY_TOKEN = previousToken;
+      if (previousLayaCli === undefined) delete process.env.GAMEFORGE_LAYAIR_CLI;
+      else process.env.GAMEFORGE_LAYAIR_CLI = previousLayaCli;
+      if (layaCliLink !== undefined) await unlink(layaCliLink).catch(() => undefined);
     }
   });
 });
