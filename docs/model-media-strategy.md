@@ -40,6 +40,8 @@ GameSpec 草拟的严格 JSON Schema 现在还要求 `gameplay`：目标数、�
 
 ## 文本与代码模型路由
 
+模型策略现在不是只供人工阅读：生产 MCP 严格加载策略并提供 `get_agent_model_route` 只读解析工具。调用方必须传入 CodeArts 当前会话真实列出的国产模型 target；结果记录 `explicit-user-override`、`task-route-primary` 或 `task-route-fallback` 来源。工具不访问宿主账号、不调用模型，也不会在无匹配项时自行选择未验证的 host default，因此 CodeArts 仍是唯一的 Agent 编排者。
+
 ### 默认路由
 
 - `planner`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/deepseek-v3.2`，用于玩法拆解、架构设计、关卡规划和工具编排。

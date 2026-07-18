@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelRoutingPolicySchema, resolveExecutableModelTargets } from "./model-routing.js";
+import { modelRoutingPolicySchema, resolveAgentModelRoute, resolveExecutableModelTargets } from "./model-routing.js";
 
 const model = (provider: "bailian" | "moonshot" = "bailian") => ({
   provider,
@@ -99,5 +99,24 @@ describe("model routing policy", () => {
     const input = policy();
     (input.agent.story.primary as { capabilities: string[] }).capabilities = ["tool-use"];
     expect(() => modelRoutingPolicySchema.parse(input)).toThrow("narrative capability");
+  });
+
+  it("selects the first host-available fallback and records its source", () => {
+    const input = policy();
+    (input.agent.coding.fallbacks as unknown[]).push(model("moonshot"));
+    const parsed = modelRoutingPolicySchema.parse(input);
+    expect(resolveAgentModelRoute(parsed.agent.coding, [model("moonshot")])).toMatchObject({
+      status: "selected",
+      source: "task-route-fallback",
+      target: { provider: "moonshot", model: "kimi-k3" },
+    });
+  });
+
+  it("does not silently ignore an unavailable explicit override", () => {
+    const parsed = modelRoutingPolicySchema.parse(policy());
+    expect(resolveAgentModelRoute(parsed.agent.coding, [model()], model("moonshot"))).toMatchObject({
+      status: "unavailable",
+      considered: [{ provider: "moonshot", model: "kimi-k3" }],
+    });
   });
 });

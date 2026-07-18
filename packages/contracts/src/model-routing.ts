@@ -24,7 +24,7 @@ export const modelCapabilitySchema = z.enum([
   "vision",
 ]);
 
-const modelTargetSchema = z.strictObject({
+export const modelTargetSchema = z.strictObject({
   provider: modelProviderSchema,
   mode: z.enum(["model", "retrieval"]),
   model: z.string().trim().min(1).max(200).optional(),
@@ -137,8 +137,42 @@ export type ModelRoutingPolicy = z.infer<typeof modelRoutingPolicySchema>;
 export type ModelRoute = ModelRoutingPolicy["agent"]["coding"];
 export type ModelTarget = ModelRoute["primary"];
 
+export const agentModelRoleSchema = z.enum(["orchestration", "coding", "story", "review", "quick", "vision"]);
+export type AgentModelRole = z.infer<typeof agentModelRoleSchema>;
+
+export type AgentModelResolution =
+  | { status: "selected"; source: "explicit-user-override" | "task-route-primary" | "task-route-fallback"; target: ModelTarget }
+  | { status: "planned"; considered: ReadonlyArray<ModelTarget> }
+  | { status: "unavailable"; considered: ReadonlyArray<ModelTarget> };
+
 export function resolveExecutableModelTargets(route: ModelRoute): ReadonlyArray<ModelTarget> {
   return route.availability === "enabled" ? [route.primary, ...route.fallbacks] : [];
+}
+
+export function resolveAgentModelRoute(
+  route: ModelRoute,
+  availableTargets: ReadonlyArray<ModelTarget>,
+  explicitOverride?: ModelTarget,
+): AgentModelResolution {
+  const candidates = explicitOverride === undefined
+    ? [route.primary, ...route.fallbacks]
+    : [explicitOverride];
+  if (route.availability !== "enabled") return { status: "planned", considered: candidates };
+  const available = new Set(availableTargets.map(modelTargetKey));
+  const selectedIndex = candidates.findIndex((target) => available.has(modelTargetKey(target)));
+  if (selectedIndex < 0) return { status: "unavailable", considered: candidates };
+  const target = candidates[selectedIndex] as ModelTarget;
+  return {
+    status: "selected",
+    source: explicitOverride !== undefined
+      ? "explicit-user-override"
+      : selectedIndex === 0 ? "task-route-primary" : "task-route-fallback",
+    target,
+  };
+}
+
+function modelTargetKey(target: ModelTarget): string {
+  return `${target.provider}:${target.mode}:${target.model?.toLowerCase() ?? "retrieval"}`;
 }
 
 export function validateModelRoutingPolicy(input: unknown): ModelRoutingPolicy {

@@ -19,6 +19,10 @@ import {
   type SoundSearchProvider,
   gameforgeCapabilitySnapshotSchema,
   type GameforgeCapabilitySnapshot,
+  agentModelRoleSchema,
+  modelTargetSchema,
+  resolveAgentModelRoute,
+  type ModelRoutingPolicy,
 } from "@gameforge/contracts";
 import {
   draftGameSpecRequestSchema,
@@ -94,6 +98,7 @@ export type CreateServerOptions = {
   taskRelayClient?: TaskRelayToolClient;
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
   toolAudit?: ToolAuditRecorder & Partial<ToolAuditContextBinder>;
+  modelRoutingPolicy?: ModelRoutingPolicy;
 };
 
 export function createServer(options: CreateServerOptions = {}): McpServer {
@@ -148,6 +153,32 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     },
     async () => getGameforgeCapabilitiesTool(capabilitySnapshot),
   );
+
+  if (options.modelRoutingPolicy !== undefined) {
+    registerTool(
+      "get_agent_model_route",
+      {
+        title: "Resolve one CodeArts Agent model route",
+        description:
+          "Resolve a secret-free domestic-model route against exact targets reported by the host. This does not call a model or run an Agent loop.",
+        inputSchema: {
+          role: agentModelRoleSchema,
+          availableTargets: z.array(modelTargetSchema).max(100),
+          explicitOverride: modelTargetSchema.optional(),
+        },
+      },
+      async ({ role, availableTargets, explicitOverride }) => {
+        const route = options.modelRoutingPolicy!.agent[role];
+        if (route === undefined) {
+          return { isError: true, content: [{ type: "text", text: `No ${role} route is configured.` }] };
+        }
+        const resolution = resolveAgentModelRoute(route, availableTargets, explicitOverride);
+        return {
+          content: [{ type: "text", text: JSON.stringify({ role, reasoning: route.reasoning, ...resolution }, null, 2) }],
+        };
+      },
+    );
+  }
 
   if (options.toolAudit?.bindContext !== undefined) {
     registerTool(

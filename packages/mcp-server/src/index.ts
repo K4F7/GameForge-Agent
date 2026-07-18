@@ -16,6 +16,9 @@ import { DouyinMiniGameBuilder } from "@gameforge/minigame-validator";
 import { RunRelayClient } from "@gameforge/run-relay/client";
 import { createServer } from "./server.js";
 import { McpToolAuditRecorder } from "./tool-audit.js";
+import { loadModelRoutingPolicy } from "./model-routing.js";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const bailianApiKey = process.env.DASHSCOPE_API_KEY?.trim();
 const bailianSpecModel = process.env.GAMEFORGE_SPEC_MODEL?.trim();
@@ -27,6 +30,7 @@ const runRelayUrl = process.env.GAMEFORGE_RUN_RELAY_URL?.trim();
 const runRelayToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
 const toolAuditFile = process.env.GAMEFORGE_MCP_AUDIT_FILE?.trim();
 const toolAuditDirectory = process.env.GAMEFORGE_MCP_AUDIT_DIR?.trim();
+const configuredModelRoutingPolicy = process.env.GAMEFORGE_MODEL_ROUTING_POLICY?.trim();
 const seedreamApiKey = process.env.VOLCENGINE_ARK_API_KEY?.trim();
 const seedreamModel = process.env.GAMEFORGE_IMAGE_MODEL?.trim();
 const seedreamLicense = process.env.GAMEFORGE_IMAGE_LICENSE?.trim();
@@ -45,6 +49,15 @@ const ttsAudioHosts = process.env.GAMEFORGE_TTS_AUDIO_HOSTS
   .map((host) => host.trim())
   .filter((host) => host.length > 0);
 const chromeExecutablePath = process.env.GAMEFORGE_CHROME_EXECUTABLE?.trim();
+const defaultModelRoutingPolicy = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../config/model-routing.example.json",
+);
+const modelRoutingPolicy = await loadModelRoutingPolicy(
+  configuredModelRoutingPolicy === undefined || configuredModelRoutingPolicy.length === 0
+    ? defaultModelRoutingPolicy
+    : configuredModelRoutingPolicy,
+);
 const previewManager = projectOutputRoot === undefined || projectOutputRoot.length === 0
   ? undefined
   : new GamePreviewManager({ projectsRoot: projectOutputRoot });
@@ -113,6 +126,7 @@ if (minimaxApiKey !== undefined && minimaxApiKey.length > 0) {
   }
 }
 const server = createServer({
+  modelRoutingPolicy,
   ...(toolAudit === undefined ? {} : { toolAudit }),
   ...(bailianApiKey === undefined || bailianApiKey.length === 0
     ? {}

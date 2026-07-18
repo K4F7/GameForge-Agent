@@ -58,6 +58,7 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
           GAMEFORGE_RUN_RELAY_URL: runtime.relayUrl,
           GAMEFORGE_RUN_RELAY_TOKEN: "{env:GAMEFORGE_RUN_RELAY_TOKEN}",
           GAMEFORGE_MCP_AUDIT_DIR: runtime.auditDirectory,
+          GAMEFORGE_MODEL_ROUTING_POLICY: path.join(runtime.repoRoot, "config", "model-routing.example.json"),
         },
         enabled: true,
         timeout: 10_000,

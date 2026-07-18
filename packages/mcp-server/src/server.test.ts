@@ -7,8 +7,43 @@ import type { FreesoundSearchRequest, FreesoundSearchResult } from "@gameforge/p
 import { createServer } from "./server.js";
 import type { ProjectGenerationResult } from "@gameforge/contracts";
 import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditToken } from "./tool-audit.js";
+import path from "node:path";
+import { loadModelRoutingPolicy } from "./model-routing.js";
 
 describe("GameForge MCP server", () => {
+  it("resolves a CodeArts-owned model route without invoking a model", async () => {
+    const policy = await loadModelRoutingPolicy(
+      path.resolve(import.meta.dirname, "../../../config/model-routing.example.json"),
+    );
+    const fallback = policy.agent.coding.fallbacks[0];
+    if (fallback === undefined) throw new Error("Expected a committed coding fallback.");
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer({ modelRoutingPolicy: policy });
+    const client = new Client({ name: "gameforge-routing-test", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("get_agent_model_route");
+      const result = await client.callTool({
+        name: "get_agent_model_route",
+        arguments: { role: "coding", availableTargets: [fallback] },
+      });
+      expect(result.isError).not.toBe(true);
+      if (!Array.isArray(result.content) || result.content[0]?.type !== "text") {
+        throw new Error("Expected model route text.");
+      }
+      expect(JSON.parse(result.content[0].text)).toMatchObject({
+        role: "coding",
+        status: "selected",
+        source: "task-route-fallback",
+        target: { provider: fallback.provider, model: fallback.model },
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("audits executed tool callbacks without inspecting arguments or results", async () => {
     const completed: Array<{ token: ToolAuditToken; outcome: "success" | "error" }> = [];
     let sequence = 0;

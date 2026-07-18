@@ -45,6 +45,7 @@ if (issues.length === 0) {
     tools = (await client.listTools()).tools.map((tool) => tool.name).sort();
     const required = [
       "get_gameforge_capabilities",
+      "get_agent_model_route",
       "validate_asset_manifest",
       "validate_game_spec",
       "validate_provider_config",
