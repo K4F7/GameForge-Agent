@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelRoutingPolicySchema } from "./model-routing.js";
+import { modelRoutingPolicySchema, resolveExecutableModelTargets } from "./model-routing.js";
 
 const model = (provider: "bailian" | "moonshot" = "bailian") => ({
   provider,
@@ -16,12 +16,14 @@ const route = (owner: "codearts" | "mcp", provider: "bailian" | "moonshot" = "ba
 });
 
 const policy = () => ({
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   domesticModelsOnly: true as const,
   officialApiRequired: true as const,
   resolutionOrder: ["explicit-user-override", "task-route-primary", "task-route-fallbacks", "host-default"] as const,
   agent: {
-    orchestration: route("codearts", "moonshot"), coding: route("codearts"), review: route("codearts"),
+    orchestration: route("codearts", "moonshot"), coding: route("codearts"),
+    story: { ...route("codearts"), primary: { ...model(), capabilities: ["narrative" as const] } },
+    review: route("codearts"),
     quick: route("codearts"), vision: route("codearts", "moonshot"),
   },
   tools: {
@@ -32,6 +34,11 @@ const policy = () => ({
       owner: "mcp" as const,
       primary: { provider: "freesound" as const, mode: "retrieval" as const, capabilities: ["sound-search" as const] },
       fallbacks: [], reasoning: "none" as const,
+    },
+    music: {
+      owner: "mcp" as const,
+      primary: { provider: "minimax" as const, mode: "model" as const, model: "music-2.6", capabilities: ["music-generation" as const] },
+      fallbacks: [], reasoning: "none" as const, availability: "planned" as const,
     },
   },
 });
@@ -71,5 +78,23 @@ describe("model routing policy", () => {
     const input = policy();
     (input.tools.sound.fallbacks as unknown[]).push(model());
     expect(() => modelRoutingPolicySchema.parse(input)).toThrow("Freesound retrieval");
+  });
+
+  it("keeps music generation planned until its deterministic adapter is verified", () => {
+    const input = policy();
+    (input.tools.music as { availability: string }).availability = "enabled";
+    expect(() => modelRoutingPolicySchema.parse(input)).toThrow("must remain planned");
+  });
+
+  it("never returns executable targets for a planned route", () => {
+    const parsed = modelRoutingPolicySchema.parse(policy());
+    expect(resolveExecutableModelTargets(parsed.tools.music)).toEqual([]);
+    expect(resolveExecutableModelTargets(parsed.agent.coding)).toHaveLength(1);
+  });
+
+  it("requires a narrative-capable primary story model", () => {
+    const input = policy();
+    (input.agent.story.primary as { capabilities: string[] }).capabilities = ["tool-use"];
+    expect(() => modelRoutingPolicySchema.parse(input)).toThrow("narrative capability");
   });
 });

@@ -20,12 +20,13 @@
 | 需求理解、玩法设计、任务规划 | CodeArts 当前账号 | `huaweicloud-maas/deepseek-v3.2` | GLM-5.1；跨宿主评估 Kimi K3 | 采用实际可选模型；不得把未列出的 K3 写成 CodeArts 已可用 |
 | GameSpec结构化生成、分类和摘要 | 阿里云百炼 | `qwen3.6-flash` | Qwen本地小模型 | 采用，必须通过Schema二次校验 |
 | TypeScript、Phaser和Three.js代码生成与修复 | CodeArts 当前账号 | `huaweicloud-maas/deepseek-v3.2` | GLM-4.7 ArkTS；跨宿主 Qwen Coder/Kimi K3 | 采用实际账号模型，外部编码模型需独立基准 |
+| 剧情、世界观、对白与本地化 | CodeArts 当前账号 | `huaweicloud-maas/GLM-5` | GLM-5.1；跨宿主 MiniMax M2.7/Kimi K3 | 采用独立 story 路由；输出仍需剧情 Schema 与内容审核 |
 | 长上下文仓库审查、截图复核 | Moonshot/Kimi | `kimi-k3` | GLM-4.6V、Seed1.5-VL | 跨宿主评估；当前 CodeArts 模型列表没有 K3 |
 | 角色立绘、场景、概念图和图像编辑 | 火山方舟 | Seedream系列 | 即梦图片生成4.0 | 采用Seedream；实际模型ID从配置读取 |
 | NPC对白、旁白和语音提示 | 火山引擎豆包语音 | 大模型语音合成 | CosyVoice本地部署、腾讯云对话式TTS | 采用 |
 | 常见短音效 | Freesound API | CC0优先检索 | CC BY并自动生成署名清单 | 采用检索优先；它不是默认基础模型 |
 | 独特短音效 | 可插拔Audio Provider | 暂无满足要求且公开稳定的国产独立文生音效API | Seedance音画联合生成实验 | 暂不设伪默认 |
-| 背景音乐 | 阿里云百炼 | `fun-music-v1` | 字节Seed-Music、FunMusic本地部署 | 实验性；Fun-music当前为邀请预览 |
+| 背景音乐 | MiniMax 开放平台 | `music-2.6` | 腾讯云 MPS 聚合；火山 MemeSong 仅短主题曲 | planned；官方 API 已确认，适配器、纯音乐效果与商用授权尚待验收 |
 
 ### 已实现的 GameSpec 适配器
 
@@ -44,6 +45,7 @@ GameSpec 草拟的严格 JSON Schema 现在还要求 `gameplay`：目标数、�
 - `planner`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/deepseek-v3.2`，用于玩法拆解、架构设计、关卡规划和工具编排。
 - `spec`：`qwen3.6-flash`，用于从自然语言提取GameSpec、资产清单和任务分类；输出必须再次经过Zod校验。
 - `coder`：当前 CodeArts 使用 `huaweicloud-maas/deepseek-v3.2`；宿主支持外部 Coding Plan 时再比较 `qwen3-coder-plus` 与 K3。
+- `story`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/GLM-5`，专门生成剧情结构、角色卡、对白和本地化草案；GLM-5.1 复核。跨宿主再比较 MiniMax M2.7 与 Kimi K3，但不得静默替换实际生效模型。
 - `reviewer`：当前 CodeArts 优先 GLM-5.1，并与生成步骤使用不同提示词；构建、测试和静态检查仍是最终证据。
 - `vision`：跨宿主优先评估 Kimi K3，备选 GLM-4.6V/Seed1.5-VL；当前 CodeArts 列表没有已确认的视觉模型时，不把截图审查记为已完成。
 
@@ -63,8 +65,8 @@ GameForge 对这些事实的推断是：K3 最适合跨宿主的长上下文编�
 
 oh-my-opencode/后续更名项目 oh-my-openagent 的官方配置把 agent role 与 task category 分开，并按“显式用户覆盖 → 类别默认 → 用户 fallback → Provider fallback → 宿主默认”解析；utility/explore 使用快速低成本模型，deep/oracle 使用高推理模型，视觉类别独立选择视觉模型，doctor 可显示最终解析链。GameForge 只借鉴以下配置思想：
 
-1. `orchestration`、`coding`、`review`、`quick`、`vision` 是 CodeArts 拥有的 Agent 路由；
-2. `spec`、`image`、`tts`、`sound` 是 MCP 单次确定性操作，不复制 oh-my-opencode 的 Agent 循环；
+1. `orchestration`、`coding`、`story`、`review`、`quick`、`vision` 是 CodeArts 拥有的 Agent 路由；
+2. `spec`、`image`、`tts`、`sound`、`music` 是 MCP 单次确定性操作，不复制 oh-my-opencode 的 Agent 循环；
 3. 每条路由显式记录 primary、fallback、能力和 reasoning 档位；仅事件实际失败或宿主缺少模型时才走下一项；
 4. 运行记录必须写实际生效模型，而不是配置中希望使用但宿主未提供的模型；
 5. 快速任务不滥用最昂贵的长上下文模型，视觉任务不交给无视觉能力的模型。
@@ -156,7 +158,9 @@ Freesound API本身的使用条款与单条声音许可证是两个独立层次�
 
 ### 背景音乐
 
-`fun-music-v1`官方API支持文本提示、MP3/WAV和SSE，但当前是邀请制预览且仅中国内地北京地域，因此只作为实验Provider。FunMusic/InspireMusic可用于本地文本生成音乐，但官方仓库当前明确主要支持音乐生成，不把它描述成通用短音效模型。
+生产候选改为 MiniMax `music-2.6`：[官方音乐生成指南](https://platform.minimaxi.com/docs/guides/music-generation)与[官方 API](https://platform.minimax.io/docs/api-reference/music-generation)（访问日期：2026-07-18）提供同步音乐生成接口，并将使用场景列为视频、游戏和应用的背景音乐/主题曲。当前路由标记为 `planned`，因为仓库尚未实现适配器，也尚未核验纯器乐稳定性、生成耗时、套餐对应的商用授权和内容权利；公共 `resolveExecutableModelTargets` 对 planned 路由返回空数组。腾讯云 MPS 聚合可作为统一云入口备选，但底层模型和合同仍需逐项记录。火山 MemeSong 只支持中文、15 秒内模板化歌唱，更适合短主题曲，不冒充通用 BGM 或 SFX。
+
+玩法代码、剧情、美术和配乐不得共用一个“万能默认模型”：玩法走 CodeArts `coding`，剧情走 CodeArts `story`，美术走 Seedream `image`，配乐走 MiniMax `music`。CodeArts `orchestration` 只负责拆分任务、选择已启用路由并汇总证据；MCP 媒体工具仍然只执行一次确定性 Provider 调用。
 
 ## Provider架构边界
 

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "domesticModelsOnly": true,
   "officialApiRequired": true,
   "resolutionOrder": [
@@ -22,6 +22,14 @@
       "primary": { "provider": "deepseek", "mode": "model", "model": "huaweicloud-maas/deepseek-v3.2", "capabilities": ["code", "tool-use", "long-context"] },
       "fallbacks": [
         { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-4.7-SFT-Harmony", "capabilities": ["code", "tool-use"] }
+      ],
+      "reasoning": "high"
+    },
+    "story": {
+      "owner": "codearts",
+      "primary": { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5", "capabilities": ["narrative", "long-context", "tool-use"] },
+      "fallbacks": [
+        { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5.1", "capabilities": ["narrative", "long-context", "tool-use"] }
       ],
       "reasoning": "high"
     },
@@ -64,6 +72,13 @@
       "primary": { "provider": "freesound", "mode": "retrieval", "capabilities": ["sound-search"] },
       "fallbacks": [],
       "reasoning": "none"
+    },
+    "music": {
+      "owner": "mcp",
+      "primary": { "provider": "minimax", "mode": "model", "model": "music-2.6", "capabilities": ["music-generation"] },
+      "fallbacks": [],
+      "reasoning": "none",
+      "availability": "planned"
     }
   }
 }

@@ -5,6 +5,7 @@ export const modelProviderSchema = z.enum([
   "deepseek",
   "freesound",
   "moonshot",
+  "minimax",
   "volcengine-ark",
   "volcengine-speech",
   "zhipu",
@@ -15,6 +16,8 @@ export const modelCapabilitySchema = z.enum([
   "image-generation",
   "json-schema",
   "long-context",
+  "music-generation",
+  "narrative",
   "sound-search",
   "text-to-speech",
   "tool-use",
@@ -37,6 +40,7 @@ const modelTargetSchema = z.strictObject({
     bailian: /^(qwen|fun-music)/i,
     deepseek: /^(?:huaweicloud-maas\/)?deepseek/i,
     moonshot: /^kimi/i,
+    minimax: /^music-/i,
     "volcengine-ark": /^(?:doubao-|seed)/i,
     "volcengine-speech": /^doubao-/i,
     zhipu: /^(?:huaweicloud-maas\/)?glm/i,
@@ -51,6 +55,7 @@ const routeSchema = z.strictObject({
   primary: modelTargetSchema,
   fallbacks: z.array(modelTargetSchema).max(5),
   reasoning: z.enum(["none", "low", "high", "max"]),
+  availability: z.enum(["enabled", "planned"]).default("enabled"),
 }).superRefine((route, context) => {
   const targets = [route.primary, ...route.fallbacks];
   const keys = new Set<string>();
@@ -64,7 +69,7 @@ const routeSchema = z.strictObject({
 });
 
 export const modelRoutingPolicySchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   domesticModelsOnly: z.literal(true),
   officialApiRequired: z.literal(true),
   resolutionOrder: z.tuple([
@@ -76,6 +81,7 @@ export const modelRoutingPolicySchema = z.strictObject({
   agent: z.strictObject({
     orchestration: routeSchema,
     coding: routeSchema,
+    story: routeSchema,
     review: routeSchema,
     quick: routeSchema,
     vision: routeSchema.optional(),
@@ -85,6 +91,7 @@ export const modelRoutingPolicySchema = z.strictObject({
     image: routeSchema,
     tts: routeSchema,
     sound: routeSchema,
+    music: routeSchema,
   }),
 }).superRefine((policy, context) => {
   for (const [name, route] of Object.entries(policy.agent)) {
@@ -92,6 +99,13 @@ export const modelRoutingPolicySchema = z.strictObject({
     if (route.owner !== "codearts") {
       context.addIssue({ code: "custom", path: ["agent", name, "owner"], message: "Agent routes must remain owned by CodeArts." });
     }
+  }
+  if (!policy.agent.story.primary.capabilities.includes("narrative")) {
+    context.addIssue({
+      code: "custom",
+      path: ["agent", "story", "primary", "capabilities"],
+      message: "The primary story route must declare narrative capability.",
+    });
   }
   for (const [name, route] of Object.entries(policy.tools)) {
     if (route.owner !== "mcp") {
@@ -104,6 +118,7 @@ export const modelRoutingPolicySchema = z.strictObject({
   const toolRequirements = {
     spec: ["bailian", "json-schema"], image: ["volcengine-ark", "image-generation"],
     tts: ["volcengine-speech", "text-to-speech"], sound: ["freesound", "sound-search"],
+    music: ["minimax", "music-generation"],
   } as const;
   for (const [name, route] of Object.entries(policy.tools)) {
     const [provider, capability] = toolRequirements[name as keyof typeof toolRequirements];
@@ -116,9 +131,22 @@ export const modelRoutingPolicySchema = z.strictObject({
       }
     }
   }
+  if (policy.tools.music.availability === "enabled") {
+    context.addIssue({
+      code: "custom",
+      path: ["tools", "music", "availability"],
+      message: "Music generation must remain planned until a deterministic MCP adapter is implemented and verified.",
+    });
+  }
 });
 
 export type ModelRoutingPolicy = z.infer<typeof modelRoutingPolicySchema>;
+export type ModelRoute = ModelRoutingPolicy["agent"]["coding"];
+export type ModelTarget = ModelRoute["primary"];
+
+export function resolveExecutableModelTargets(route: ModelRoute): ReadonlyArray<ModelTarget> {
+  return route.availability === "enabled" ? [route.primary, ...route.fallbacks] : [];
+}
 
 export function validateModelRoutingPolicy(input: unknown): ModelRoutingPolicy {
   return modelRoutingPolicySchema.parse(input);

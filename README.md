@@ -129,7 +129,7 @@ Provider HTTP 适配器统一使用有界超时和结构化错误。百炼、Fre
 
 当前国产 SOTA、Artificial Analysis/LMArena/OpenCompass、SWE-bench/Terminal-Bench、视觉/生图/TTS 榜单和 oh-my-opencode 改名状态的交叉评估见 [2026-07 模型评估](docs/model-evaluation-2026-07.md)。榜单只作为先验；宿主实际模型列表与 GameForge 同 Task 证据优先。
 
-[`config/model-routing.example.json`](config/model-routing.example.json) 是无密钥的国产模型角色/类别路由建议，并由 `modelRoutingPolicySchema` 与集成测试验证。当前 CodeArts 账号真实列出的 DeepSeek V3.2/GLM 系列优先用于主 Agent；Kimi K3 用于宿主确实提供时的长上下文、视觉和跨宿主评估；Qwen GameSpec、Seedream、豆包 TTS 与 Freesound 仍位于确定性 MCP 工具侧。配置中的期望模型不能替代宿主 `models` 输出，实验必须记录实际生效模型。
+[`config/model-routing.example.json`](config/model-routing.example.json) 是无密钥的国产模型角色/类别路由建议，并由 `modelRoutingPolicySchema` 与集成测试验证。当前 CodeArts 账号真实列出的模型按工种分配：DeepSeek V3.2 负责玩法代码，GLM-5 负责剧情对白，GLM-5.1 负责独立复核；Seedream 负责美术，豆包 TTS 负责配音，Freesound 负责常见音效检索。MiniMax Music 2.6 配乐路由在确定性适配器、纯音乐效果和商用授权验收前保持 `planned`，公共解析函数不会返回它。Kimi K3 只用于宿主确实提供时的长上下文、视觉和跨宿主评估。配置中的期望模型不能替代宿主 `models` 输出，实验必须记录实际生效模型。
 
 启用许可证过滤的音效搜索工具时，在启动MCP服务的进程环境中设置：
 
