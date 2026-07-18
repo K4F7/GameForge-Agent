@@ -1,5 +1,6 @@
 import {
   assetProvenanceSchema,
+  managedGeneratedProjectManifestSchema,
   projectIdSchema,
   runtimeAssetManifestSchema,
   runtimeAssetMimeTypeSchema,
@@ -9,6 +10,7 @@ import {
   type RuntimeAssetManifest,
   type RuntimeAssetMimeType,
   type RuntimeAssetRole,
+  type GamePlatformTarget,
 } from "@gameforge/contracts";
 import { createHash, randomUUID } from "node:crypto";
 import { link, lstat, mkdir, open, readFile, realpath, rename, rm, unlink, type FileHandle } from "node:fs/promises";
@@ -16,7 +18,6 @@ import { hostname as systemHostname } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 
-const managedProjectSchema = z.object({ projectId: projectIdSchema });
 const IMAGE_MAX_BYTES = 32 * 1024 * 1024;
 const AUDIO_MAX_BYTES = 64 * 1024 * 1024;
 const LOCK_STALE_AFTER_MS = 10 * 60 * 1000;
@@ -50,6 +51,8 @@ const assetTransactionSchema = z.discriminatedUnion("operation", [
 
 type AssetLockMetadata = z.infer<typeof assetLockMetadataSchema>;
 type AssetTransaction = z.infer<typeof assetTransactionSchema>;
+type ManagedAssetProject = { directory: string; target: GamePlatformTarget };
+type RuntimeAssetLayout = { runtimeDirectory: string; assetsDirectory: string };
 
 export type AssetLockRuntime = {
   now(): number;
@@ -91,8 +94,7 @@ export class ProjectAssetStore {
   async read(projectIdInput: string): Promise<RuntimeAssetManifest> {
     const projectId = projectIdSchema.parse(projectIdInput);
     const project = await verifiedManagedProject(this.#projectsRoot, projectId);
-    const publicDirectory = await verifiedDirectory(safeChild(project, "public"), "Project public directory");
-    const assetsDirectory = await verifiedDirectory(safeChild(publicDirectory, "assets"), "Project assets directory");
+    const { runtimeDirectory, assetsDirectory } = await verifiedRuntimeAssetLayout(project);
     const manifest = runtimeAssetManifestSchema.parse(await readVerifiedJson(
       safeChild(assetsDirectory, "manifest.json"),
       assetsDirectory,
@@ -100,8 +102,8 @@ export class ProjectAssetStore {
     ));
     if (manifest.projectId !== projectId) throw new Error("Runtime asset manifest project ID does not match.");
     for (const entry of manifest.assets) {
-      const target = safeChild(publicDirectory, entry.path);
-      const actualHash = await verifiedAssetHash(target, publicDirectory, entry.bytes, entry.assetId);
+      const target = safeChild(runtimeDirectory, entry.path);
+      const actualHash = await verifiedAssetHash(target, runtimeDirectory, entry.bytes, entry.assetId);
       if (actualHash !== entry.sha256 || actualHash !== entry.provenance.sha256) {
         throw new Error(`Runtime asset file hash is inconsistent: ${entry.assetId}`);
       }
@@ -112,17 +114,16 @@ export class ProjectAssetStore {
   async recover(projectIdInput: string): Promise<RuntimeAssetManifest> {
     const projectId = projectIdSchema.parse(projectIdInput);
     const project = await verifiedManagedProject(this.#projectsRoot, projectId);
-    const metadataDirectory = await verifiedDirectory(safeChild(project, ".gameforge"), "Project metadata directory");
+    const metadataDirectory = await verifiedDirectory(safeChild(project.directory, ".gameforge"), "Project metadata directory");
     const lockPath = safeChild(metadataDirectory, "assets.lock");
     const recoveryPath = safeChild(metadataDirectory, "assets.lock.recovery");
     const lock = await acquireAssetLock(lockPath, recoveryPath, this.#lockRuntime);
     try {
-      const publicDirectory = await verifiedDirectory(safeChild(project, "public"), "Project public directory");
-      const assetsDirectory = await verifiedDirectory(safeChild(publicDirectory, "assets"), "Project assets directory");
+      const { runtimeDirectory, assetsDirectory } = await verifiedRuntimeAssetLayout(project);
       await recoverAssetTransaction(
         safeChild(metadataDirectory, "assets.transaction.json"),
         metadataDirectory,
-        publicDirectory,
+        runtimeDirectory,
         assetsDirectory,
         safeChild(assetsDirectory, "manifest.json"),
         projectId,
@@ -157,20 +158,19 @@ export class ProjectAssetStore {
 
     const realProject = await verifiedManagedProject(this.#projectsRoot, projectId);
 
-    const metadataDirectory = await verifiedDirectory(safeChild(realProject, ".gameforge"), "Project metadata directory");
+    const metadataDirectory = await verifiedDirectory(safeChild(realProject.directory, ".gameforge"), "Project metadata directory");
     const lockPath = safeChild(metadataDirectory, "assets.lock");
     const recoveryPath = safeChild(metadataDirectory, "assets.lock.recovery");
     const lock = await acquireAssetLock(lockPath, recoveryPath, this.#lockRuntime);
 
     try {
-      const publicDirectory = await verifiedDirectory(safeChild(realProject, "public"), "Project public directory");
-      const assetsDirectory = await verifiedDirectory(safeChild(publicDirectory, "assets"), "Project assets directory");
+      const { runtimeDirectory, assetsDirectory } = await verifiedRuntimeAssetLayout(realProject);
       const manifestPath = safeChild(assetsDirectory, "manifest.json");
       const transactionPath = safeChild(metadataDirectory, "assets.transaction.json");
       await recoverAssetTransaction(
         transactionPath,
         metadataDirectory,
-        publicDirectory,
+        runtimeDirectory,
         assetsDirectory,
         manifestPath,
         projectId,
@@ -231,10 +231,10 @@ export class ProjectAssetStore {
         );
       } else {
         if (existing === undefined) throw new Error("Asset replacement target disappeared.");
-        const oldDestination = safeChild(publicDirectory, existing.path);
+        const oldDestination = safeChild(runtimeDirectory, existing.path);
         const oldHash = await verifiedAssetHash(
           oldDestination,
-          publicDirectory,
+          runtimeDirectory,
           existing.bytes,
           existing.assetId,
         );
@@ -394,7 +394,7 @@ function manifestBytes(manifest: RuntimeAssetManifest): Uint8Array {
 async function recoverAssetTransaction(
   transactionPath: string,
   metadataDirectory: string,
-  publicDirectory: string,
+  runtimeDirectory: string,
   assetsDirectory: string,
   manifestPath: string,
   projectId: string,
@@ -416,7 +416,7 @@ async function recoverAssetTransaction(
     await readVerifiedJson(manifestPath, assetsDirectory, "Runtime asset manifest"),
   );
   const currentHash = sha256(manifestBytes(currentManifest));
-  const newDestination = safeChild(publicDirectory, transaction.newEntry.path);
+  const newDestination = safeChild(runtimeDirectory, transaction.newEntry.path);
   const assetTemporary = `${newDestination}.${transaction.transactionId}.tmp`;
   const manifestTemporary = safeChild(assetsDirectory, `.manifest.${transaction.transactionId}.tmp`);
 
@@ -425,13 +425,13 @@ async function recoverAssetTransaction(
     currentHash === transaction.newManifestSha256 &&
     manifestContainsEntry(currentManifest, transaction.newEntry)
   ) {
-    await assertTransactionAsset(newDestination, publicDirectory, transaction.newEntry, "new");
+    await assertTransactionAsset(newDestination, runtimeDirectory, transaction.newEntry, "new");
     if (transaction.operation === "replace") {
-      const oldDestination = safeChild(publicDirectory, transaction.oldEntry.path);
+      const oldDestination = safeChild(runtimeDirectory, transaction.oldEntry.path);
       const backup = `${oldDestination}.${transaction.transactionId}.bak`;
-      await removeTransactionAssetIfPresent(backup, publicDirectory, transaction.oldEntry, "backup");
+      await removeTransactionAssetIfPresent(backup, runtimeDirectory, transaction.oldEntry, "backup");
     }
-    await removeTransactionAssetIfPresent(assetTemporary, publicDirectory, transaction.newEntry, "temporary");
+    await removeTransactionAssetIfPresent(assetTemporary, runtimeDirectory, transaction.newEntry, "temporary");
     await removeManifestTemporaryIfPresent(manifestTemporary, assetsDirectory, transaction.newManifestSha256);
     await rm(transactionPath);
     return;
@@ -446,35 +446,35 @@ async function recoverAssetTransaction(
   ) throw new Error("Asset transaction does not match the old or new manifest; refusing automatic recovery.");
 
   if (transaction.operation === "create") {
-    await removeTransactionAssetIfPresent(newDestination, publicDirectory, transaction.newEntry, "new");
-    await removeTransactionAssetIfPresent(assetTemporary, publicDirectory, transaction.newEntry, "temporary");
+    await removeTransactionAssetIfPresent(newDestination, runtimeDirectory, transaction.newEntry, "new");
+    await removeTransactionAssetIfPresent(assetTemporary, runtimeDirectory, transaction.newEntry, "temporary");
     await removeManifestTemporaryIfPresent(manifestTemporary, assetsDirectory, transaction.newManifestSha256);
     await rm(transactionPath);
     return;
   }
 
-  const oldDestination = safeChild(publicDirectory, transaction.oldEntry.path);
+  const oldDestination = safeChild(runtimeDirectory, transaction.oldEntry.path);
   const backup = `${oldDestination}.${transaction.transactionId}.bak`;
   const backupExists = await pathExists(backup);
   if (oldDestination === newDestination) {
     if (backupExists && await pathExists(newDestination)) {
-      await assertTransactionAsset(newDestination, publicDirectory, transaction.newEntry, "new");
+      await assertTransactionAsset(newDestination, runtimeDirectory, transaction.newEntry, "new");
       await rm(newDestination);
     }
   } else {
-    await removeTransactionAssetIfPresent(newDestination, publicDirectory, transaction.newEntry, "new");
+    await removeTransactionAssetIfPresent(newDestination, runtimeDirectory, transaction.newEntry, "new");
   }
   if (backupExists) {
-    await assertTransactionAsset(backup, publicDirectory, transaction.oldEntry, "backup");
+    await assertTransactionAsset(backup, runtimeDirectory, transaction.oldEntry, "backup");
     if (await pathExists(oldDestination)) {
       throw new Error("Old asset destination already exists during transaction rollback.");
     }
     await link(backup, oldDestination);
     await unlink(backup);
   } else {
-    await assertTransactionAsset(oldDestination, publicDirectory, transaction.oldEntry, "old");
+    await assertTransactionAsset(oldDestination, runtimeDirectory, transaction.oldEntry, "old");
   }
-  await removeTransactionAssetIfPresent(assetTemporary, publicDirectory, transaction.newEntry, "temporary");
+  await removeTransactionAssetIfPresent(assetTemporary, runtimeDirectory, transaction.newEntry, "temporary");
   await removeManifestTemporaryIfPresent(manifestTemporary, assetsDirectory, transaction.newManifestSha256);
   await rm(transactionPath);
 }
@@ -496,11 +496,11 @@ function manifestContainsEntry(manifest: RuntimeAssetManifest, expected: Runtime
 
 async function assertTransactionAsset(
   target: string,
-  publicDirectory: string,
+  runtimeDirectory: string,
   entry: RuntimeAssetEntry,
   label: string,
 ): Promise<void> {
-  const digest = await verifiedAssetHash(target, publicDirectory, entry.bytes, `${entry.assetId} (${label})`);
+  const digest = await verifiedAssetHash(target, runtimeDirectory, entry.bytes, `${entry.assetId} (${label})`);
   if (digest !== entry.sha256 || digest !== entry.provenance.sha256) {
     throw new Error(`Asset transaction ${label} file hash is inconsistent.`);
   }
@@ -508,12 +508,12 @@ async function assertTransactionAsset(
 
 async function removeTransactionAssetIfPresent(
   target: string,
-  publicDirectory: string,
+  runtimeDirectory: string,
   entry: RuntimeAssetEntry,
   label: string,
 ): Promise<void> {
   if (!await pathExists(target)) return;
-  await assertTransactionAsset(target, publicDirectory, entry, label);
+  await assertTransactionAsset(target, runtimeDirectory, entry, label);
   await rm(target);
 }
 
@@ -675,7 +675,7 @@ function processIsAlive(pid: number): boolean {
   }
 }
 
-async function verifiedManagedProject(projectsRoot: string, projectId: string): Promise<string> {
+async function verifiedManagedProject(projectsRoot: string, projectId: string): Promise<ManagedAssetProject> {
   const root = await verifiedDirectory(projectsRoot, "Asset projects root");
   const project = safeChild(root, projectId);
   const projectInfo = await lstat(project).catch(() => undefined);
@@ -687,11 +687,19 @@ async function verifiedManagedProject(projectsRoot: string, projectId: string): 
     throw new Error("Generated project escaped the configured projects root.");
   }
   const managedPath = safeChild(realProject, ".gameforge/manifest.json");
-  const managed = managedProjectSchema.parse(
+  const managed = managedGeneratedProjectManifestSchema.parse(
     await readVerifiedJson(managedPath, realProject, "Generated project manifest"),
   );
   if (managed.projectId !== projectId) throw new Error("Generated project manifest ID does not match.");
-  return realProject;
+  return { directory: realProject, target: managed.target };
+}
+
+async function verifiedRuntimeAssetLayout(project: ManagedAssetProject): Promise<RuntimeAssetLayout> {
+  const runtimeRelative = project.target === "web" ? "public" : "assets/resources";
+  const runtimeLabel = project.target === "web" ? "Project public directory" : "Project Laya resources directory";
+  const runtimeDirectory = await verifiedDirectory(safeChild(project.directory, runtimeRelative), runtimeLabel);
+  const assetsDirectory = await verifiedDirectory(safeChild(runtimeDirectory, "assets"), "Project assets directory");
+  return { runtimeDirectory, assetsDirectory };
 }
 
 function validateMedia(
@@ -795,7 +803,7 @@ function sha256(bytes: Uint8Array): string {
 
 async function verifiedAssetHash(
   target: string,
-  publicDirectory: string,
+  runtimeDirectory: string,
   expectedBytes: number,
   assetId: string,
 ): Promise<string> {
@@ -803,7 +811,7 @@ async function verifiedAssetHash(
   if (handle === undefined) throw new Error(`Runtime asset file is missing or inconsistent: ${assetId}`);
   try {
     const before = await handle.stat({ bigint: true });
-    await assertPathMatchesHandle(target, publicDirectory, before.dev, before.ino, expectedBytes, assetId);
+    await assertPathMatchesHandle(target, runtimeDirectory, before.dev, before.ino, expectedBytes, assetId);
     const digest = await sha256Handle(handle);
     const after = await handle.stat({ bigint: true });
     if (
@@ -812,7 +820,7 @@ async function verifiedAssetHash(
     ) {
       throw new Error(`Runtime asset file changed while being verified: ${assetId}`);
     }
-    await assertPathMatchesHandle(target, publicDirectory, after.dev, after.ino, expectedBytes, assetId);
+    await assertPathMatchesHandle(target, runtimeDirectory, after.dev, after.ino, expectedBytes, assetId);
     return digest;
   } finally {
     await handle.close();
@@ -821,7 +829,7 @@ async function verifiedAssetHash(
 
 async function assertPathMatchesHandle(
   target: string,
-  publicDirectory: string,
+  runtimeDirectory: string,
   device: bigint,
   inode: bigint,
   expectedBytes: number,
@@ -835,7 +843,7 @@ async function assertPathMatchesHandle(
     throw new Error(`Runtime asset file is missing or inconsistent: ${assetId}`);
   }
   const realTarget = await realpath(target);
-  if (!isStrictChild(publicDirectory, realTarget)) {
+  if (!isStrictChild(runtimeDirectory, realTarget)) {
     throw new Error(`Runtime asset file escaped the project: ${assetId}`);
   }
 }

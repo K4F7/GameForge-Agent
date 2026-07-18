@@ -76,7 +76,7 @@ describe("GameProjectGenerator", () => {
     expect(first.plan.target).toBe("douyin-mini-game");
     expect(first.plan.files.map((entry) => entry.path)).toEqual(expect.arrayContaining([
       "douyin-spike.laya", "assets/Scene.ls", "assets/resources/game-spec.json",
-      "assets/resources/gameforge-platform.json", "src/Main.ts",
+      "assets/resources/gameforge-platform.json", "assets/resources/assets/manifest.json", "src/Main.ts",
     ]));
     expect(first.plan.files.map((entry) => entry.path)).not.toContain("index.html");
     const applied = await generator.execute({ projectId: "douyin-spike", spec, target: "douyin-mini-game", mode: "apply" });
@@ -90,10 +90,18 @@ describe("GameProjectGenerator", () => {
         allowedNetworkHosts: [],
         remoteScripts: false,
       });
+    expect(JSON.parse(await readFile(path.join(root, "douyin-spike", "assets", "resources", "assets", "manifest.json"), "utf8")))
+      .toEqual({ schemaVersion: "1.0", projectId: "douyin-spike", revision: 0, assets: [] });
     expect(await readFile(path.join(root, "douyin-spike", "src", "Main.ts"), "utf8"))
       .toContain('Laya.loader.load("resources/game-spec.json"');
-    expect(await readFile(path.join(root, "douyin-spike", "src", "Main.ts"), "utf8"))
-      .toContain("this.invulnerableUntilMs = now + 1000");
+    const runtime = await readFile(path.join(root, "douyin-spike", "src", "Main.ts"), "utf8");
+    expect(runtime).toContain("this.invulnerableUntilMs = now + 1000");
+    expect(runtime).toContain('Laya.loader.load("resources/assets/manifest.json"');
+    expect(runtime).toContain('return "resources/" + assetPath');
+    expect(runtime).toContain('this.drawRole(this.player, "player", 32, 32');
+    expect(runtime).toContain('this.drawRole(item, "collectible", 24, 24');
+    expect(runtime).toContain('Laya.SoundManager.playMusic(this.resourceUrl(bgm.path), 0)');
+    expect(runtime).toContain("Audio is optional; gameplay remains functional");
   });
 
   it("rejects unverified Douyin genres instead of silently using the arcade runtime", async () => {
@@ -155,6 +163,36 @@ describe("GameProjectGenerator", () => {
     expect(JSON.parse(await readFile(path.join(project, "game-spec.json"), "utf8"))).toEqual(revised);
     expect(JSON.parse(await readFile(assetManifestPath, "utf8"))).toEqual(assetManifest);
     expect(await readFile(path.join(project, "NOTES.md"), "utf8")).toBe("user notes\n");
+  });
+
+  it("preserves the Laya runtime asset manifest during a managed Douyin update", async () => {
+    const { generator, root } = await createGenerator();
+    const created = await generator.execute({
+      projectId: "douyin-update", spec, target: "douyin-mini-game", mode: "apply",
+    });
+    const manifestPath = path.join(root, "douyin-update", "assets", "resources", "assets", "manifest.json");
+    const runtimeManifest = { schemaVersion: "1.0", projectId: "douyin-update", revision: 2, assets: [] };
+    await writeFile(manifestPath, `${JSON.stringify(runtimeManifest, null, 2)}\n`);
+    const revised = { ...spec, title: "Douyin Assets Revised" };
+    const preview = await generator.execute({
+      projectId: "douyin-update", spec: revised, target: "douyin-mini-game", operation: "update",
+    });
+    expect(preview.update).toMatchObject({
+      currentPlanSha256: created.plan.planSha256,
+      preservedPaths: ["assets/resources/assets/manifest.json"],
+      conflicts: [],
+    });
+    const currentPlanSha256 = preview.update?.currentPlanSha256;
+    if (currentPlanSha256 === undefined) throw new Error("Update preview did not return a current plan hash.");
+    await generator.execute({
+      projectId: "douyin-update",
+      spec: revised,
+      target: "douyin-mini-game",
+      operation: "update",
+      mode: "apply",
+      expectedPlanSha256: currentPlanSha256,
+    });
+    expect(JSON.parse(await readFile(manifestPath, "utf8"))).toEqual(runtimeManifest);
   });
 
   it("refuses update when a managed file was modified or the plan CAS is stale", async () => {
@@ -382,7 +420,8 @@ describe("GameProjectGenerator", () => {
     expect(source).toContain('document.documentElement.lang = locale');
     expect(source).toContain('won: "Mission Complete"');
     expect(source).toContain('arcadeControls: "Arrow keys to move, collect targets, and avoid hazards"');
-    expect(source).toContain('won: "任务完成"');
+    const semanticSource = source.replace(/\\u([0-9a-f]{4})/gi, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+    expect(semanticSource).toContain('won: "任务完成"');
     expect(html).toContain('<html lang="en-US">');
     expect(html).toContain('aria-label="GameForge generated game"');
     expect(html).toContain('<link rel="icon" href="data:," />');

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,6 +15,10 @@ async function project(gameConfig: Record<string, unknown> = { deviceOrientation
   await writeFile(path.join(root, "project.config.json"), '{"description":"GameForge","setting":{"es6":true}}\n');
   await mkdir(path.join(root, "resources"));
   await writePolicy(root);
+  await mkdir(path.join(root, "resources", "assets"));
+  await writeFile(path.join(root, "resources", "assets", "manifest.json"), `${JSON.stringify({
+    schemaVersion: "1.0", projectId: "fixture", revision: 0, assets: [],
+  })}\n`);
   return root;
 }
 
@@ -51,6 +56,9 @@ describe("Douyin mini-game artifact validator", () => {
       subpackages: [{ root: "levels/two" }],
       capabilities: { network: false, login: false, share: false, ads: false, payments: false },
       allowedNetworkHosts: [],
+      assetManifestRevision: 0,
+      assetCount: 0,
+      projectId: "fixture",
     });
   });
 
@@ -139,6 +147,34 @@ describe("Douyin mini-game artifact validator", () => {
     await mkdir(path.join(untrustedLibrary, "libs"));
     await writeFile(path.join(untrustedLibrary, "libs", "evil.js"), "tt.login({});\n");
     await expect(validateDouyinMiniGameProject(untrustedLibrary)).rejects.toThrow("undeclared login capability");
+  });
+
+  it("verifies every published runtime asset against its manifest hash", async () => {
+    const root = await project();
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const assetPath = path.join(root, "resources", "assets", "images", "player.png");
+    await mkdir(path.dirname(assetPath), { recursive: true });
+    await writeFile(assetPath, bytes);
+    await writeFile(path.join(root, "resources", "assets", "manifest.json"), `${JSON.stringify({
+      schemaVersion: "1.0",
+      projectId: "fixture",
+      revision: 1,
+      assets: [{
+        assetId: "images/player.png", kind: "image", role: "player", path: "assets/images/player.png",
+        mimeType: "image/png", bytes: bytes.length, sha256,
+        provenance: {
+          assetId: "images/player.png", kind: "image", origin: "generated", provider: "fixture",
+          model: "fixture", prompt: "https://documentation.example.com is metadata only",
+          license: "https://license.example.com/terms", sha256,
+        },
+      }],
+    })}\n`);
+    await expect(validateDouyinMiniGameProject(root)).resolves.toMatchObject({ assetManifestRevision: 1, assetCount: 1 });
+    await expect(validateDouyinMiniGameProject(root, { expectedProjectId: "another-project" }))
+      .rejects.toThrow("project ID mismatch");
+    await writeFile(assetPath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]));
+    await expect(validateDouyinMiniGameProject(root)).rejects.toThrow("hash is inconsistent");
   });
 
   it("rejects projects whose split packages exceed the 20 MiB total limit", async () => {

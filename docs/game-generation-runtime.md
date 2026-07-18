@@ -14,7 +14,7 @@ GameForge把“理解需求”和“生成工程”分开：
 
 ## 项目生成器
 
-`@gameforge/generator` 0.10.0 在生成请求、计划和托管 Manifest 中记录显式 target。旧请求默认 `web`，继续生成独立的 Phaser 4 + Vite + TypeScript 项目；`douyin-mini-game` 生成固定 LayaAir 3.4.0 TypeScript 源工程，当前只开放真实构建验证过的 `arcade` 模板。跨 target update 与未验证 genre 都会明确失败。固定 Web 输出包括：
+`@gameforge/generator` 0.11.0 在生成请求、计划和托管 Manifest 中记录显式 target。旧请求默认 `web`，继续生成独立的 Phaser 4 + Vite + TypeScript 项目；`douyin-mini-game` 生成固定 LayaAir 3.4.0 TypeScript 源工程，当前只开放真实构建验证过的 `arcade` 模板。跨 target update 与未验证 genre 都会明确失败。固定 Web 输出包括：
 
 - `game-spec.json`
 - `src/main.ts`
@@ -37,9 +37,9 @@ GameForge把“理解需求”和“生成工程”分开：
 
 这是供CodeArts继续修改的稳定可玩基线，不声称仅凭GameSpec中几句自然语言就能无损表达任意玩法。
 
-抖音源工程固定输出 `<projectId>.laya`、启动场景及 UUID meta、Build/Player Settings、`src/Main.ts`、`assets/resources/game-spec.json` 和严格的 `assets/resources/gameforge-platform.json`。运行时异步读取 JSON GameSpec，消费标题、目标、收集物/危险物数量、生命和移动速度；用户文本不插入可执行源码。平台策略默认 `network/login/share/ads/payments=false`、无远程域名且禁止远程脚本；后续启用能力必须同时修改声明并通过静态用法核验。生成器只负责确定性源文件，不内嵌或下载 LayaAir CLI。配置 `GAMEFORGE_LAYAIR_CLI` 后，`build_douyin_mini_game` 对托管 target 执行固定 3.4.0 `bytedancegame` 构建并调用 mini-game validator。Builder 使用绝对 CLI、受限子进程环境、120 秒超时、64 KiB/stdout/stderr 上限、项目构建锁和产物 realpath/符号链接检查；它不返回原始日志，也不登录、预览、上传、提审或发布。
+抖音源工程固定输出 `<projectId>.laya`、启动场景及 UUID meta、Build/Player Settings、`src/Main.ts`、`assets/resources/game-spec.json`、严格的 `assets/resources/gameforge-platform.json`，以及初始 `assets/resources/assets/manifest.json`。运行时异步读取 JSON GameSpec 和媒体 Manifest，消费标题、目标、玩法参数及图片/音频角色；用户文本不插入可执行源码。平台策略默认 `network/login/share/ads/payments=false`、无远程域名且禁止远程脚本；后续启用能力必须同时修改声明并通过静态用法核验。生成器只负责确定性源文件，不内嵌或下载 LayaAir CLI。配置 `GAMEFORGE_LAYAIR_CLI` 后，`build_douyin_mini_game` 对托管 target 执行固定 3.4.0 `bytedancegame` 构建并调用 mini-game validator。Builder 使用绝对 CLI、受限子进程环境、120 秒超时、64 KiB/stdout/stderr 上限、项目构建锁和产物 realpath/符号链接检查；官方 CLI 即使以 0 退出，只要完整 stdout 或 stderr 流出现 `Build end, result=Failed` 也会判定失败，检测不受保存日志截断影响。它不返回原始日志，也不登录、预览、上传、提审或发布。
 
-抖音小游戏静态发布检查由 `@gameforge/minigame-validator` 提供。对已有平台工程执行 `bun run minigame:validate -- <绝对工程路径>`，会验证 `game.js`、`game.json`、`project.config.json`、平台策略、方向与超时字段、符号链接边界、允许的发布文件类型、分包根唯一性、4 MiB 主包和 20 MiB 总目录限制；同时拒绝入口 DOM 依赖、远程 JavaScript（含 HTTP(S)、协议相对、data/blob/javascript scheme）、HTTP URL、IP/localhost/端口/未声明域名，以及应用代码中未声明的网络、登录、分享、广告和支付 API。只有 SHA-256 与已验证的 LayaAir 3.4.0 `microgame-adapter.js` 和 `laya.adapter-bytedance.js` 完全一致时，通用适配器里的平台 API 才不计为游戏主动 capability；同名文件被修改会保守失败。读取文本文件时复核 realpath、文件身份和大小，调用方仍应在产物静止时校验，不能把它当成对同机恶意并发改写的沙箱。该检查是保守的静态门禁，不做完整 JavaScript 数据流分析、不运行抖音 Runtime，也不能替代开发者工具、后台合法域名配置、TLS 探测与真机验收。
+抖音小游戏静态发布检查由 `@gameforge/minigame-validator` 提供。对已有平台工程执行 `bun run minigame:validate -- <绝对工程路径>`，会验证 `game.js`、`game.json`、`project.config.json`、平台策略、`resources/assets/manifest.json`、方向与超时字段、符号链接边界、允许的发布文件类型、分包根唯一性、4 MiB 主包和 20 MiB 总目录限制；每个发布媒体还必须存在于 `resources/<entry.path>`，并与 Manifest 的字节数和 SHA-256 一致。有界 builder 还把 Manifest projectId 与请求的受管项目绑定，拒绝跨项目替换。同时拒绝入口 DOM 依赖、远程 JavaScript（含 HTTP(S)、协议相对、data/blob/javascript scheme）、HTTP URL、IP/localhost/端口/未声明域名，以及应用代码中未声明的网络、登录、分享、广告和支付 API。普通 GameSpec、素材 prompt、provenance 与 license 中的文档网址不作为运行时网络访问，避免把元数据误报成远程请求。只有 SHA-256 与已验证的 LayaAir 3.4.0 `microgame-adapter.js` 和 `laya.adapter-bytedance.js` 完全一致时，通用适配器里的平台 API 才不计为游戏主动 capability；同名文件被修改会保守失败。读取文本文件时复核 realpath、文件身份和大小，调用方仍应在产物静止时校验，不能把它当成对同机恶意并发改写的沙箱。该检查是保守的静态门禁，不做完整 JavaScript 数据流分析、不运行抖音 Runtime，也不能替代开发者工具、后台合法域名配置、TLS 探测与真机验收。
 
 GameSpec 可选 `gameplay` 对象提供四个有界核心参数：`collectibleCount` 1–10、`hazardCount` 0–6、`startingLives` 1–9、`movementSpeed` 100–360 px/s。旧规格缺少该对象时保持各 genre 的 0.2.x 默认值；百炼严格 JSON Schema 要求新草案显式给出四项。生成运行时用它们控制实际出生数量、生命和连续移动速度，platformer 与 arena 均消费同一规格，不只是 Workbench 展示字段。
 
@@ -206,7 +206,7 @@ Workbench 页面加载时使用时间与浏览器 UUID 熵生成符合 `runIdSch
 
 ## 运行时资产闭环
 
-`@gameforge/asset-store` 只接受已由生成器创建的项目，核验 `.gameforge/manifest.json`、项目 ID、真实目录、媒体魔数、大小、SHA-256、角色与 MIME 的对应关系。文件固定写入 `public/assets/`，清单使用互斥锁和临时文件更新；重复 asset ID、重复运行时角色、符号链接与路径越界都会被拒绝。
+`@gameforge/asset-store` 只接受已由生成器创建的项目，核验完整 `.gameforge/manifest.json`、项目 ID、target、真实目录、媒体魔数、大小、SHA-256、角色与 MIME 的对应关系。Manifest 的逻辑路径统一为 `assets/...`；Web 物理写入 `public/assets/`，抖音 Laya 源工程物理写入 `assets/resources/assets/`，官方构建后成为 `resources/assets/`。清单使用同一套互斥锁、CAS 和事务恢复；重复 asset ID、重复运行时角色、符号链接与路径越界都会被拒绝。两种 target 的受管更新都会保留已演进的运行时 Manifest。
 
 `.gameforge/assets.lock` 使用 `open("wx")` 原子创建并写入 version、随机 token、PID、hostname 与毫秒时间戳，文件 mode 为 0600（Windows 按平台语义处理）。正常释放前同时核对已打开句柄的 device/inode 和路径 metadata token，路径被替换时不会无条件 unlink。发生 `EEXIST` 时先取得独立 recovery guard；只有主锁 metadata 完整、同一 hostname、年龄至少 10 分钟且 `process.kill(pid, 0)` 明确报告 PID 不存在时才回收。PID 存活/权限未知、时钟异常、近期锁、异地主机、符号链接、空文件和旧格式都保持锁定。recovery guard 自身使用同一 metadata 和保守 stale 规则，避免恢复进程崩溃后永久阻塞。
 
@@ -214,9 +214,9 @@ Workbench 页面加载时使用时间与浏览器 UUID 熵生成符合 `runIdSch
 
 CodeArts 重启后的 Manifest 恢复读取同样逐文件流式重算 SHA-256，并同时比对 Manifest entry 与 provenance 中的哈希；因此即使文件被替换为相同字节数，`get_project_assets` 也会拒绝恢复，而不会补发错误的 `asset.ready`。
 
-当前生成模板会在启动时读取 `public/assets/manifest.json`：存在 `player`、`collectible`、`hazard`、`background` 时加载图片；存在 `collect-sound` 和 `hit-sound` 时播放音频。浏览器运行时只接受契约内角色、同类型 MIME、`assets/` 内规范相对路径和唯一角色；损坏、重复或类型不匹配的条目被忽略。角色图片无论源分辨率如何，都会归一化显示尺寸和 Arcade Physics 碰撞体；背景仍按 960×540 场景缩放。清单缺失、为空或单项加载失败时继续使用程序化纹理与静音回退，因此媒体 Provider 不会成为玩法可运行性的硬依赖。
+Web 生成模板启动时读取 `public/assets/manifest.json`，抖音模板读取发布后的 `resources/assets/manifest.json`：存在 `player`、`collectible`、`hazard`、`background` 时加载图片；存在 `collect-sound` 和 `hit-sound` 时播放音频。两端运行时只接受契约内角色、同类型 MIME、`assets/` 内规范相对路径和唯一角色；损坏、重复或类型不匹配的条目被忽略。角色图片无论源分辨率如何，都会归一化：player/hazard 32×32、collectible 24×24，背景按 960×540 场景缩放。清单缺失、为空或单项加载失败时继续使用程序化纹理与静音回退，因此媒体 Provider 不会成为玩法可运行性的硬依赖。
 
-存在 `voice` 角色时，模板会在玩家第一次点击或按键后播放配音，以遵守浏览器自动播放限制；存在 `bgm` 时，同一次用户手势会以 0.35 音量开始循环播放。Freesound 导入工具会把明确选择为 `bgm` 的预览记录为 `kind: "music"`，其他音效仍记录为 `kind: "sound"`，从而满足 Asset Store 的角色—来源一致性校验。解码失败时保持静音并继续游戏。
+存在 `voice` 角色时，两端模板会在玩家第一次点击或按键后播放配音；存在 `bgm` 时，同一次用户手势开始循环播放。Web 端音量固定为 0.35；Laya 端交给小游戏音频通道默认音量，后续 DevTool/真机验收再校准。Freesound 导入工具会把明确选择为 `bgm` 的预览记录为 `kind: "music"`，其他音效仍记录为 `kind: "sound"`，从而满足 Asset Store 的角色—来源一致性校验。解码失败时保持静音并继续游戏。
 
 生成模板还暴露只读验证状态 `window.__GAMEFORGE_TEST__`，包含 `status`、`score`、`lives`、`remainingSeconds`、结束详情和可选 telemetry。生成器 0.2.0 的 telemetry 提供玩家、仍存活收集物与危险物的世界坐标，数值保留两位小数；胜负发生时仍保留最终 telemetry，并派发 `gameforge:outcome`。它只提供可观测状态，不接受命令、不改变玩法逻辑，供 CodeArts 设计有限动作，避免依赖缩放截图或 OCR 猜测 Canvas 状态。
 

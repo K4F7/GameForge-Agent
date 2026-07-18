@@ -45,7 +45,7 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
 
 ## 资产边界
 
-- 资产只能写入生成项目的 `public/assets/`，并同步更新 `public/assets/manifest.json`。
+- 资产只能通过 Asset Store 写入受管 target 的运行时资源树：Web 为 `public/assets/`，抖音 Laya 源工程为 `assets/resources/assets/`；Manifest 中的逻辑路径始终保持 `assets/...`，不得由 Agent 自行拼接物理路径。
 - 不把 API key、token、账号或本地环境写入参数、日志、清单或仓库。
 - CC BY 素材必须保留作者、原始页面与许可；默认排除 BY-NC。
 - 生成素材必须记录 provider、model、prompt、license 与 SHA-256。

@@ -65,7 +65,10 @@ export class DouyinMiniGameBuilder {
       const result = await this.#run([
         "build", "bytedancegame", "--project", project, "--out", outputPath,
       ], project, this.#timeoutMs);
-      const validation = await validateDouyinMiniGameProject(outputPath);
+      if (result.reportedBuildFailure) {
+        throw new Error("LayaAir CLI reported a failed build despite returning exit code zero.");
+      }
+      const validation = await validateDouyinMiniGameProject(outputPath, { expectedProjectId: projectId });
       return {
         projectId,
         cliVersion: EXPECTED_LAYAAIR_VERSION,
@@ -97,19 +100,29 @@ export class DouyinMiniGameBuilder {
   }
 }
 
-type ProcessResult = { stdout: string; stdoutTruncated: boolean; stderrTruncated: boolean };
+type ProcessResult = { stdout: string; stdoutTruncated: boolean; stderrTruncated: boolean; reportedBuildFailure: boolean };
 
 async function collectProcess(child: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<ProcessResult> {
   let stdout = Buffer.alloc(0);
   let stderr = Buffer.alloc(0);
   let stdoutTruncated = false;
   let stderrTruncated = false;
+  let reportedBuildFailure = false;
+  let stdoutFailureTail = "";
+  let stderrFailureTail = "";
+  const scanBuildFailure = (chunk: Buffer, previousTail: string): string => {
+    const combined = previousTail + chunk.toString("utf8");
+    if (/\bBuild end,\s*result=Failed\b/i.test(combined)) reportedBuildFailure = true;
+    return combined.slice(-128);
+  };
   child.stdout.on("data", (chunk: Buffer) => {
+    stdoutFailureTail = scanBuildFailure(chunk, stdoutFailureTail);
     const remaining = MAX_LOG_BYTES - stdout.length;
     if (remaining > 0) stdout = Buffer.concat([stdout, chunk.subarray(0, remaining)]);
     if (chunk.length > remaining) stdoutTruncated = true;
   });
   child.stderr.on("data", (chunk: Buffer) => {
+    stderrFailureTail = scanBuildFailure(chunk, stderrFailureTail);
     const remaining = MAX_LOG_BYTES - stderr.length;
     if (remaining > 0) stderr = Buffer.concat([stderr, chunk.subarray(0, remaining)]);
     if (chunk.length > remaining) stderrTruncated = true;
@@ -132,7 +145,7 @@ async function collectProcess(child: ChildProcessWithoutNullStreams, timeoutMs: 
   const outcome = first;
   if (outcome.error !== undefined) throw new Error("LayaAir CLI could not be started.");
   if (outcome.code !== 0) throw new Error(`LayaAir CLI failed with exit code ${outcome.code ?? "unknown"}.`);
-  return { stdout: stdout.toString("utf8"), stdoutTruncated, stderrTruncated };
+  return { stdout: stdout.toString("utf8"), stdoutTruncated, stderrTruncated, reportedBuildFailure };
 }
 
 async function terminateProcessTree(child: ChildProcessWithoutNullStreams): Promise<void> {

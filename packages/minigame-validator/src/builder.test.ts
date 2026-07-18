@@ -33,6 +33,7 @@ if (args.includes("--version")) { console.log("LayaAir CLI 3.4.0"); process.exit
 const out = args[args.indexOf("--out") + 1];
 await mkdir(out, { recursive: true });
 await mkdir(out + "/resources", { recursive: true });
+await mkdir(out + "/resources/assets", { recursive: true });
 await writeFile(out + "/game.js", "const canvas = tt.createCanvas();\\n");
 await writeFile(out + "/game.json", '{"deviceOrientation":"portrait"}\\n');
 await writeFile(out + "/project.config.json", '{"setting":{"es6":false}}\\n');
@@ -44,6 +45,7 @@ await writeFile(out + "/resources/gameforge-platform.json", '${JSON.stringify({
   allowedNetworkHosts: [],
   remoteScripts: false,
 })}\\n');
+await writeFile(out + "/resources/assets/manifest.json", '${JSON.stringify({ schemaVersion: "1.0", projectId: "safe-game", revision: 0, assets: [] })}\\n');
 console.log("Build end, result=Success");
 `);
   return { root: path.join(root, "projects"), project, cli };
@@ -83,6 +85,23 @@ describe("DouyinMiniGameBuilder", () => {
     const builder = new DouyinMiniGameBuilder({ projectsRoot: root, cliPath: process.execPath, cliPrefixArgs: [cli] });
     await expect(builder.build("safe-game")).rejects.toThrow("metadata directory is missing or unsafe");
     await expect(readOptional(path.join(outside, "laya-build.lock"))).resolves.toBeUndefined();
+  });
+
+  it("rejects the official failed-build marker even when the CLI exits zero", async () => {
+    const { root, cli } = await fixture();
+    await writeFile(cli, `
+const args = process.argv.slice(2);
+if (args.includes("--version")) console.log("LayaAir CLI 3.4.0");
+else console.log("[Build] Build end, result=Failed");
+`);
+    const builder = new DouyinMiniGameBuilder({ projectsRoot: root, cliPath: process.execPath, cliPrefixArgs: [cli] });
+    await expect(builder.build("safe-game")).rejects.toThrow("reported a failed build");
+    await writeFile(cli, `
+const args = process.argv.slice(2);
+if (args.includes("--version")) console.log("LayaAir CLI 3.4.0");
+else { process.stderr.write("x".repeat(70000)); console.error("[Build] Build end, result=Failed"); }
+`);
+    await expect(builder.build("safe-game")).rejects.toThrow("reported a failed build");
   });
 });
 

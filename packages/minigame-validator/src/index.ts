@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { lstat, open, opendir, realpath } from "node:fs/promises";
 import { isIP } from "node:net";
 import path from "node:path";
-import { douyinPlatformPolicySchema, type DouyinPlatformPolicy } from "@gameforge/contracts";
+import {
+  douyinPlatformPolicySchema,
+  runtimeAssetManifestSchema,
+  type DouyinPlatformPolicy,
+  type RuntimeAssetManifest,
+} from "@gameforge/contracts";
 import { z } from "zod";
 
 const MIB = 1024 * 1024;
@@ -10,7 +15,6 @@ const MAX_MAIN_PACKAGE_BYTES = 4 * MIB;
 const MAX_TOTAL_BYTES = 20 * MIB;
 const MAX_CONFIG_BYTES = 256 * 1024;
 const PLATFORM_POLICY_PATH = "resources/gameforge-platform.json";
-const POLICY_SCAN_EXTENSIONS = new Set([".js", ".json", ".ls"]);
 const TRUSTED_ENGINE_SCRIPT_HASHES = new Map([
   ["microgame-adapter.js", "7a70507864ef92630a48b392aa214f1e669998ec79049dd8b02a0b3f316e7185"],
   ["libs/laya.adapter-bytedance.js", "ea1de2cb8eb5756a2ca94ea0777594c4cc50aacab0cbce7816f4bd7a9c0e7321"],
@@ -58,9 +62,15 @@ export type DouyinMiniGameValidationReport = {
   deviceOrientation: "portrait" | "landscape";
   capabilities: DouyinPlatformPolicy["capabilities"];
   allowedNetworkHosts: readonly string[];
+  assetManifestRevision: number;
+  assetCount: number;
+  projectId: string;
 };
 
-export async function validateDouyinMiniGameProject(projectRoot: string): Promise<DouyinMiniGameValidationReport> {
+export async function validateDouyinMiniGameProject(
+  projectRoot: string,
+  options: { expectedProjectId?: string } = {},
+): Promise<DouyinMiniGameValidationReport> {
   if (!path.isAbsolute(projectRoot)) throw new Error("Douyin mini-game project root must be absolute.");
   const rootInfo = await lstat(projectRoot);
   if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error("Douyin mini-game project root must be a real directory.");
@@ -75,6 +85,13 @@ export async function validateDouyinMiniGameProject(projectRoot: string): Promis
   );
   const subpackageRoots = normalizeSubpackageRoots(gameConfig.subPackages ?? []);
   const files = await walkFiles(root);
+  const runtimeManifest = runtimeAssetManifestSchema.parse(
+    JSON.parse((await readRequiredFile(root, "resources/assets/manifest.json", MAX_CONFIG_BYTES)).text) as unknown,
+  );
+  if (options.expectedProjectId !== undefined && runtimeManifest.projectId !== options.expectedProjectId) {
+    throw new Error("Douyin mini-game runtime asset manifest project ID mismatch.");
+  }
+  await validatePublishedRuntimeAssets(root, runtimeManifest);
   await validateArtifactPolicy(root, files, platformPolicy);
   const packages = new Map(subpackageRoots.map((subpackageRoot) => [subpackageRoot, 0]));
   let mainPackageBytes = 0;
@@ -100,6 +117,9 @@ export async function validateDouyinMiniGameProject(projectRoot: string): Promis
     deviceOrientation: gameConfig.deviceOrientation ?? "landscape",
     capabilities: platformPolicy.capabilities,
     allowedNetworkHosts: platformPolicy.allowedNetworkHosts,
+    assetManifestRevision: runtimeManifest.revision,
+    assetCount: runtimeManifest.assets.length,
+    projectId: runtimeManifest.projectId,
   };
 }
 
@@ -163,7 +183,8 @@ async function validateArtifactPolicy(
   const allowedHosts = new Set(policy.allowedNetworkHosts);
   for (const file of files) {
     const extension = path.posix.extname(file.path).toLowerCase();
-    if (!POLICY_SCAN_EXTENSIONS.has(extension)) continue;
+    const scanRemoteUrls = extension === ".js" || extension === ".ls" || ["game.json", "project.config.json", "fileconfig.json"].includes(file.path);
+    if (!scanRemoteUrls && extension !== ".js") continue;
     const content = await readStableProjectFile(root, file.path);
     const text = content.toString("utf8");
     if (extension === ".js" && containsRemoteScriptImport(text)) {
@@ -174,6 +195,18 @@ async function validateArtifactPolicy(
       validateRemoteUrl(rawUrl, allowedHosts, policy.capabilities.network, file.path);
     }
     if (isApplicationJavaScript(file.path, content)) validateDeclaredCapabilities(text, policy.capabilities, file.path);
+  }
+}
+
+async function validatePublishedRuntimeAssets(root: string, manifest: RuntimeAssetManifest): Promise<void> {
+  for (const entry of manifest.assets) {
+    const relativePath = `resources/${entry.path}`;
+    const content = await readStableProjectFile(root, relativePath, entry.bytes);
+    if (content.byteLength !== entry.bytes) throw new Error(`Douyin mini-game runtime asset size is inconsistent: ${entry.assetId}.`);
+    const digest = createHash("sha256").update(content).digest("hex");
+    if (digest !== entry.sha256 || digest !== entry.provenance.sha256) {
+      throw new Error(`Douyin mini-game runtime asset hash is inconsistent: ${entry.assetId}.`);
+    }
   }
 }
 

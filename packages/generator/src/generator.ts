@@ -23,7 +23,7 @@ import { z } from "zod";
 import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
 import { douyinRuntimeSource } from "./douyin-template.js";
 
-const GENERATOR_VERSION = "0.10.0";
+const GENERATOR_VERSION = "0.11.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 
 type GeneratedFile = { path: string; content: string; bytes: number; sha256: string };
@@ -34,7 +34,10 @@ type UpdateInspection = {
   manifestFileSha256: string;
 };
 
-const PRESERVED_UPDATE_PATHS = new Set(["public/assets/manifest.json"]);
+const PRESERVED_UPDATE_PATHS = new Set([
+  "public/assets/manifest.json",
+  "assets/resources/assets/manifest.json",
+]);
 const UPDATE_LOCK_STALE_AFTER_MS = 10 * 60 * 1000;
 const UPDATE_TRANSACTION_MAX_BYTES = 128 * 1024;
 type OwnedUpdateLock = { handle: Awaited<ReturnType<typeof open>>; token: string };
@@ -386,7 +389,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: "web" |
 } {
   const specContent = `${JSON.stringify(spec, null, 2)}\n`;
   if (target === "douyin-mini-game" && spec.genre !== "arcade") {
-    throw new Error("douyin-mini-game 0.10.0 currently supports only the verified arcade template.");
+    throw new Error("douyin-mini-game 0.11.0 currently supports only the verified arcade template.");
   }
   const baseFiles = (target === "web" ? [
     file(".npmrc", "registry=https://registry.npmjs.org/\n"),
@@ -475,6 +478,12 @@ function createDouyinSourceFiles(projectId: string, specContent: string): Genera
     file("game-spec.json", specContent),
     file("assets/resources/game-spec.json", specContent),
     file("assets/resources/gameforge-platform.json", `${JSON.stringify(platformPolicy, null, 2)}\n`),
+    file("assets/resources/assets/manifest.json", `${JSON.stringify({
+      schemaVersion: "1.0",
+      projectId,
+      revision: 0,
+      assets: [],
+    }, null, 2)}\n`),
     file("assets/Scene.ls", `${JSON.stringify({
       "_$ver": 1,
       "_$id": "gameforge-scene",

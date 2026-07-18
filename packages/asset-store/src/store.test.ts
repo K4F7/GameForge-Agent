@@ -33,6 +33,19 @@ async function fixture(lockRuntime?: AssetLockRuntime): Promise<{ root: string; 
   return { root, store: new ProjectAssetStore({ projectsRoot: root, ...(lockRuntime === undefined ? {} : { lockRuntime }) }) };
 }
 
+async function douyinFixture(): Promise<{ root: string; store: ProjectAssetStore }> {
+  const temporary = await mkdtemp(path.join(tmpdir(), "gameforge-douyin-assets-test-"));
+  roots.push(temporary);
+  const root = path.join(temporary, "projects");
+  await new GameProjectGenerator({ outputRoot: root }).execute({
+    projectId: "safety-sprint",
+    spec,
+    target: "douyin-mini-game",
+    mode: "apply",
+  });
+  return { root, store: new ProjectAssetStore({ projectsRoot: root }) };
+}
+
 const imageRequest = () => ({
   projectId: "safety-sprint",
   bytes: jpeg,
@@ -163,6 +176,35 @@ afterEach(async () => {
 });
 
 describe("ProjectAssetStore", () => {
+  it("stores the same logical asset paths in the Laya resources tree for Douyin projects", async () => {
+    const { root, store } = await douyinFixture();
+    await expect(store.store(imageRequest())).resolves.toMatchObject({
+      manifestRevision: 1,
+      entry: { path: "assets/images/hero.jpg", role: "player" },
+    });
+    const physical = path.join(root, "safety-sprint", "assets", "resources", "assets");
+    expect(await readFile(path.join(physical, "images", "hero.jpg"))).toEqual(Buffer.from(jpeg));
+    const replacementHash = createHash("sha256").update(revisedJpeg).digest("hex");
+    await expect(store.store({
+      ...imageRequest(),
+      bytes: revisedJpeg,
+      mode: "replace",
+      expectedRevision: 1,
+      provenance: { ...imageRequest().provenance, sha256: replacementHash, model: "seedream-revised" },
+    })).resolves.toMatchObject({ manifestRevision: 2 });
+    expect(await readFile(path.join(physical, "images", "hero.jpg"))).toEqual(Buffer.from(revisedJpeg));
+    await expect(store.read("safety-sprint")).resolves.toMatchObject({
+      revision: 2,
+      assets: [{ path: "assets/images/hero.jpg", role: "player" }],
+    });
+    expect(JSON.parse(await readFile(path.join(physical, "manifest.json"), "utf8"))).toMatchObject({
+      projectId: "safety-sprint",
+      revision: 2,
+    });
+    await expect(readFile(path.join(root, "safety-sprint", "public", "assets", "manifest.json")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("stores verified media and atomically advances the runtime manifest", async () => {
     const { root, store } = await fixture();
     const hash = createHash("sha256").update(jpeg).digest("hex");
