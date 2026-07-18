@@ -17,8 +17,9 @@
 - [x] 通过官方 LayaAir 3.4.0 构建生成 `game.js`、`game.json`、`project.config.json` 与平台适配入口；
 - [x] 增加主包 4MB、整体 20MB、文件类型、远程脚本、HTTPS 域名与 capability 静态校验；生成器 0.12.0 默认声明离线且关闭登录、分享、广告和支付；
 - [x] 将 Seedream 图片、Freesound 音效和火山 TTS/BGM 的统一 Asset Store 桥接到 Laya `resources/assets/`；官方构建后逐项复核 Manifest、字节数和 SHA-256；
-- [ ] 在抖音小游戏开发者工具完成原型导入、预览和上传前检查；
-- [ ] 在真实抖音客户端扫码运行并记录脱敏截图、日志、包体和人工干预；
+- [x] 增加 `tt-minigame-ide-cli` 2.1.1 官方 `bin/tmg.js --version` 诊断与条件 MCP capability；明确拒绝小程序 `tma`，不开放登录、打开、项目 version、配置、预览或上传命令；
+- [ ] 在抖音小游戏开发者工具完成原型本地导入、编译器与模拟器检查；不执行平台 preview 或上传；
+- [ ] 真实抖音客户端扫码运行因依赖远程 preview 暂缓；若未来改变策略，需再次明确授权并记录脱敏截图、日志、包体和人工干预；
 - [x] 研判 CLI 自动化边界：本地生成/构建/静态门禁可 no-GUI；中国抖音小游戏最终预览、提审与发布没有公开的完整 no-GUI 链路；
 - [x] 实现 `wechat-mini-game` 第二导出 target：复用同一 Laya TypeScript 玩法和 Asset Store，增加固定 `wxgame` 构建、微信策略/API 静态校验、MCP capability 与 target-aware Workbench/TUI；五种 genre 已逐一通过真实 LayaAir CLI 3.4.0 构建；
 - [ ] 在微信开发者工具导入 `release/wxgame`，完成编译、预览与真机扫码证据；快手暂不进入 V1 发布门禁。
@@ -59,6 +60,8 @@
 
 ## Provider 账号级验收
 
+当前阶段按用户决策只使用 CodeArts 内置 DeepSeek/GLM，外部百炼、Seedream、Freesound、豆包 TTS 与 MiniMax 账号级执行暂停。适配器和 smoke 门禁保留，但不得因本机意外存在环境变量就擅自执行 `--execute`；游戏继续使用程序化占位素材。
+
 `bun run provider:smoke` 默认只检查所选 Provider 的环境变量是否齐全，不读取或输出变量值。只有显式执行 `bun run provider:smoke -- --execute --providers=qwen,seedream,freesound,tts,music` 才会产生真实网络请求与潜在费用。媒体验收要求同时选择 `qwen`，以真实 GameSpec 创建带随机后缀的临时项目；检查与执行的脱敏证据都写入 `.gameforge-validation/provider-smoke/evidence.json`，生成项目保留在同一忽略目录供人工复核。MiniMax 配乐固定纯音乐且不自动重试生成 POST；TTS 最多查询五次，未完成时以失败/pending 记录，不在 MCP 工具内部轮询。
 
 ## 第二轮：Bun TUI MVP
@@ -80,6 +83,8 @@ Windows 本地已使用真实 Relay 验证 `submit → watch(SSE) → stop → �
 ## 第二轮后半：桌面 GUI spike
 
 优先评估 Tauri 2 封装现有 React Workbench；Electron 作为生态成熟但体积更大的备选。渲染栈与桌面表面的决策、进入条件和验证要求已记录在 [ADR-0001](./decisions/0001-rendering-and-desktop-surfaces.md)。
+
+用户指定 [OpenCodeUI](https://github.com/lehhair/OpenCodeUI) 作为交互参考。可借鉴三栏工作区、SSE 增量状态、终端、文件树/Diff、响应式布局和 Tauri 2 外壳；该仓库声明 GPL-3.0-only 并依赖 OpenCode SDK，因此 GameForge 只借鉴设计思想并独立实现，不复制源码或搬入 Agent 循环。详见 [GUI 方向](./gui-direction.md)。
 
 桌面 GUI 不改变协议边界：CodeArts 仍是主智能体，Relay 仍只协调状态，MCP 仍是确定性工具。若 TUI 的共享 controller 尚未稳定，不开始桌面打包。
 

@@ -69,11 +69,14 @@ CodeArts项目级Skill位于：
 bun install --frozen-lockfile
 bun run build
 bun run doctor
+bun run doctor:douyin
 bun run doctor:browser
 bun run dev:local
 ```
 
-`doctor` 使用真实 MCP SDK stdio Client 启动构建后的 Node 服务，输出 JSON：`ok`、Node/Bun 版本、锁文件状态、已注册工具、无密钥 capability snapshot 和稳定问题码。它校验每个 ready 能力的条件工具；Task Inbox ready 时还调用一次有界、只读 `list_game_tasks({limit: 1})`，验证 Relay URL 可达。它只确认 `create_game_task` 已注册，不调用这个写入工具。基础无密钥环境下 Provider/engineering 的 `ready: false` 是预期结果；在 CodeArts 同一环境变量下重跑时，应与准备启用的工具一致。该命令不执行任何模型或媒体请求。
+`doctor` 使用真实 MCP SDK stdio Client 启动构建后的 Node 服务，输出 JSON：`ok`、Node/Bun 版本、锁文件状态、已注册工具、无密钥 capability snapshot 和稳定问题码。它校验每个 ready 能力的条件工具；Task Inbox ready 时还调用一次有界、只读 `list_game_tasks({limit: 1})`，验证 Relay URL 可达。配置抖音小游戏 CLI probe 时，它只调用一次 `get_douyin_mini_game_cli_status`，后者以当前 Node 固定执行 `bin/tmg.js --version`。它只确认 `create_game_task` 已注册，不调用这个写入工具。基础无密钥环境下 Provider/engineering 的 `ready: false` 是预期结果；在 CodeArts 同一环境变量下重跑时，应与准备启用的工具一致。该命令不执行任何模型或媒体请求，也不登录、预览、上传、提审或发布。
+
+`doctor:douyin` 是独立的平台 CLI 策略诊断。未配置 `GAMEFORGE_DOUYIN_MINIGAME_CLI` 时会如实报告 optional probe 未启用且本地 Laya/validator 流程不受影响；配置后只接受绝对普通文件并要求 `tt-minigame-ide-cli` 2.1.1。小程序 `tt-ide-cli`/`tma` 0.1.33 会因版本与产品边界不符而拒绝。
 
 `doctor:browser` 是独立的 Node/Chrome 启动探针，不打开项目页面，也不读取用户浏览器 profile。默认使用 Playwright `channel: chrome`；设置 `GAMEFORGE_CHROME_EXECUTABLE` 时先验证绝对路径可访问，再使用该可执行文件。成功后会关闭 browser，仅输出运行时、模式、耗时和脱敏错误。
 
@@ -105,19 +108,27 @@ bun run dev:local
 }
 ```
 
-`GAMEFORGE_LAYAIR_CLI` 必须是固定 LayaAir 3.4.0 CLI 的绝对普通文件路径。与项目输出根同时配置后，MCP 同时注册 `build_douyin_mini_game` 与 `build_wechat_mini_game`，只对 target 匹配的托管 Manifest 分别执行一次固定 `bytedancegame` 或 `wxgame` 构建并离线校验；不接受任意命令/参数，不登录、预览、上传、提审或发布。CLI 缺失、版本不符、并发锁、超时、非零退出、路径/符号链接异常或包体校验失败都返回稳定错误。
+`GAMEFORGE_LAYAIR_CLI` 必须是固定 LayaAir 3.4.0 CLI 的绝对普通文件路径。官方 `dispatcher.js`、`layaair.cmd`、`layaair` 或 `Resources/cli-main.js` 入口只用于定位安装：Builder 核验 `versions.json`、`Resources/package.json` 与固定的 `Resources/cli-main.js` 后，以当前 Node、`shell: false` 和受限环境直接运行主入口，不执行 `.cmd` wrapper，也不继承用户 PATH 或凭据。与项目输出根同时配置后，MCP 同时注册 `build_douyin_mini_game` 与 `build_wechat_mini_game`，只对 target 匹配的托管 Manifest 分别执行一次固定 `bytedancegame` 或 `wxgame` 构建并离线校验；不接受任意命令/参数，不登录、预览、上传、提审或发布。CLI 缺失、版本不符、并发锁、超时、非零退出、路径/符号链接异常或包体校验失败都返回稳定错误。
+
+需要让 CodeArts 只读确认抖音小游戏平台 CLI 前置时，可另外设置：
+
+```text
+GAMEFORGE_DOUYIN_MINIGAME_CLI=<tt-minigame-ide-cli 2.1.1 包内 bin/tmg.js 的绝对路径>
+```
+
+启动器会核验该入口是绝对、已存在、非符号链接的普通文件；probe 还会核验相邻 `package.json` 的 name、version 与 bin 映射。MCP 只注册允许自动执行的 `get_douyin_mini_game_cli_status`，且内部固定参数为 `--version`。项目 `version` 子命令、登录、打开、`set-config`、`build-npm`、`preview` 和 `upload` 都不在工具面中；当前项目策略同时禁止提审和发布。未安装 `tmg` 不影响 GameForge 的 LayaAir 本地构建与静态校验。
 
 这里使用 Node 承载正式 MCP 和 Playwright Core；依赖安装、workspace 命令、检查和构建仍统一由 Bun 完成。官方配置要求 `command` 必填，`args` 和 `env` 可选，且所有环境变量值必须是字符串。保存后在“已安装”页签重启 `gameforge` MCP；官方文档明确指出修改环境变量后需要重启才能立即生效。
 
 OpenCode-compatible 启动器把客户端工作目录固定为仓库根，并只生成本地 MCP 官方字段 `type`、`command`、`environment`、`enabled`、`timeout`；CodeArts 26.6.2 会拒绝非标准 `cwd`。变量未设置时动态配置不注入 token 引用；显式设置为空白会在写配置前 fail-closed，非空 token 继续执行 32–512 字符校验。
 
-通过 `bun run codearts` 使用动态配置时，可在新终端显式设置 `GAMEFORGE_LAYAIR_CLI`。启动器只接受绝对、已存在、非符号链接的普通文件并将路径写入被忽略的临时配置；未设置时不猜测用户目录或 PATH，显式空白会直接拒绝。MCP 启动后仍会独立核验 CLI 版本精确为 3.4.0。
+通过 `bun run codearts` 使用动态配置时，可在新终端显式设置 `GAMEFORGE_LAYAIR_CLI`。启动器只接受绝对、已存在、非符号链接的普通文件并将路径写入被忽略的临时配置；未设置时不猜测用户目录或 PATH，显式空白会直接拒绝。MCP 启动后仍会独立核验 CLI 版本精确为 3.4.0，并把官方 wrapper 解析到已核验的固定 `Resources/cli-main.js`，不经 shell 执行 wrapper。
 
 `GAMEFORGE_MCP_AUDIT_DIR` 默认关闭；配置绝对目录后，每次 MCP 启动会创建一个唯一 JSON 会话文件。文件只含工具名、顺序、时间、耗时和结果状态，不含调用参数或返回值。`bun run codearts`/`bun run opencode` 启动器会自动使用仓库忽略目录；手工配置时不要指向同步盘或公开目录。单次隔离实验也可改用未存在的绝对 `GAMEFORGE_MCP_AUDIT_FILE`，两者不能同时配置。
 
 若 Relay 进程启用了 `GAMEFORGE_RUN_RELAY_TOKEN`，CodeArts 启动环境与 Relay 必须使用同一个至少 32 字符的值；手工 MCP 配置可在本机私有 `env` 中增加该项，但不得提交。仓库生成的 OpenCode 配置只保存 `{env:GAMEFORGE_RUN_RELAY_TOKEN}` 引用。Workbench 不接收此秘密；带认证的浏览器访问必须通过同源认证代理。
 
-此基础配置不包含任何密钥，会注册规格校验、项目生成、任务/Run、浏览器验收与预览工具。需要 Qwen、Seedream、Freesound 或火山 TTS 时，只在本机 `env` 中追加 README 所列变量；不要把填入真实值的 `mcp_settings.json` 提交到仓库。是否配置成功以 CodeArts 实际列出的工具为准，不以前端 Provider 标签为准。
+此基础配置不包含任何密钥，会注册规格校验、项目生成、任务/Run、浏览器验收与预览工具。当前阶段只使用 CodeArts 内置模型，不配置或调用 Qwen、Seedream、Freesound、MiniMax 或火山 TTS 外部账号；这些适配器与 README 变量只保留给未来获得新授权后的显式实验。不要把填入真实值的 `mcp_settings.json` 提交到仓库。是否配置成功以 CodeArts 实际列出的工具为准，不以前端 Provider 标签为准。
 
 首次联调按以下顺序检查：
 

@@ -74,6 +74,7 @@ bun run bundle:check
 bun run test
 bun run audit
 bun run doctor
+bun run doctor:douyin
 bun run doctor:browser
 bun run doctor:desktop
 bun run workbench:smoke
@@ -82,6 +83,8 @@ bun run tui -- list
 ```
 
 `bun run doctor` 会构建基础包与 MCP，然后用真实 Node stdio Client 检查运行时版本、Bun 单锁、生产入口、必需工具、本次 capability snapshot 及 ready 能力对应的条件工具。配置 Task Inbox 时还会执行一次 `{limit: 1}` 的只读 Relay 探测，因此不可达 URL 不会显示绿灯。它不调用云 API、不输出凭据；可在与 CodeArts 相同的环境变量下运行，以提前发现半配置和路径错误。
+
+`bun run doctor:douyin` 只检查抖音小游戏本地 CLI 策略。默认无需安装平台 CLI；显式配置 `GAMEFORGE_DOUYIN_MINIGAME_CLI` 为官方包内的绝对 `bin/tmg.js` 后，只以当前 Node 执行固定的 `bin/tmg.js --version` 并要求 `tt-minigame-ide-cli` 2.1.1。这里不能使用 `tmg version`，后者会查询项目线上版本。诊断拒绝小程序 `tma`，也不暴露登录、打开、配置、项目 version、`build-npm`、`preview` 或 `upload`。当前项目策略禁止平台 preview、上传、提审和发布。
 
 `bun run doctor:browser` 构建 Verifier 后使用正式 Node 运行时启动一次隔离的无页面 Chrome 会话并立即关闭，验证 `channel: chrome` 或 `GAMEFORGE_CHROME_EXECUTABLE`。Playwright 系统 Chrome 验收不支持由 Bun 进程直接承载；该路径会立即报错，避免已知的长时间悬挂。Bun 仍负责依赖、构建、测试和命令编排。
 
@@ -98,6 +101,8 @@ bun run tui -- list
 第二轮 Bun TUI MVP 位于 `apps/tui`，复用严格 Schema 的 Run Relay Client，不包含 Agent 循环。它支持提交/列出/查看 Task、回放/停止 Run，以及通过 `follow TASK_ID` 自动解析 Run ID 后实时观察连续 RunEvent；断线后从最后连续游标执行有限退避回放，终态自动退出。`--json` 在无 TTY 环境只向 stdout 逐行输出可机器处理的 JSON，恢复进度写入 stderr。完整命令见 [TUI 使用说明](docs/tui.md)。
 
 Tauri 2 桌面 spike 位于 `apps/desktop`，只封装现有 Workbench，不新增 Agent 循环、自定义 Rust command 或 Tauri plugin。`bun run doctor:desktop` 静态校验零权限 capability、CSP、loopback 开发地址和 Workbench 构建；Tauri Schema、Cargo 和图标由真实 `desktop:build` 验证。Windows 本机构建需进入 MSVC 开发环境后运行该命令。当前只验证了不打安装包的 Windows 可执行文件，签名、自动更新和 macOS/Linux 仍不在已验收范围。完整说明见 [桌面壳说明](docs/desktop.md)。
+
+GUI 后续可借鉴 OpenCodeUI 的三栏工作区、SSE 增量消息、终端、文件树/Diff、响应式布局和 Tauri 2 外壳，但不复制其 GPL-3.0-only 代码，也不搬入 OpenCode SDK 或 Agent 循环。独立实现边界见 [GUI 方向](docs/gui-direction.md)。
 
 客户端基准使用规范化任务定义的 SHA-256，而不是要求 CodeArts 与 OpenCode 复用同一个 Task ID。运行 `bun run benchmark -- report definition.json codearts.record.json opencode.record.json --out report.md` 可校验记录并生成对比；只有两端都完成时才允许比较工作流质量。
 
@@ -136,7 +141,7 @@ Provider HTTP 适配器统一使用有界超时和结构化错误。百炼、Fre
 
 当前国产 SOTA、Artificial Analysis/LMArena/OpenCompass、SWE-bench/Terminal-Bench、视觉/生图/TTS 榜单和 oh-my-opencode 改名状态的交叉评估见 [2026-07 模型评估](docs/model-evaluation-2026-07.md)。榜单只作为先验；宿主实际模型列表与 GameForge 同 Task 证据优先。
 
-[`config/model-routing.example.json`](config/model-routing.example.json) 是无密钥的国产模型角色/类别路由建议，并由 `modelRoutingPolicySchema` 与集成测试验证。MCP 启动时严格加载该策略并条件注册只读的 `get_agent_model_route`：调用方把宿主真实 `models` 结果映射为国产 Provider + 精确 host target，工具只按显式覆盖、primary、fallback 顺序返回选择与来源，不调用模型或实现 Agent 循环；没有匹配项时返回 `unavailable`，不得静默冒充。动态启动器会写入跨平台绝对策略路径，独立配置可用 `GAMEFORGE_MODEL_ROUTING_POLICY` 覆盖。当前 CodeArts 账号真实列出的模型仍优先：DeepSeek V3.2 负责玩法代码，GLM-5 负责剧情对白，GLM-5.1 负责独立复核；OpenCode 实际列出并完成工具探针的腾讯 Hy3 target `opencode/hy3-free` 只作为编排、编码和快速任务的末位跨宿主 fallback。Seedream 负责美术，豆包 TTS 负责配音，Freesound 负责常见音效检索，MiniMax Music 2.6 负责纯音乐配乐。Kimi K3 只用于宿主确实提供时的长上下文、视觉和跨宿主评估。配置中的期望模型不能替代宿主 `models` 输出，实验必须记录实际生效模型。
+[`config/model-routing.example.json`](config/model-routing.example.json) 是无密钥的国产模型角色/类别路由建议，并由 `modelRoutingPolicySchema` 与集成测试验证。MCP 启动时严格加载该策略并条件注册只读的 `get_agent_model_route`：调用方把宿主真实 `models` 结果映射为国产 Provider + 精确 host target，工具只按显式覆盖、primary、fallback 顺序返回选择与来源，不调用模型或实现 Agent 循环；没有匹配项时返回 `unavailable`，不得静默冒充。动态启动器会写入跨平台绝对策略路径，独立配置可用 `GAMEFORGE_MODEL_ROUTING_POLICY` 覆盖。当前默认 Agent 路由只包含 CodeArts 账号真实列出的内置模型：DeepSeek V3.2 负责玩法与代码，GLM-5 负责剧情对白，GLM-5.1 负责独立复核，GLM-4.7 ArkTS 作为编码 fallback。OpenCode/腾讯 Hy3 的既有同任务记录保留为历史显式 override 证据，不再进入默认 fallback；Kimi K3 也只保留研究结论。Seedream、豆包 TTS、Freesound 与 MiniMax 适配器仍保留，但当前未配置、不会调用，游戏继续使用程序化占位素材。配置中的期望模型不能替代宿主 `models` 输出，实验必须记录实际生效模型。
 
 启用许可证过滤的音效搜索工具时，在启动MCP服务的进程环境中设置：
 

@@ -17,16 +17,18 @@
 
 | 游戏制作环节 | 默认Provider | 默认模型或能力 | 备选 | 决策状态 |
 |---|---|---|---|---|
-| 需求理解、玩法设计、任务规划 | CodeArts 当前账号 | `huaweicloud-maas/deepseek-v3.2` | GLM-5.1；跨宿主评估 Kimi K3 | 采用实际可选模型；不得把未列出的 K3 写成 CodeArts 已可用 |
-| GameSpec结构化生成、分类和摘要 | 阿里云百炼 | `qwen3.6-flash` | Qwen本地小模型 | 采用，必须通过Schema二次校验 |
-| TypeScript、Phaser和Three.js代码生成与修复 | CodeArts 当前账号 | `huaweicloud-maas/deepseek-v3.2` | GLM-4.7 ArkTS；跨宿主 Qwen Coder/Kimi K3 | 采用实际账号模型，外部编码模型需独立基准 |
-| 剧情、世界观、对白与本地化 | CodeArts 当前账号 | `huaweicloud-maas/Glm-5-internal`（显示名 GLM-5） | GLM-5.1；跨宿主 MiniMax M2.7/Kimi K3 | 采用宿主实际精确 ID 的独立 story 路由；输出仍需剧情 Schema 与内容审核 |
-| 长上下文仓库审查、截图复核 | Moonshot/Kimi | `kimi-k3` | GLM-4.6V、Seed1.5-VL | 跨宿主评估；当前 CodeArts 模型列表没有 K3 |
-| 角色立绘、场景、概念图和图像编辑 | 火山方舟 | Seedream系列 | 即梦图片生成4.0 | 采用Seedream；实际模型ID从配置读取 |
-| NPC对白、旁白和语音提示 | 火山引擎豆包语音 | 大模型语音合成 | CosyVoice本地部署、腾讯云对话式TTS | 采用 |
-| 常见短音效 | Freesound API | CC0优先检索 | CC BY并自动生成署名清单 | 采用检索优先；它不是默认基础模型 |
+| 需求理解、玩法设计、任务规划 | CodeArts 当前账号 | `huaweicloud-maas/deepseek-v3.2` | CodeArts GLM-5.1 | 当前默认只使用宿主内置模型 |
+| GameSpec结构化生成、分类和摘要 | CodeArts 当前账号 | DeepSeek V3.2 / GLM-5 + `validate_game_spec` | 百炼 `qwen3.6-flash` 适配器 | 当前由 CodeArts 构造并强制 Schema 校验；百炼未启用 |
+| TypeScript、Phaser和Three.js代码生成与修复 | CodeArts 当前账号 | `huaweicloud-maas/deepseek-v3.2` | CodeArts GLM-4.7 ArkTS | 当前默认只使用宿主实际账号模型 |
+| 剧情、世界观、对白与本地化 | CodeArts 当前账号 | `huaweicloud-maas/Glm-5-internal`（显示名 GLM-5） | CodeArts GLM-5.1 | 使用精确 host ID；输出仍需剧情 Schema 与内容审核 |
+| 长上下文仓库审查 | CodeArts 当前账号 | `huaweicloud-maas/GLM-5.1` | DeepSeek V3.2 | Kimi K3/视觉模型只保留研究结论，不进入默认路由 |
+| 角色立绘、场景、概念图和图像编辑 | 程序化占位素材 | 固定图形与颜色 | Seedream 适配器 | 当前不配置外部账号，不声称 CodeArts 内置文本模型能够生图 |
+| NPC对白、旁白和语音提示 | 程序化/静音回退 | 文本字幕 | 豆包语音适配器 | 当前不配置外部账号 |
+| 常见短音效 | 程序化/静音回退 | 无外部下载 | Freesound CC0 检索适配器 | 当前不配置外部账号 |
 | 独特短音效 | 可插拔Audio Provider | 暂无满足要求且公开稳定的国产独立文生音效API | Seedance音画联合生成实验 | 暂不设伪默认 |
-| 背景音乐 | MiniMax 开放平台 | `music-2.6` | 腾讯云 MPS 聚合；火山 MemeSong 仅短主题曲 | 适配器已实现；真实效果、耗时和商用授权待账号验收 |
+| 背景音乐 | 程序化/静音回退 | 无外部生成 | MiniMax `music-2.6` 适配器 | 当前不配置外部账号；真实效果和商用授权仍待验收 |
+
+当前阶段的“只考虑 CodeArts 自带模型”只改变默认执行策略，不删除已经实现的官方媒体适配器。除非用户以后明确启用账号级 Provider，MCP capability snapshot 中相应 `ready` 必须保持 `false`，CodeArts 使用程序化占位素材并如实记录未调用外部模型。
 
 ### 已实现的 GameSpec 适配器
 
@@ -45,18 +47,18 @@ GameSpec 草拟的严格 JSON Schema 现在还要求 `gameplay`：目标数、�
 ### 默认路由
 
 - `planner`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/deepseek-v3.2`，用于玩法拆解、架构设计、关卡规划和工具编排。
-- `spec`：`qwen3.6-flash`，用于从自然语言提取GameSpec、资产清单和任务分类；输出必须再次经过Zod校验。
-- `coder`：当前 CodeArts 使用 `huaweicloud-maas/deepseek-v3.2`；宿主支持外部 Coding Plan 时再比较 `qwen3-coder-plus` 与 K3。
-- `cross-host coding`：CodeArts 内置 DeepSeek/GLM 仍在前；OpenCode 1.18.3 实际列出的腾讯 Hy3 target `opencode/hy3-free` 只作为编排、编码和快速任务的末位 fallback。路由中的 Provider 记录为 `tencent`，model 保留宿主精确 target，不把 OpenCode 网关名冒充模型厂商。
-- `story`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/Glm-5-internal`（显示名 GLM-5），专门生成剧情结构、角色卡、对白和本地化草案；GLM-5.1 复核。模型 ID 大小写和 `-internal` 后缀必须与宿主输出完全一致。跨宿主再比较 MiniMax M2.7 与 Kimi K3，但不得静默替换实际生效模型。
+- `spec`：当前由 CodeArts 的 DeepSeek/GLM 按 Skill 构造原生 JSON object，再由 `validate_game_spec` 做严格 Zod 校验；百炼 `qwen3.6-flash` 仅保留为未启用的条件适配器。
+- `coder`：当前 CodeArts 使用 `huaweicloud-maas/deepseek-v3.2`，GLM-4.7 ArkTS 作为同宿主 fallback。
+- `cross-host coding`：默认策略不包含跨宿主 target。OpenCode 1.18.3 的腾讯 Hy3 只保留为既有基准的显式 override 证据，不参与后续普通 Run。
+- `story`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/Glm-5-internal`（显示名 GLM-5），专门生成剧情结构、角色卡、对白和本地化草案；GLM-5.1 复核。模型 ID 大小写和 `-internal` 后缀必须与宿主输出完全一致。
 - `reviewer`：当前 CodeArts 优先 GLM-5.1，并与生成步骤使用不同提示词；构建、测试和静态检查仍是最终证据。
-- `vision`：跨宿主优先评估 Kimi K3，备选 GLM-4.6V/Seed1.5-VL；当前 CodeArts 列表没有已确认的视觉模型时，不把截图审查记为已完成。
+- `vision`：当前 CodeArts 列表没有已确认的视觉模型，不配置默认 vision 路由，也不把截图审查记为已完成。
 
 Qwen官方资料确认Qwen3系列具备代码、工具调用、思考/非思考模式以及长上下文能力；Qwen3-Coder面向Agent式编码和工具调用。阿里云函数调用文档列出了Qwen3-Coder、Qwen-Plus和Qwen-Flash系列。具体快照版本会变化，因此仓库只提供经过验证的默认值，不将模型ID散落在业务代码中。
 
 Kimi K3 作为跨宿主长上下文与视觉评估方案。它不会替换 MCP 中已实现的 Qwen GameSpec、Seedream、豆包 TTS 或 Freesound 适配器；宿主未提供 K3 时不把它放入可执行 fallback，也不能静默把其他模型记成 K3。
 
-腾讯官方于 2026-07-06 发布 Hy3，明确其面向代码生成、Agent 和游戏生产，并将逐步接入 OpenCode。2026-07-18 本机 `opencode models --verbose` 返回精确免费 target `opencode/hy3-free`，无工具探针成功且成本字段为 0；MiMo V2.5 免费 target 同日由上游返回 HTTP 400，未进入生产 Run。Hy3 的策略条目只证明本次宿主可见与探针可用，不能替代官方 API SLA 或付费账号验收。[腾讯官方发布说明](https://www.tencent.com/zh-cn/tencent-hunyuan-officially-releases-hy3-advancing-agent-capabilities-and-deeper-product-integration/)（访问日期：2026-07-18）
+腾讯官方于 2026-07-06 发布 Hy3，明确其面向代码生成、Agent 和游戏生产，并将逐步接入 OpenCode。2026-07-18 本机 `opencode models --verbose` 返回精确免费 target `opencode/hy3-free`，工具探针与一次同任务 Run 成功；MiMo V2.5 免费 target 同日由上游返回 HTTP 400，未进入生产 Run。该结果是历史跨宿主基准，当前默认策略已移除 Hy3 fallback；contracts 仍保留精确 target 支持，以便解析既有记录或未来用户显式授权的独立实验。[腾讯官方发布说明](https://www.tencent.com/zh-cn/tencent-hunyuan-officially-releases-hy3-advancing-agent-capabilities-and-deeper-product-integration/)（访问日期：2026-07-18）
 
 CodeArts 普通 CLI 通过 `codearts models [provider]` 列出当前账号可用模型，并用 `provider/model` 选择；截至访问日，公开 CLI 帮助没有个人用户任意配置 Base URL 或 BYOK Provider 的入口。CodeArts 企业版官方“配置模型”支持管理员接入第三方大语言模型，但只接受 OpenAI 规范的 `/chat/completions` 接口。管理员完成接入且模型真实出现在宿主列表后，GameForge 才能把它加入 Agent fallback。MCP 可以封装外部模型的一次确定性调用，但这不会改变 CodeArts 主 Agent 使用的模型。
 
@@ -64,7 +66,7 @@ CodeArts 普通 CLI 通过 `codearts models [provider]` 列出当前账号可用
 
 Kimi 官方于 2026-07-16 发布 `kimi-k3`。官方资料给出的事实包括：2.8T 参数 MoE、原生视觉、最长 1M context，以及在 Kimi Code/API 中进行长时编码、仓库导航和终端工具编排；API 模型 ID 是 `kimi-k3`，Kimi Code 中也提供 `k3`。官方同时明确 API 当前不直接支持视频输入、PPT 和 Deep Research，完整权重计划在 2026-07-27 开放，且官方建议自部署至少使用 64 个加速器，因此普通开发机不把本地 K3 作为默认。
 
-GameForge 对这些事实的推断是：K3 最适合跨宿主的长上下文编排、代码审查和浏览器截图复核；不用于 Seedream 生图、TTS 或短音效。2026-07-18 使用已配置的 CodeArts CLI 凭据只读调用 `models`，当前账号实际列出 DeepSeek V3.2、GLM-4.7 ArkTS、GLM-5 和 GLM-5.1，没有 K3。故当前 CodeArts 生产默认使用实际可选的 `huaweicloud-maas/deepseek-v3.2` 做编排/编码、GLM-5.1 做高层复核；K3 只进入 OpenCode/其他宿主评估 fallback，直到宿主真实列出该模型并完成同 Task 基准。模型列表证据不含凭据或账号信息。
+GameForge 对这些事实的推断是：K3 未来可评估长上下文编排、代码审查和浏览器截图复核；不用于 Seedream 生图、TTS 或短音效。2026-07-18 使用已配置的 CodeArts CLI 凭据只读调用 `models`，当前账号实际列出 DeepSeek V3.2、GLM-4.7 ArkTS、GLM-5 和 GLM-5.1，没有 K3。故当前 CodeArts 生产默认只使用这些内置模型；K3 不进入默认或 fallback，直到用户改变范围、宿主真实列出并完成同 Task 基准。模型列表证据不含凭据或账号信息。
 
 ### 从 oh-my-opencode 借鉴的路由原则
 
@@ -76,7 +78,7 @@ oh-my-opencode/后续更名项目 oh-my-openagent 的官方配置把 agent role 
 4. 运行记录必须写实际生效模型，而不是配置中希望使用但宿主未提供的模型；
 5. 快速任务不滥用最昂贵的长上下文模型，视觉任务不交给无视觉能力的模型。
 
-可提交示例位于 `config/model-routing.example.json`，由 `modelRoutingPolicySchema` 和集成测试验证。当前可执行 Agent 路由只包含本次 `codearts models` 或 `opencode models` 已确认且完成最小探针的精确 target；未确认的视觉路由保持缺省。Schema 以受支持国产 Provider 与模型家族 ID 的匹配规则约束推理与生成模型，并保持 Freesound 的所有 fallback 都是许可证检索；家族规则不是当前账号模型 allowlist，也不会在 `tencent/Hy3` 与 `opencode/hy3-free` 之间做模糊别名匹配。`officialApiRequired` 表示只允许仓库已登记的官方适配器，但不能证明账号授权或实时可用性；示例不替代宿主当前 `models` 输出。
+可提交示例位于 `config/model-routing.example.json`，由 `modelRoutingPolicySchema` 和集成测试验证。当前默认可执行 Agent 路由只包含 `codearts models` 已确认的 DeepSeek/GLM 精确 target；未确认的视觉路由保持缺省。Schema 仍能严格解析 `tencent/Hy3` 与 `opencode/hy3-free` 等历史显式 override，但示例不会将其放入 fallback，也不会在两个 ID 间做模糊别名匹配。Schema 以受支持国产 Provider 与模型家族 ID 的匹配规则约束推理与生成模型，并保持 Freesound 的所有 fallback 都是许可证检索；家族规则不是当前账号模型 allowlist。`officialApiRequired` 表示只允许仓库已登记的官方适配器，但不能证明账号授权或实时可用性；示例不替代宿主当前 `models` 输出。
 
 ### 配置原则
 
@@ -88,13 +90,13 @@ GAMEFORGE_IMAGE_MODEL=<控制台可用的Seedream模型ID或Endpoint ID>
 GAMEFORGE_TTS_PROVIDER=volcengine-speech
 ```
 
-代码中的默认图片模型ID为已有公开API文档的`doubao-seedream-4-0-250828`；运行时可替换为账号控制台当前可用的Seedream版本或Endpoint ID。Provider配置同时声明每个Provider的能力；路由契约会拒绝不匹配的国产 Provider/模型 ID、工具 Provider/能力组合及非 Freesound 的音效 fallback。
+Seedream 适配器中的默认图片模型ID为已有公开API文档的`doubao-seedream-4-0-250828`；未来显式启用时可替换为账号控制台当前可用的Seedream版本或Endpoint ID。Provider配置同时声明每个Provider的能力；路由契约会拒绝不匹配的国产 Provider/模型 ID、工具 Provider/能力组合及非 Freesound 的音效 fallback。当前未配置该适配器，生产默认仍是程序化图片。
 
 只提交变量名和示例，不提交API Key、Access Key、Secret Key、音色授权材料或账号信息。
 
 ## 字节跳动图片生成
 
-默认图片Provider采用火山方舟Seedream。官方图片生成API使用`/api/v3/images/generations`，`model`接收模型ID或推理Endpoint ID，支持文本提示、参考图片、尺寸、组图和Base64或临时URL响应。Seedream 4.0官方资料确认其统一支持文生图、单图/多图编辑和图像组合。
+未来显式启用图片生成时，首选适配器采用火山方舟Seedream。官方图片生成API使用`/api/v3/images/generations`，`model`接收模型ID或推理Endpoint ID，支持文本提示、参考图片、尺寸、组图和Base64或临时URL响应。Seedream 4.0官方资料确认其统一支持文生图、单图/多图编辑和图像组合。
 
 ### 官方SDK评估
 
@@ -118,7 +120,7 @@ GAMEFORGE_TTS_PROVIDER=volcengine-speech
 
 ## TTS与游戏配音
 
-默认使用豆包大模型语音合成：
+未来显式启用外部语音账号时，首选豆包大模型语音合成；当前默认使用字幕/静音回退：
 
 - 短对白和提示：使用流式或非流式TTS，生成后缓存为游戏资产。
 - 长旁白：使用异步长文本接口，避免在游戏构建过程中等待长连接。
@@ -165,7 +167,7 @@ Freesound API本身的使用条款与单条声音许可证是两个独立层次�
 
 MiniMax `music-2.6` 的[官方音乐生成指南](https://platform.minimaxi.com/docs/guides/music-generation)与[官方 API](https://platform.minimax.io/docs/api-reference/music-generation)（访问日期：2026-07-18）提供同步音乐生成接口，并将使用场景列为视频、游戏和应用的背景音乐/主题曲。仓库现已实现 `MinimaxMusicProvider` 与 `generate_music_asset`：固定 `stream=false`、`output_format=hex`、`is_instrumental=true` 和 MP3，限制官方 HTTPS host、Prompt 2000 字符、响应 envelope 与 16 MiB 音频上限；生成 POST 硬性限制为单次发送。工具在调用前执行 asset revision 预检，成功后以唯一 `bgm` 角色写入 Asset Store，并记录 model、prompt、license 与 SHA-256。16 MiB 足以覆盖官方约 5 分钟、256kbps 的输出，同时降低 hex JSON 多份缓冲造成的内存峰值。MiniMax 官方 API 文档没有直接授予通用商用权，因此只有服务端同时配置 API key、输出根和账号持有人确认的 `GAMEFORGE_MUSIC_LICENSE` 时才注册；真实纯音乐效果、生成耗时、循环点和商用权仍待付费账号验收。腾讯云 MPS 聚合可作为统一云入口备选，但底层模型和合同仍需逐项记录。火山 MemeSong 只支持中文、15 秒内模板化歌唱，更适合短主题曲，不冒充通用 BGM 或 SFX。
 
-玩法代码、剧情、美术和配乐不得共用一个“万能默认模型”：玩法走 CodeArts `coding`，剧情走 CodeArts `story`，美术走 Seedream `image`，配乐走 MiniMax `music`。CodeArts `orchestration` 只负责拆分任务、选择已启用路由并汇总证据；MCP 媒体工具仍然只执行一次确定性 Provider 调用。
+玩法代码、剧情、美术和配乐不得共用一个“万能默认模型”：当前玩法走 CodeArts `coding`，剧情走 CodeArts `story`，美术与音频使用程序化/静音回退。未来用户显式启用外部账号后，美术才走 Seedream `image`，配乐才走 MiniMax `music`。CodeArts `orchestration` 只负责拆分任务、选择已启用路由并汇总证据；MCP 媒体工具仍然只执行一次确定性 Provider 调用。
 
 ## Provider架构边界
 
@@ -231,7 +233,7 @@ type AssetProvenance = {
 
 ## 结论与置信度
 
-- 高置信度：采用配置化国产模型路由；CodeArts 内置模型按玩法/剧情/复核分工；Seedream负责默认图片；豆包语音负责默认TTS；MiniMax负责纯音乐配乐；常见音效执行许可证过滤检索。
+- 高置信度：采用配置化国产模型路由；当前默认只让 CodeArts 内置 DeepSeek/GLM 按玩法/剧情/复核分工，外部媒体 capability 保持未配置并使用程序化/静音回退。
 - 中置信度：具体Qwen和Seedream模型快照。云端模型更新较快，接入时需要在控制台再次确认可用ID。
 - 低置信度：独立国产短音效生成和生成内容商业授权。在获得明确API及条款前不设置默认实现。
 

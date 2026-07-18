@@ -2,7 +2,7 @@
 
 结论：中国抖音小游戏当前不能通过公开工具完成 100% no-GUI 全流程。
 
-已证明可 no-GUI：GameSpec/代码生成、LayaAir `bytedancegame` 构建、GameForge 静态门禁、包体和哈希证据。旧 `tt-minigame-ide-cli` 可登录/打开/远程预览/上传，但没有公开离线小游戏 build/validate；preview 会先上传。小游戏官方只明确 CLI 可指定测试通道上传，未公开小游戏提审、审核查询、灰度或全量发布 CLI/OpenAPI。
+已证明可 no-GUI：GameSpec/代码生成、LayaAir `bytedancegame` 构建、GameForge 静态门禁、包体和哈希证据。`tt-minigame-ide-cli` 公开 version、set-config、远程 preview、upload 和 build-npm，但没有离线小游戏 build/validate；preview 会先上传。小游戏官方只明确 CLI 可指定测试通道上传，未公开小游戏提审、审核查询、灰度或全量发布 CLI/OpenAPI。
 
 `tt-ide-cli` 属于小程序。`@ttmg/cli` 0.4.2 提供 TikTok Mini Games 的 init/dev/build/upload，但使用国际 TikTok Developer Portal 与 client key，不属于中国抖音平台。
 

@@ -5,3 +5,5 @@
 启动器通过 `OPENCODE_CONFIG` 隔离 GameForge MCP 配置，但默认沿用 OpenCode 自己的用户 data。需要一次性隔离会话/数据库时，在启动进程中把标准 `XDG_DATA_HOME` 设置为绝对、被忽略且权限受限的目录；这会同时隔离 `auth.json`，启动器不会复制或输出认证材料。CodeArts 仍使用独立的 `KERNEL_DATA_DIR`，两端不得共享数据库文件。
 
 真实同任务记录见 `experiments/2026-07-18-codearts-opencode-douyin-comparison/`。它验证本地 Task/MCP/玩法/构建边界，不代表 OpenCode 取代 CodeArts 主智能体。
+
+当前提交的默认模型策略只包含 CodeArts 内置 DeepSeek/GLM target。上述历史对照中的 `opencode/hy3-free` 是当次用户显式 override，不再作为 OpenCode 启动器的默认 fallback；除非用户另行授权新的对照实验，普通 GameForge Run 不选择跨宿主模型。

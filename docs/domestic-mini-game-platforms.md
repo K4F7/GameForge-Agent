@@ -43,7 +43,7 @@
 
 本机随后安装并只读核验 Layabox 官方 `layaair-cli` 3.4.0。与完整 IDE 不同，CLI 直接提供 `create`、`build`、`validate`、`run`，内置 2D/3D 空项目，并在真实项目中列出 `bytedancegame`、`wxgame`、OPPO、vivo、支付宝、淘宝等构建目标。使用受管 Laya 源工程后，`build bytedancegame` 与 `build wxgame` 都成功输出各自官方适配库和根文件；微信五种 genre 的校验产物均为 14 个文件、约 1.06 MiB、无分包、portrait。该结果证明两个本地构建链可用，不证明抖音/微信 DevTool 或真机运行。
 
-抖音 CLI 需要区分：`tt-ide-cli` 暴露 `tma`，官方 Lite 文档只把它用于小程序；小游戏对应 `tt-minigame-ide-cli` 的 `tmg`。`tmg` 2.1.1 提供 login/open/preview/upload/build-npm，但没有独立的本地小游戏 build/validate；preview 明确先上传再扫码，并从 2.0.0 起默认收集行为数据，可用 `tmg set-config --allow-report-event no` 关闭。故本地门禁不安装或调用它，避免在未授权时登录/上传。官方新 `ttmg dev` 能启动编译和预检查，但仍要求 DevTool、Chrome、有效 AppID、登录与网络，不能替代平台工具。
+抖音 CLI 需要区分：`tt-ide-cli` 暴露 `tma`，官方 Lite 文档只把它用于小程序；小游戏对应 `tt-minigame-ide-cli` 的 `tmg`。`tmg` 2.1.1 的公开命令包含 version、set-config、preview、upload 与 build-npm，但没有独立的本地小游戏 build/validate；preview 明确先上传再扫码，并从 2.0.0 起默认收集行为数据，可用 `tmg set-config --allow-report-event no` 关闭。GameForge 现只允许固定 `version` 探针，其他命令均不暴露；当前用户策略同时禁止 preview、上传、提审与发布。官方新 `ttmg dev` 能启动编译和预检查，但仍要求 DevTool、Chrome、有效 AppID、登录与网络，不能替代平台工具。
 
 ## 官方资料
 

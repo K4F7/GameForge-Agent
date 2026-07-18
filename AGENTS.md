@@ -10,6 +10,8 @@
 - 当前观察表明 CodeArts Agent 是基于 OpenCode 修改的客户端。涉及配置目录、会话格式、工具协议或其他实现细节时，可以把 OpenCode 作为代码阅读与兼容性研究线索，但不得仅凭上游行为推断 CodeArts 行为；最终结论仍须以当前安装版本的实际运行证据或华为云官方文档为准。
 - CodeArts 与独立 OpenCode CLI 必须使用不同的数据目录。仓库内实验优先通过 `bun run codearts` / `bun run opencode` 启动；不得让不同迁移版本共同写 `%USERPROFILE%\.local\share\opencode\opencode.db`。认证文件、数据库及其备份都属于用户私有状态，不纳入仓库。
 - “已安装”不等于“端到端已验证”。只有真实 CodeArts 会话完成 Task 认领、确定性 MCP 工具调用、RunEvent 发布与 Workbench/浏览器验收后，才能记录为 CodeArts 集成通过。
+- 当前默认 Agent 路由只使用 CodeArts 内置且由 `codearts models` 实际列出的 DeepSeek/GLM target。OpenCode、Hy3、Kimi 或其他跨宿主模型只保留历史研究能力；没有用户新的明确授权，不得放入默认 fallback。
+- 百炼、Seedream、豆包语音、Freesound 与 MiniMax 适配器可保留，但当前不配置、不调用外部账号，生成游戏使用程序化/静音回退。
 
 ## 工作方式
 
@@ -45,3 +47,4 @@ GameForge 核心不得实现为 OpenCode Plugin。CodeArts/OpenCode 适配器可
 - 未经明确授权，不执行部署、发布、删除远程资源或修改仓库权限。
 - 执行来源不明的脚本前必须先检查内容。
 - 外部依赖应锁定版本并说明用途。
+- 当前不得执行抖音小游戏平台 preview、上传、提审或发布；`tt-minigame-ide-cli` 只允许对官方 `bin/tmg.js` 执行固定 `--version` 探针，DevTool 本地导入与模拟器证据另行记录。
