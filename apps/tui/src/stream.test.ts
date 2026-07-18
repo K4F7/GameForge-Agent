@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { streamRunEvents } from "./stream.js";
 
 const emittedAt = "2026-07-18T02:00:00+08:00";
@@ -17,17 +17,21 @@ function response(blocks: string[]): Response {
 describe("TUI SSE stream", () => {
   it("emits contiguous events and stops on a terminal event", async () => {
     const received: string[] = [];
+    const token = "relay-stream-token-0123456789-abcdef";
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () => response([
+      `retry: 1000\n\ndata: ${JSON.stringify({ type: "run.started", runId: "run-1", sequence: 1, emittedAt })}\n\n`,
+      `data: ${JSON.stringify({ type: "run.completed", runId: "run-1", sequence: 2, emittedAt })}\n\n`,
+    ]));
     await streamRunEvents({
       baseUrl: "http://127.0.0.1:8787/",
       runId: "run-1",
       after: 0,
-      fetch: async () => response([
-        `retry: 1000\n\ndata: ${JSON.stringify({ type: "run.started", runId: "run-1", sequence: 1, emittedAt })}\n\n`,
-        `data: ${JSON.stringify({ type: "run.completed", runId: "run-1", sequence: 2, emittedAt })}\n\n`,
-      ]),
+      authToken: token,
+      fetch: fetchMock,
       onEvent: (event) => received.push(event.type),
     });
     expect(received).toEqual(["run.started", "run.completed"]);
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("authorization")).toBe(`Bearer ${token}`);
   });
 
   it("rejects sequence gaps and unsafe relay URLs", async () => {

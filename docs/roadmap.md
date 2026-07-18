@@ -23,6 +23,8 @@
 
 真实执行改用 OAuth TUI，并通过临时 `OPENCODE_CONFIG` 隔离加载本地 MCP，不修改用户全局配置。结果见 `experiments/2026-07-18-codearts-real-e2e/`。
 
+同日升级后再次执行 `codearts --version` 仍得到 26.6.2；真实非交互 `codearts run --format json` 虽以进程退出码 0 结束，但 stdout 明确报告缺少 `CODEARTS_CLI_AK`/`CODEARTS_CLI_SK`，没有复用 OAuth TUI 会话，也没有认领 Task 或调用 MCP。该负向边界按真实结果记录于 `experiments/2026-07-18-codearts-noninteractive-recheck/`，不得把进程退出码 0 误记为 Agent 执行成功。
+
 生成游戏性能基线已加入版本化预算：首屏只加载状态壳，Phaser 与玩法代码异步获取。预算同时记录总量，因此拆分不能掩盖依赖增长；结果见 `experiments/2026-07-18-bundle-split/`。
 
 ## Provider 账号级验收

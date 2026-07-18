@@ -15,6 +15,7 @@
       "environment": {
         "GAMEFORGE_PROJECT_OUTPUT_ROOT": "{env:GAMEFORGE_PROJECT_OUTPUT_ROOT}",
         "GAMEFORGE_RUN_RELAY_URL": "{env:GAMEFORGE_RUN_RELAY_URL}",
+        "GAMEFORGE_RUN_RELAY_TOKEN": "{env:GAMEFORGE_RUN_RELAY_TOKEN}",
         "GAMEFORGE_MCP_AUDIT_DIR": "{env:GAMEFORGE_MCP_AUDIT_DIR}"
       },
       "enabled": true,
@@ -35,11 +36,5 @@
     "gameforge_start_*": "ask",
     "gameforge_stop_*": "ask",
     "gameforge_complete_*": "ask"
-  },
-  "command": {
-    "gameforge-status": {
-      "template": "Call the gameforge_status tool and summarize Relay and MCP readiness. Do not mutate projects or Runs.",
-      "description": "Show GameForge Relay and MCP status"
-    }
   }
 }

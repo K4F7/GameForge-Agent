@@ -56,6 +56,7 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
         environment: {
           GAMEFORGE_PROJECT_OUTPUT_ROOT: runtime.outputRoot,
           GAMEFORGE_RUN_RELAY_URL: runtime.relayUrl,
+          GAMEFORGE_RUN_RELAY_TOKEN: "{env:GAMEFORGE_RUN_RELAY_TOKEN}",
           GAMEFORGE_MCP_AUDIT_DIR: runtime.auditDirectory,
         },
         enabled: true,

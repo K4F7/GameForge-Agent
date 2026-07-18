@@ -15,6 +15,7 @@ export async function watchRun(options: {
   onRetry?(retry: WatchRetry): void;
   signal?: AbortSignal;
   retryDelaysMs?: ReadonlyArray<number>;
+  authToken?: string;
   stream?: typeof streamRunEvents;
   sleep?: (delayMs: number, signal?: AbortSignal) => Promise<void>;
 }): Promise<{ cursor: number; terminal: boolean; aborted: boolean }> {
@@ -50,6 +51,7 @@ export async function watchRun(options: {
         runId: options.runId,
         after: cursor,
         onEvent: accept,
+        ...(options.authToken === undefined ? {} : { authToken: options.authToken }),
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       });
       if (!isTerminalRunEvent(lastEvent)) {

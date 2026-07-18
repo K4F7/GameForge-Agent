@@ -51,7 +51,11 @@ async function capture(args: readonly string[]): Promise<void> {
   const mcpAudit = options.mcpAuditPath === undefined
     ? undefined
     : mcpToolAuditSchema.parse(await readJson(options.mcpAuditPath));
-  const relay = new RunRelayClient({ baseUrl: options.relayUrl });
+  const relayToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
+  const relay = new RunRelayClient({
+    baseUrl: options.relayUrl,
+    ...(relayToken === undefined ? {} : { authToken: relayToken }),
+  });
   const record = await captureBenchmarkEvidence({
     definition,
     metadata,

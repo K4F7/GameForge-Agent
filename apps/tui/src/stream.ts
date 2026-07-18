@@ -18,6 +18,7 @@ export async function streamRunEvents(options: {
   onEvent(event: WireRunEvent): void;
   signal?: AbortSignal;
   fetch?: typeof globalThis.fetch;
+  authToken?: string;
 }): Promise<void> {
   const base = safeBaseUrl(options.baseUrl);
   const url = new URL(`runs/${encodeURIComponent(options.runId)}/stream`, base);
@@ -25,7 +26,10 @@ export async function streamRunEvents(options: {
   let response: Response;
   try {
     response = await (options.fetch ?? globalThis.fetch)(url, {
-      headers: { Accept: "text/event-stream" },
+      headers: {
+        Accept: "text/event-stream",
+        ...(options.authToken === undefined ? {} : { Authorization: bearerHeader(options.authToken) }),
+      },
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
   } catch (error) {
@@ -91,6 +95,14 @@ export async function streamRunEvents(options: {
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
+}
+
+function bearerHeader(value: string): string {
+  const token = value.trim();
+  if (token.length < 32 || token.length > 512 || /[\r\n]/.test(token)) {
+    throw new Error("Run relay auth token must contain between 32 and 512 characters without newlines.");
+  }
+  return `Bearer ${token}`;
 }
 
 export function isTerminalRunEvent(event: WireRunEvent | undefined): boolean {

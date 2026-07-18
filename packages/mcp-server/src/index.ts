@@ -21,6 +21,7 @@ const freesoundApiKey = process.env.FREESOUND_API_KEY?.trim();
 const freesoundApiUsage = process.env.FREESOUND_API_USAGE?.trim();
 const projectOutputRoot = process.env.GAMEFORGE_PROJECT_OUTPUT_ROOT?.trim();
 const runRelayUrl = process.env.GAMEFORGE_RUN_RELAY_URL?.trim();
+const runRelayToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
 const toolAuditFile = process.env.GAMEFORGE_MCP_AUDIT_FILE?.trim();
 const toolAuditDirectory = process.env.GAMEFORGE_MCP_AUDIT_DIR?.trim();
 const seedreamApiKey = process.env.VOLCENGINE_ARK_API_KEY?.trim();
@@ -46,7 +47,10 @@ const assetStore = projectOutputRoot === undefined || projectOutputRoot.length =
   : new ProjectAssetStore({ projectsRoot: projectOutputRoot });
 const runRelayClient = runRelayUrl === undefined || runRelayUrl.length === 0
   ? undefined
-  : new RunRelayClient({ baseUrl: runRelayUrl });
+  : new RunRelayClient({
+      baseUrl: runRelayUrl,
+    ...(runRelayToken === undefined ? {} : { authToken: runRelayToken }),
+    });
 if (toolAuditFile !== undefined && toolAuditFile.length > 0 &&
     toolAuditDirectory !== undefined && toolAuditDirectory.length > 0) {
   throw new Error("Configure only one of GAMEFORGE_MCP_AUDIT_FILE or GAMEFORGE_MCP_AUDIT_DIR.");

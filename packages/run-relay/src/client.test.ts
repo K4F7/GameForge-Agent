@@ -4,6 +4,21 @@ import { RunRelayClient, RunRelayClientError, type RelayFetch } from "./client.j
 const emittedAt = "2026-07-16T06:00:00+08:00";
 
 describe("RunRelayClient", () => {
+  it("sends an optional bearer token without placing it in the URL", async () => {
+    const token = "relay-client-token-0123456789-abcdef";
+    const fetchMock = vi.fn<RelayFetch>(async () => new Response(JSON.stringify({ tasks: [] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    const client = new RunRelayClient({ baseUrl: "https://relay.example.com/gameforge/", authToken: token, fetch: fetchMock });
+    await client.listTasks({ limit: 1 });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).not.toContain(token);
+    expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${token}`);
+    expect(() => new RunRelayClient({ baseUrl: "http://127.0.0.1:8787/", authToken: "short" }))
+      .toThrow("between 32 and 512");
+  });
+
   it("lists, reads, and claims validated game tasks", async () => {
     const taskId = "task-00000000-0000-0000-0000-000000000000";
     const queued = {

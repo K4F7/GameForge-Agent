@@ -28,7 +28,10 @@ describe("integration runtime", () => {
     };
     expect(config.mcp.gameforge.command).toEqual(["node", "packages/mcp-server/dist/index.js"]);
     expect(text).not.toMatch(/[A-Z]:\\/);
-    expect(text).not.toMatch(/(?:api[_-]?key|token|secret)\s*[":=]\s*[^<{]/i);
+    expect(config.mcp.gameforge.environment.GAMEFORGE_RUN_RELAY_TOKEN)
+      .toBe("{env:GAMEFORGE_RUN_RELAY_TOKEN}");
+    expect(text.replaceAll("GAMEFORGE_RUN_RELAY_TOKEN", "RELAY_CREDENTIAL_REF"))
+      .not.toMatch(/(?:api[_-]?key|token|secret)\s*[":=]\s*[^<{]/i);
     expect(config.permission).toMatchObject({
       "gameforge_*": "ask",
       "gameforge_validate_*": "allow",

@@ -18,6 +18,8 @@ bun run tui -- stop my-run
 
 默认连接 `http://127.0.0.1:8787/`。可以设置 `GAMEFORGE_RUN_RELAY_URL`，或对任意命令传入 `--base-url`。远程地址必须使用 HTTPS；HTTP 只允许 localhost、127.0.0.1 或 `[::1]`，URL 不得包含凭据、query 或 fragment。
 
+Relay 启用 Bearer 时，在 TUI 进程环境设置至少 32 字符的 `GAMEFORGE_RUN_RELAY_TOKEN`；普通请求和 `watch` SSE 都会放入 Authorization header，token 不写入 URL 或输出。不要通过命令行参数传 token，以免进入 shell history。
+
 交互式 `watch` 中使用 `↑`/`↓` 或 `k`/`j` 逐行滚动，`PageUp`/`PageDown` 翻动五行，`q` 或 `Ctrl-C` 退出。终端 resize 会按新的行列数重绘；退出时恢复 raw mode。重定向或 `--json` 模式不启用 ANSI、快捷键或滚动裁剪。
 
 ## 输出模式

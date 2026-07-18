@@ -38,6 +38,7 @@ export type RunRelayClientOptions = {
   baseUrl: string;
   fetch?: RelayFetch;
   timeoutMilliseconds?: number;
+  authToken?: string;
 };
 
 export class RunRelayClientError extends Error {
@@ -56,6 +57,7 @@ export class RunRelayClient {
   readonly #baseUrl: URL;
   readonly #fetch: RelayFetch;
   readonly #timeoutMilliseconds: number;
+  readonly #authorization?: string;
 
   constructor(options: RunRelayClientOptions) {
     this.#baseUrl = relayBaseUrl(options.baseUrl);
@@ -65,6 +67,13 @@ export class RunRelayClient {
       throw new Error("Run relay timeout must be an integer between 100 and 60000 milliseconds.");
     }
     this.#timeoutMilliseconds = timeout;
+    if (options.authToken !== undefined) {
+      const token = options.authToken.trim();
+      if (token.length < 32 || token.length > 512 || /[\r\n]/.test(token)) {
+        throw new Error("Run relay auth token must contain between 32 and 512 characters without newlines.");
+      }
+      this.#authorization = `Bearer ${token}`;
+    }
   }
 
   async createRun(runIdInput: string): Promise<WireRunEvent> {
@@ -204,7 +213,11 @@ export class RunRelayClient {
       response = await this.#fetch(new URL(relativePath, this.#baseUrl), {
         ...init,
         signal: controller.signal,
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(this.#authorization === undefined ? {} : { Authorization: this.#authorization }),
+        },
       });
     } catch (error) {
       if (controller.signal.aborted) {

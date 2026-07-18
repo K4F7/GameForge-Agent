@@ -25,7 +25,11 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     process.stdout.write(`${help}\n`);
     return;
   }
-  const client = new RunRelayClient({ baseUrl: options.baseUrl });
+  const relayToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
+  const client = new RunRelayClient({
+    baseUrl: options.baseUrl,
+    ...(relayToken === undefined ? {} : { authToken: relayToken }),
+  });
   const output = (value: unknown, text: string): void => {
     process.stdout.write(options.json ? `${JSON.stringify(value)}\n` : `${text}\n`);
   };
@@ -92,6 +96,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
           baseUrl: options.baseUrl,
           runId: options.runId!,
           after: options.after,
+          ...(relayToken === undefined || relayToken.length === 0 ? {} : { authToken: relayToken }),
           onEvent: (event) => { history.push(event); render(event); },
           onRetry: (retry) => {
             watchStatus = `Relay 断线；${retry.delayMs}ms 后第 ${retry.attempt} 次恢复（游标 ${retry.cursor}）`;

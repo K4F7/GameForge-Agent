@@ -27,6 +27,25 @@ afterEach(async () => {
 });
 
 describe("run relay HTTP server", () => {
+  it("protects every non-preflight route when bearer authentication is configured", async () => {
+    const token = "relay-test-token-0123456789-abcdef";
+    const baseUrl = await startServer({ authToken: token });
+    const missing = await fetch(`${baseUrl}/tasks?limit=1`);
+    expect(missing.status).toBe(401);
+    await expect(missing.json()).resolves.toMatchObject({ error: "authentication_required" });
+    expect(missing.headers.get("www-authenticate")).toBe("Bearer");
+    expect((await fetch(`${baseUrl}/tasks?limit=1`, {
+      headers: { Authorization: "Bearer wrong-token-with-enough-characters-000" },
+    })).status).toBe(401);
+    const authorized = await fetch(`${baseUrl}/tasks?limit=1`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(authorized.status).toBe(200);
+    const preflight = await fetch(`${baseUrl}/tasks`, { method: "OPTIONS" });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-headers")).toContain("Authorization");
+  });
+
   it("awaits persistence after mutations but not reads", async () => {
     let saves = 0;
     const baseUrl = await startServer({ persistState: async () => { saves += 1; } });

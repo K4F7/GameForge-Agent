@@ -8,6 +8,7 @@ import {
   type WireRunEvent,
 } from "@gameforge/contracts";
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { RunStore, RunStoreError, type RunStoreOptions } from "./store.js";
 import { TaskInbox, TaskInboxError } from "./tasks.js";
@@ -23,6 +24,7 @@ export type RunRelayServerOptions = RunStoreOptions & {
   store?: RunStore;
   taskInbox?: TaskInbox;
   persistState?: () => Promise<void>;
+  authToken?: string;
 };
 
 export function createRunRelayServer(options: RunRelayServerOptions = {}): Server {
@@ -42,6 +44,7 @@ export function createRunRelayServer(options: RunRelayServerOptions = {}): Serve
     "heartbeatMilliseconds",
   );
   const maxSseClients = boundedInteger(options.maxSseClients ?? 50, 1, 1_000, "maxSseClients");
+  const authToken = options.authToken === undefined ? undefined : validateAuthToken(options.authToken);
   let activeSseClients = 0;
 
   return createHttpServer(async (request, response) => {
@@ -56,10 +59,14 @@ export function createRunRelayServer(options: RunRelayServerOptions = {}): Serve
       if (request.method === "OPTIONS") {
         response.writeHead(204, {
           "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type",
+          "Access-Control-Allow-Headers": authToken === undefined ? "Content-Type" : "Content-Type, Authorization",
           "Access-Control-Max-Age": "600",
         }).end();
         return;
+      }
+      if (authToken !== undefined && !authorized(request.headers.authorization, authToken)) {
+        response.setHeader("WWW-Authenticate", "Bearer");
+        throw new HttpError(401, "authentication_required", "Run relay authentication is required.");
       }
 
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -262,4 +269,19 @@ function boundedInteger(value: number, minimum: number, maximum: number, name: s
     throw new Error(`${name} must be an integer between ${minimum} and ${maximum}.`);
   }
   return value;
+}
+
+function validateAuthToken(value: string): string {
+  const token = value.trim();
+  if (token.length < 32 || token.length > 512 || /[\r\n]/.test(token)) {
+    throw new Error("Run relay auth token must contain between 32 and 512 characters without newlines.");
+  }
+  return token;
+}
+
+function authorized(header: string | undefined, expected: string): boolean {
+  const supplied = header?.startsWith("Bearer ") === true ? header.slice(7) : "";
+  const expectedDigest = createHash("sha256").update(expected).digest();
+  const suppliedDigest = createHash("sha256").update(supplied).digest();
+  return timingSafeEqual(expectedDigest, suppliedDigest);
 }

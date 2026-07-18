@@ -8,4 +8,4 @@
 - `gameforge_status` 只读工具，返回 MCP 状态和 Task 数量；
 - session idle 时检测新完成的 Relay Task，并显示通知。
 
-OpenCode 官方 Plugin API 没有稳定的 slash-command 注册 Hook，因此 `/gameforge-status` 由 `opencode.json.example` 的 `command` 配置预声明，再提示模型调用 `gameforge_status`。插件不会 claim Task、生成项目、发布 RunEvent 或完成 Run。
+OpenCode 官方 Plugin API 没有稳定的 slash-command 注册 Hook；只有显式加载本插件后，宿主配置才可以把 `/gameforge-status` 映射为“调用 `gameforge_status` 并汇总状态”。根目录的 `opencode.json.example` 仅是可独立使用的 GameForge MCP 模板，不预声明这个依赖插件的命令。插件不会 claim Task、生成项目、发布 RunEvent 或完成 Run。

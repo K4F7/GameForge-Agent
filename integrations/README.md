@@ -22,6 +22,7 @@ bun run opencode
 
 - `GAMEFORGE_PROJECT_OUTPUT_ROOT`：绝对输出目录；
 - `GAMEFORGE_RUN_RELAY_URL`：HTTPS 或 loopback HTTP；
+- `GAMEFORGE_RUN_RELAY_TOKEN`：可选 Relay Bearer；临时配置只保存 `{env:GAMEFORGE_RUN_RELAY_TOKEN}` 引用，不写入真实值；
 - `GAMEFORGE_MCP_AUDIT_DIR`：可选绝对审计目录；未配置时使用上述忽略目录；
 - `CODEARTS_BIN` / `OPENCODE_BIN`：客户端可执行文件；
 - Provider 密钥仍由用户安全环境提供，启动器不生成、不保存。

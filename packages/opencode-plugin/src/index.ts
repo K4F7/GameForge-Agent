@@ -102,5 +102,10 @@ export const GameForgePlugin: Plugin = async (input) => {
 export default GameForgePlugin;
 
 function createRelay(baseUrl: string): RunRelayClient {
-  return new RunRelayClient({ baseUrl, timeoutMilliseconds: 2_000 });
+  const token = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
+  return new RunRelayClient({
+    baseUrl,
+    timeoutMilliseconds: 2_000,
+    ...(token === undefined ? {} : { authToken: token }),
+  });
 }

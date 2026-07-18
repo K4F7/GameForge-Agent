@@ -166,6 +166,8 @@ GAMEFORGE_RUN_RELAY_STATE_FILE=D:\GameForgeState\relay-state.json
 
 Relay 对每次成功变更串行写入严格 Schema 快照，使用同目录临时文件、文件同步和原子 rename；启动时拒绝相对路径、符号链接、超限或 Task/Run 终态不一致的快照。状态文件含用户 Prompt 与运行日志，应置于受限本地目录，不提交仓库。MCP 的 `GAMEFORGE_RUN_RELAY_URL` 与 Relay 的 `GAMEFORGE_RUN_RELAY_STATE_FILE` 属于两个不同进程的配置。
 
+Relay CLI 固定监听 `127.0.0.1`。需要为同机其他进程增加纵深防护时，可在 Relay、MCP、TUI、benchmark 和 OpenCode Plugin 的进程环境中设置同一个至少 32 字符的 `GAMEFORGE_RUN_RELAY_TOKEN`；配置后除 CORS 预检外所有 Task、Run、回放和 SSE 路由都要求 Bearer，token 不进入 URL、日志或 record。Workbench 不读取该变量，也不得把它放进 `VITE_*`；带认证的远程浏览器部署必须由同源认证反向代理处理。CORS/Origin 不是身份认证，导出的 `createRunRelayServer` 若被嵌入到非 loopback 监听必须显式配置 `authToken` 和网络层访问控制。
+
 启用 Seedream 生图并把结果写入已生成项目：
 
 ```text

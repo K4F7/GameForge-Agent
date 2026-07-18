@@ -93,6 +93,8 @@ bun run dev
 
 ## Run Relay
 
+默认 CLI 只监听 loopback。可选 `GAMEFORGE_RUN_RELAY_TOKEN` 启用统一 Bearer 校验：除 OPTIONS 预检外，任务列表/详情/认领、Run 创建/发布/完成/停止、回放与 SSE 全部受保护。服务端和客户端都拒绝短于 32 字符、长于 512 字符或含换行的 token。MCP、TUI、benchmark 与 OpenCode Plugin 从各自进程环境读取；Workbench/EventSource 不读取秘密，远程浏览器场景应由同源认证代理承载。
+
 除阶段、日志和终态事件外，RunEvent 还支持：
 
 ```json
