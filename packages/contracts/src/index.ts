@@ -4,6 +4,7 @@ export * from "./douyin-platform.js";
 export * from "./game-spec.js";
 export * from "./game-tasks.js";
 export * from "./mcp-audit.js";
+export * from "./minigame-handoff.js";
 export * from "./model-routing.js";
 export * from "./project-generation.js";
 export * from "./providers.js";

@@ -163,6 +163,12 @@ export {
   type DouyinMiniGameCliProbeReport,
 } from "./douyin-cli.js";
 
+export {
+  assertMiniGameHandoffSnapshot,
+  createMiniGameLocalHandoffManifest,
+  type MiniGameHandoffTarget,
+} from "./handoff.js";
+
 async function readRequiredFile(root: string, relativePath: string, maximumBytes: number): Promise<{ text: string }> {
   const filePath = path.join(root, relativePath);
   const info = await lstat(filePath).catch(() => undefined);

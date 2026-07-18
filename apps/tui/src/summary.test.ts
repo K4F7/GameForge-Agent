@@ -30,6 +30,7 @@ describe("terminal run summary", () => {
         totalBytes: 1_108_438, mainPackageBytes: 1_108_438, subpackages: [], deviceOrientation: "portrait",
         capabilities: { network: false, login: false, share: false, ads: false, payments: false },
         allowedNetworkHosts: [], assetManifestRevision: 1, assetCount: 1,
+        artifactSha256: "f".repeat(64), remoteOperations: "forbidden", devToolVerification: "not-run",
         stdoutTruncated: false, stderrTruncated: false,
       },
       {
@@ -51,10 +52,18 @@ describe("terminal run summary", () => {
     ];
     const summary = summarizeRun(events);
     expect(summary).toMatchObject({ status: "succeeded", locale: "en-US", title: "Safety Sprint", assets: 1 });
-    expect(summary?.build).toMatchObject({ cliVersion: "3.4.0", fileCount: 16, assetCount: 1 });
+    expect(summary?.build).toMatchObject({
+      cliVersion: "3.4.0",
+      fileCount: 16,
+      assetCount: 1,
+      artifactSha256: "f".repeat(64),
+      remoteOperations: "forbidden",
+      devToolVerification: "not-run",
+    });
     expect(formatSummary(summary!)).toContain("Douyin build: LayaAir 3.4.0 portrait files=16");
     expect(formatSummary(summary!)).toContain("Verification: passed won score=2 lives=3");
     expect(formatSummary(summary!)).toContain("Logic proof: douyin-mini-game arcade won(2) lost(1) 42ms [no-render]");
+    expect(formatSummary(summary!)).toContain(`Handoff: sha256=${"f".repeat(64)} remote=forbidden devtool=not-run`);
     const wechat = summarizeRun(events.map((event) => event.type === "build.ready"
       ? { ...event, target: "wechat-mini-game" as const }
       : event));
@@ -63,5 +72,21 @@ describe("terminal run summary", () => {
 
   it("returns null when a replay page does not contain the start event", () => {
     expect(summarizeRun([{ type: "run.completed", runId: "run-1", sequence: 2, emittedAt }])).toBeNull();
+  });
+
+  it("keeps historical build events readable without inventing handoff evidence", () => {
+    const summary = summarizeRun([
+      { type: "run.started", runId: "legacy-run", sequence: 1, emittedAt },
+      {
+        type: "build.ready", runId: "legacy-run", sequence: 2, emittedAt, projectId: "legacy-game",
+        target: "douyin-mini-game", cliVersion: "3.4.0", passed: true, fileCount: 2,
+        totalBytes: 30, mainPackageBytes: 30, subpackages: [], deviceOrientation: "portrait",
+        capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+        allowedNetworkHosts: [], assetManifestRevision: 0, assetCount: 0,
+        stdoutTruncated: false, stderrTruncated: false,
+      },
+    ]);
+    expect(summary?.build).toMatchObject({ projectId: "legacy-game", fileCount: 2 });
+    expect(formatSummary(summary!)).not.toContain("Handoff:");
   });
 });

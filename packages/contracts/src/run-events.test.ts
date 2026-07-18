@@ -234,12 +234,17 @@ describe("run event contracts", () => {
       allowedNetworkHosts: [],
       assetManifestRevision: 2,
       assetCount: 2,
+      artifactSha256: "d".repeat(64),
+      remoteOperations: "forbidden",
+      devToolVerification: "not-run",
       stdoutTruncated: false,
       stderrTruncated: false,
     } as const;
     expect(runEventSchema.safeParse(event).success).toBe(true);
     expect(runEventSchema.safeParse({ ...event, target: "wechat-mini-game" }).success).toBe(true);
     expect(runEventSchema.safeParse({ ...event, outputPath: "D:/generated/safety-sprint/release" }).success).toBe(false);
+    expect(runEventSchema.safeParse({ ...event, remoteOperations: "allowed" }).success).toBe(false);
+    expect(runEventSchema.safeParse({ ...event, devToolVerification: "passed" }).success).toBe(false);
     expect(runEventSchema.safeParse({ ...event, mainPackageBytes: 4 * 1024 * 1024 + 1 }).success).toBe(false);
   });
 

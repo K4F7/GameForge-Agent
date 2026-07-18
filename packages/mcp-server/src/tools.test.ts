@@ -1,4 +1,4 @@
-import { defaultProviderConfig } from "@gameforge/contracts";
+import { defaultProviderConfig, type MiniGameLocalHandoffManifest } from "@gameforge/contracts";
 import { describe, expect, it } from "vitest";
 import type { SoundSearchProvider } from "@gameforge/contracts";
 import type { FreesoundSearchRequest, FreesoundSearchResult } from "@gameforge/providers";
@@ -42,6 +42,29 @@ function readJsonResult(result: ReturnType<typeof validateGameSpecTool>): unknow
   return JSON.parse(firstContent.text) as unknown;
 }
 
+function handoffFixture(
+  projectId: string,
+  target: "douyin-mini-game" | "wechat-mini-game",
+): MiniGameLocalHandoffManifest {
+  return {
+    schemaVersion: "1.0",
+    projectId,
+    target,
+    artifactRoot: target === "douyin-mini-game" ? "release/bytedancegame" : "release/wxgame",
+    engine: "layaair",
+    engineVersion: "3.4.0",
+    fileCount: 2,
+    totalBytes: 30,
+    files: [
+      { path: "game.js", bytes: 10, sha256: "a".repeat(64) },
+      { path: "game.json", bytes: 20, sha256: "b".repeat(64) },
+    ],
+    aggregateSha256: "f".repeat(64),
+    remoteOperations: "forbidden",
+    devToolVerification: "not-run",
+  };
+}
+
 describe("validation tool handlers", () => {
   it("returns a path-free build event payload beside the local Douyin output", async () => {
     const result = await buildDouyinMiniGameTool({
@@ -54,9 +77,9 @@ describe("validation tool handlers", () => {
             platform: "douyin-mini-game",
             passed: true,
             projectId,
-            fileCount: 16,
-            totalBytes: 1_108_438,
-            mainPackageBytes: 1_108_438,
+            fileCount: 2,
+            totalBytes: 30,
+            mainPackageBytes: 30,
             subpackages: [],
             deviceOrientation: "portrait",
             capabilities: { network: false, login: false, share: false, ads: false, payments: false },
@@ -64,15 +87,25 @@ describe("validation tool handlers", () => {
             assetManifestRevision: 2,
             assetCount: 2,
           },
+          handoff: handoffFixture(projectId, "douyin-mini-game"),
           stdoutTruncated: false,
           stderrTruncated: false,
         };
       },
     }, "safe-game");
-    const parsed = readJsonResult(result) as { outputPath?: string; buildEvent?: Record<string, unknown> };
+    const parsed = readJsonResult(result) as { outputPath?: string; buildEvent?: Record<string, unknown>; handoff?: Record<string, unknown> };
     expect(parsed).not.toHaveProperty("outputPath");
-    expect(parsed.buildEvent).toMatchObject({ type: "build.ready", projectId: "safe-game", assetManifestRevision: 2 });
+    expect(parsed.buildEvent).toMatchObject({
+      type: "build.ready",
+      projectId: "safe-game",
+      assetManifestRevision: 2,
+      artifactSha256: "f".repeat(64),
+      remoteOperations: "forbidden",
+      devToolVerification: "not-run",
+    });
+    expect(parsed.handoff).toMatchObject({ fileCount: 2, totalBytes: 30, artifactRoot: "release/bytedancegame" });
     expect(parsed.buildEvent).not.toHaveProperty("outputPath");
+    expect(JSON.stringify(parsed)).not.toMatch(/[A-Z]:[\\/]/);
   });
 
   it("returns a path-free WeChat build event from the wxgame artifact", async () => {
@@ -84,11 +117,12 @@ describe("validation tool handlers", () => {
           outputPath: "D:/private/generated/safe-game/release/wxgame",
           validation: {
             platform: "wechat-mini-game", passed: true, projectId,
-            fileCount: 14, totalBytes: 1_113_109, mainPackageBytes: 1_113_109, subpackages: [],
+            fileCount: 2, totalBytes: 30, mainPackageBytes: 30, subpackages: [],
             deviceOrientation: "portrait",
             capabilities: { network: false, login: false, share: false, ads: false, payments: false },
             allowedNetworkHosts: [], assetManifestRevision: 0, assetCount: 0,
           },
+          handoff: handoffFixture(projectId, "wechat-mini-game"),
           stdoutTruncated: false,
           stderrTruncated: false,
         };
@@ -97,6 +131,7 @@ describe("validation tool handlers", () => {
     const parsed = readJsonResult(result) as { outputPath?: string; buildEvent?: Record<string, unknown> };
     expect(parsed).not.toHaveProperty("outputPath");
     expect(parsed.buildEvent).toMatchObject({ type: "build.ready", target: "wechat-mini-game" });
+    expect(JSON.stringify(parsed)).not.toMatch(/[A-Z]:[\\/]/);
   });
 
   it("returns an explicitly non-visual mini-game gameplay event", async () => {

@@ -186,6 +186,9 @@ export async function buildDouyinMiniGameTool(
       allowedNetworkHosts: [...result.validation.allowedNetworkHosts],
       assetManifestRevision: result.validation.assetManifestRevision,
       assetCount: result.validation.assetCount,
+      artifactSha256: result.handoff.aggregateSha256,
+      remoteOperations: result.handoff.remoteOperations,
+      devToolVerification: result.handoff.devToolVerification,
       stdoutTruncated: result.stdoutTruncated,
       stderrTruncated: result.stderrTruncated,
     };
@@ -220,6 +223,9 @@ export async function buildWechatMiniGameTool(
       allowedNetworkHosts: [...result.validation.allowedNetworkHosts],
       assetManifestRevision: result.validation.assetManifestRevision,
       assetCount: result.validation.assetCount,
+      artifactSha256: result.handoff.aggregateSha256,
+      remoteOperations: result.handoff.remoteOperations,
+      devToolVerification: result.handoff.devToolVerification,
       stdoutTruncated: result.stdoutTruncated,
       stderrTruncated: result.stderrTruncated,
     };

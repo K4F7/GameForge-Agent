@@ -2,13 +2,18 @@ import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { lstat, mkdir, open, readFile, realpath, unlink } from "node:fs/promises";
 import path from "node:path";
-import { managedGeneratedProjectManifestSchema, projectIdSchema } from "@gameforge/contracts";
+import {
+  managedGeneratedProjectManifestSchema,
+  projectIdSchema,
+  type MiniGameLocalHandoffManifest,
+} from "@gameforge/contracts";
 import {
   validateDouyinMiniGameProject,
   validateWechatMiniGameProject,
   type DouyinMiniGameValidationReport,
   type WechatMiniGameValidationReport,
 } from "./index.js";
+import { assertMiniGameHandoffSnapshot, createMiniGameLocalHandoffManifest } from "./handoff.js";
 
 const EXPECTED_LAYAAIR_VERSION = "3.4.0";
 const MAX_LOG_BYTES = 64 * 1024;
@@ -19,6 +24,7 @@ export type DouyinMiniGameBuildResult = {
   cliVersion: "3.4.0";
   outputPath: string;
   validation: DouyinMiniGameValidationReport;
+  handoff: MiniGameLocalHandoffManifest;
   stdoutTruncated: boolean;
   stderrTruncated: boolean;
 };
@@ -86,14 +92,26 @@ class LayaMiniGameBuilder {
       if (result.reportedBuildFailure) {
         throw new Error("LayaAir CLI reported a failed build despite returning exit code zero.");
       }
+      const beforeHandoff = await createMiniGameLocalHandoffManifest({
+        projectRoot: outputPath,
+        projectId,
+        target: this.#target,
+      });
       const validation = this.#target === "douyin-mini-game"
         ? await validateDouyinMiniGameProject(outputPath, { expectedProjectId: projectId })
         : await validateWechatMiniGameProject(outputPath, { expectedProjectId: projectId });
+      const handoff = await createMiniGameLocalHandoffManifest({
+        projectRoot: outputPath,
+        projectId,
+        target: this.#target,
+      });
+      assertMiniGameHandoffSnapshot(beforeHandoff, handoff);
       return {
         projectId,
         cliVersion: EXPECTED_LAYAAIR_VERSION,
         outputPath,
         validation,
+        handoff,
         stdoutTruncated: result.stdoutTruncated,
         stderrTruncated: result.stderrTruncated,
       } as DouyinMiniGameBuildResult | WechatMiniGameBuildResult;

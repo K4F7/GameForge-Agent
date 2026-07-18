@@ -7,6 +7,11 @@ import { signedJobHandleSchema } from "./providers.js";
 import { gameforgeCapabilitySnapshotSchema } from "./capabilities.js";
 import { douyinPlatformPolicySchema } from "./douyin-platform.js";
 import { wechatPlatformPolicySchema } from "./wechat-platform.js";
+import {
+  miniGameArtifactSha256Schema,
+  miniGameDevToolVerificationSchema,
+  miniGameRemoteOperationsSchema,
+} from "./minigame-handoff.js";
 
 export const runIdSchema = z
   .string()
@@ -132,6 +137,9 @@ export const runEventSchema = z.discriminatedUnion("type", [
     allowedNetworkHosts: douyinPlatformPolicySchema.shape.allowedNetworkHosts,
     assetManifestRevision: z.number().int().nonnegative(),
     assetCount: z.number().int().nonnegative().max(1_000),
+    artifactSha256: miniGameArtifactSha256Schema.optional(),
+    remoteOperations: miniGameRemoteOperationsSchema.optional(),
+    devToolVerification: miniGameDevToolVerificationSchema.optional(),
     stdoutTruncated: z.boolean(),
     stderrTruncated: z.boolean(),
   }),

@@ -58,6 +58,7 @@ describe("DouyinMiniGameBuilder", () => {
       projectId: "safe-game",
       cliVersion: "3.4.0",
       validation: { passed: true, platform: "douyin-mini-game" },
+      handoff: { remoteOperations: "forbidden", devToolVerification: "not-run" },
     });
   });
 
@@ -68,6 +69,7 @@ describe("DouyinMiniGameBuilder", () => {
       projectId: "safe-game",
       cliVersion: "3.4.0",
       validation: { passed: true, platform: "wechat-mini-game" },
+      handoff: { artifactRoot: "release/wxgame", remoteOperations: "forbidden" },
     });
   });
 

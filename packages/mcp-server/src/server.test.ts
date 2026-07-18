@@ -1,4 +1,4 @@
-import { defaultProviderConfig } from "@gameforge/contracts";
+import { defaultProviderConfig, type MiniGameLocalHandoffManifest } from "@gameforge/contracts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it } from "vitest";
@@ -9,6 +9,29 @@ import type { ProjectGenerationResult } from "@gameforge/contracts";
 import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditToken } from "./tool-audit.js";
 import path from "node:path";
 import { loadModelRoutingPolicy } from "./model-routing.js";
+
+function handoffFixture(
+  projectId: string,
+  target: "douyin-mini-game" | "wechat-mini-game",
+): MiniGameLocalHandoffManifest {
+  return {
+    schemaVersion: "1.0",
+    projectId,
+    target,
+    artifactRoot: target === "douyin-mini-game" ? "release/bytedancegame" : "release/wxgame",
+    engine: "layaair",
+    engineVersion: "3.4.0",
+    fileCount: 2,
+    totalBytes: 30,
+    files: [
+      { path: "game.js", bytes: 10, sha256: "a".repeat(64) },
+      { path: "game.json", bytes: 20, sha256: "b".repeat(64) },
+    ],
+    aggregateSha256: "f".repeat(64),
+    remoteOperations: "forbidden",
+    devToolVerification: "not-run",
+  };
+}
 
 describe("GameForge MCP server", () => {
   it("resolves a CodeArts-owned model route without invoking a model", async () => {
@@ -105,9 +128,9 @@ describe("GameForge MCP server", () => {
             validation: {
               platform: "douyin-mini-game",
               passed: true,
-              fileCount: 12,
-              totalBytes: 1_000_000,
-              mainPackageBytes: 1_000_000,
+              fileCount: 2,
+              totalBytes: 30,
+              mainPackageBytes: 30,
               subpackages: [],
               deviceOrientation: "portrait",
               capabilities: { network: false, login: false, share: false, ads: false, payments: false },
@@ -116,6 +139,7 @@ describe("GameForge MCP server", () => {
               assetCount: 0,
               projectId,
             },
+            handoff: handoffFixture(projectId, "douyin-mini-game"),
             stdoutTruncated: false,
             stderrTruncated: false,
           };
@@ -145,11 +169,12 @@ describe("GameForge MCP server", () => {
             projectId, cliVersion: "3.4.0", outputPath: "D:/managed/safe-game/release/wxgame",
             validation: {
               platform: "wechat-mini-game", passed: true, projectId,
-              fileCount: 14, totalBytes: 1_113_109, mainPackageBytes: 1_113_109, subpackages: [],
+              fileCount: 2, totalBytes: 30, mainPackageBytes: 30, subpackages: [],
               deviceOrientation: "portrait",
               capabilities: { network: false, login: false, share: false, ads: false, payments: false },
               allowedNetworkHosts: [], assetManifestRevision: 0, assetCount: 0,
             },
+            handoff: handoffFixture(projectId, "wechat-mini-game"),
             stdoutTruncated: false, stderrTruncated: false,
           };
         },

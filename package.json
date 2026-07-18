@@ -37,6 +37,7 @@
     "benchmark": "bun packages/benchmark/src/cli.ts",
     "bundle:check": "bun run --filter @gameforge/game build && bun run --filter @gameforge/workbench build && bun packages/bundle-budget/src/cli.ts",
     "minigame:validate": "bun packages/minigame-validator/src/cli.ts",
+    "minigame:handoff": "bun packages/minigame-validator/src/handoff-runner.ts",
     "dev:local": "bun run --parallel dev:relay dev:game dev:workbench",
     "start:mcp": "node packages/mcp-server/dist/index.js",
     "start:relay": "node packages/run-relay/dist/index.js"

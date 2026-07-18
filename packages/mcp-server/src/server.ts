@@ -303,7 +303,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       "build_douyin_mini_game",
       {
         title: "Build and validate a managed Douyin mini-game",
-        description: "Run the fixed LayaAir bytedancegame build once for a managed project, then apply deterministic offline artifact validation. This never logs in, previews, uploads, audits, or publishes.",
+        description: "Run the fixed LayaAir bytedancegame build once for a managed project, apply deterministic offline validation, and return a path-free, per-file SHA-256 handoff manifest. This never opens DevTools, logs in, previews, uploads, submits for review, or publishes.",
         inputSchema: { projectId: projectIdSchema },
       },
       async ({ projectId }) => buildDouyinMiniGameTool(options.douyinProjectBuilder as DouyinProjectBuilder, projectId),
@@ -334,7 +334,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       "build_wechat_mini_game",
       {
         title: "Build and validate a managed WeChat mini-game",
-        description: "Run the fixed LayaAir wxgame build once for a managed project, then apply deterministic offline artifact validation. This never logs in, previews, uploads, audits, or publishes.",
+        description: "Run the fixed LayaAir wxgame build once for a managed project, apply deterministic offline validation, and return a path-free, per-file SHA-256 handoff manifest. This never opens DevTools, logs in, previews, uploads, submits for review, or publishes.",
         inputSchema: { projectId: projectIdSchema },
       },
       async ({ projectId }) => buildWechatMiniGameTool(options.wechatProjectBuilder as WechatProjectBuilder, projectId),

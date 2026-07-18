@@ -3,13 +3,19 @@ import { mkdtemp, mkdir, rm, symlink, truncate, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { validateDouyinMiniGameProject } from "./index.js";
+import {
+  assertMiniGameHandoffSnapshot,
+  createMiniGameLocalHandoffManifest,
+  validateDouyinMiniGameProject,
+} from "./index.js";
 
 const roots: string[] = [];
 
 async function project(gameConfig: Record<string, unknown> = { deviceOrientation: "portrait" }): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), "gameforge-douyin-validator-"));
-  roots.push(root);
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "gameforge-douyin-validator-"));
+  roots.push(temporaryRoot);
+  const root = path.join(temporaryRoot, "release", "bytedancegame");
+  await mkdir(root, { recursive: true });
   await writeFile(path.join(root, "game.js"), "const canvas = tt.createCanvas();\n");
   await writeFile(path.join(root, "game.json"), `${JSON.stringify(gameConfig)}\n`);
   await writeFile(path.join(root, "project.config.json"), '{"description":"GameForge","setting":{"es6":true}}\n');
@@ -62,6 +68,68 @@ describe("Douyin mini-game artifact validator", () => {
     });
   });
 
+  it("creates a stable, path-free handoff manifest around the validator snapshot", async () => {
+    const root = await project();
+    await expect(createMiniGameLocalHandoffManifest({
+      projectRoot: path.dirname(root),
+      projectId: "fixture",
+      target: "douyin-mini-game",
+    })).rejects.toThrow("must be release/bytedancegame");
+    const before = await createMiniGameLocalHandoffManifest({
+      projectRoot: root,
+      projectId: "fixture",
+      target: "douyin-mini-game",
+    });
+    const validation = await validateDouyinMiniGameProject(root, { expectedProjectId: "fixture" });
+    const after = await createMiniGameLocalHandoffManifest({
+      projectRoot: root,
+      projectId: "fixture",
+      target: "douyin-mini-game",
+    });
+    expect(() => assertMiniGameHandoffSnapshot(before, after)).not.toThrow();
+    expect(after).toMatchObject({
+      artifactRoot: "release/bytedancegame",
+      fileCount: validation.fileCount,
+      totalBytes: validation.totalBytes,
+      remoteOperations: "forbidden",
+      devToolVerification: "not-run",
+    });
+    expect(after.files.every((file) => !path.isAbsolute(file.path) && !file.path.includes("\\"))).toBe(true);
+    await writeFile(path.join(root, "game.js"), "const canvas = tt.createCanvas();\n// changed\n");
+    const changed = await createMiniGameLocalHandoffManifest({
+      projectRoot: root,
+      projectId: "fixture",
+      target: "douyin-mini-game",
+    });
+    expect(() => assertMiniGameHandoffSnapshot(before, changed)).toThrow("artifact changed");
+  });
+
+  it("produces the same aggregate regardless of file creation order and binds the target root", async () => {
+    const firstRoot = await project();
+    const secondRoot = await project();
+    await writeFile(path.join(firstRoot, "alpha.txt"), "alpha\n");
+    await writeFile(path.join(firstRoot, "zeta.txt"), "zeta\n");
+    await writeFile(path.join(secondRoot, "zeta.txt"), "zeta\n");
+    await writeFile(path.join(secondRoot, "alpha.txt"), "alpha\n");
+
+    const first = await createMiniGameLocalHandoffManifest({
+      projectRoot: firstRoot,
+      projectId: "fixture",
+      target: "douyin-mini-game",
+    });
+    const second = await createMiniGameLocalHandoffManifest({
+      projectRoot: secondRoot,
+      projectId: "fixture",
+      target: "douyin-mini-game",
+    });
+    expect(first.aggregateSha256).toBe(second.aggregateSha256);
+    await expect(createMiniGameLocalHandoffManifest({
+      projectRoot: firstRoot,
+      projectId: "fixture",
+      target: "wechat-mini-game",
+    })).rejects.toThrow("must be release/wxgame");
+  });
+
   it("rejects missing files, DOM entrypoints and invalid orientation", async () => {
     const missing = await project();
     await rm(path.join(missing, "project.config.json"));
@@ -77,6 +145,11 @@ describe("Douyin mini-game artifact validator", () => {
     const linked = await project();
     await symlink(path.join(linked, "game.js"), path.join(linked, "linked.js"));
     await expect(validateDouyinMiniGameProject(linked)).rejects.toThrow("symbolic link");
+    await expect(createMiniGameLocalHandoffManifest({
+      projectRoot: linked,
+      projectId: "fixture",
+      target: "douyin-mini-game",
+    })).rejects.toThrow("symbolic link");
     const oversized = await project();
     await writeFile(path.join(oversized, "large.bin"), "");
     await truncate(path.join(oversized, "large.bin"), 4 * 1024 * 1024);

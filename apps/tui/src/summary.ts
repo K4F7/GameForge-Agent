@@ -18,6 +18,9 @@ export type RunSummary = {
     assetCount: number;
     assetManifestRevision: number;
     deviceOrientation: "portrait" | "landscape";
+    artifactSha256?: string;
+    remoteOperations?: "forbidden";
+    devToolVerification?: "not-run";
   };
   verification?: { passed: boolean; outcome: "running" | "won" | "lost"; score: number; lives: number };
   gameplayVerification?: {
@@ -70,6 +73,9 @@ export function summarizeRun(events: readonly WireRunEvent[]): RunSummary | null
           assetCount: event.assetCount,
           assetManifestRevision: event.assetManifestRevision,
           deviceOrientation: event.deviceOrientation,
+          ...(event.artifactSha256 === undefined ? {} : { artifactSha256: event.artifactSha256 }),
+          ...(event.remoteOperations === undefined ? {} : { remoteOperations: event.remoteOperations }),
+          ...(event.devToolVerification === undefined ? {} : { devToolVerification: event.devToolVerification }),
         };
         break;
       case "verification.ready":
@@ -114,6 +120,12 @@ export function formatSummary(summary: RunSummary): string {
       `files=${summary.build.fileCount} main=${formatMiB(summary.build.mainPackageBytes)} ` +
       `total=${formatMiB(summary.build.totalBytes)} assets=${summary.build.assetCount}@r${summary.build.assetManifestRevision}`,
     );
+    if (summary.build.artifactSha256 !== undefined) {
+      lines.push(
+        `Handoff: sha256=${summary.build.artifactSha256} ` +
+        `remote=${summary.build.remoteOperations ?? "unknown"} devtool=${summary.build.devToolVerification ?? "unknown"}`,
+      );
+    }
   }
   if (summary.gameplayVerification !== undefined) {
     lines.push(
