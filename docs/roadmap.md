@@ -48,7 +48,7 @@
 
 ## Provider 账号级验收
 
-`bun run provider:smoke` 默认只检查所选 Provider 的环境变量是否齐全，不读取或输出变量值。只有显式执行 `bun run provider:smoke -- --execute --providers=qwen,seedream,freesound,tts` 才会产生真实网络请求与潜在费用。媒体验收要求同时选择 `qwen`，以真实 GameSpec 创建带随机后缀的临时项目；检查与执行的脱敏证据都写入 `.gameforge-validation/provider-smoke/evidence.json`，生成项目保留在同一忽略目录供人工复核。TTS 最多查询五次，未完成时以失败/pending 记录，不在 MCP 工具内部轮询。
+`bun run provider:smoke` 默认只检查所选 Provider 的环境变量是否齐全，不读取或输出变量值。只有显式执行 `bun run provider:smoke -- --execute --providers=qwen,seedream,freesound,tts,music` 才会产生真实网络请求与潜在费用。媒体验收要求同时选择 `qwen`，以真实 GameSpec 创建带随机后缀的临时项目；检查与执行的脱敏证据都写入 `.gameforge-validation/provider-smoke/evidence.json`，生成项目保留在同一忽略目录供人工复核。MiniMax 配乐固定纯音乐且不自动重试生成 POST；TTS 最多查询五次，未完成时以失败/pending 记录，不在 MCP 工具内部轮询。
 
 ## 第二轮：Bun TUI MVP
 

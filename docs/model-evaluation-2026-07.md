@@ -93,6 +93,7 @@ GameForge 借鉴其 role/category、显式能力要求、可诊断 fallback 与�
 | MCP GameSpec | Qwen3.6 Flash | 真实百炼 Schema 通过率/成本基准支持升级 |
 | MCP image | 字节 Seedream Endpoint | 固定资产集实测选择账号可用版本 |
 | MCP TTS | 豆包异步 TTS | 固定对白集与授权/成本证据支持切换 |
+| MCP music | MiniMax Music 2.6 纯音乐 | 真实账号固定提示集证明效果、循环点、耗时与输出权利后再调整版本 |
 | MCP common sound | Freesound CC0/CC BY 检索 | 有稳定国产独立音效 API 与商业条款后 |
 
 ## 主要来源

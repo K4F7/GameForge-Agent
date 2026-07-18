@@ -26,7 +26,7 @@
 | NPC对白、旁白和语音提示 | 火山引擎豆包语音 | 大模型语音合成 | CosyVoice本地部署、腾讯云对话式TTS | 采用 |
 | 常见短音效 | Freesound API | CC0优先检索 | CC BY并自动生成署名清单 | 采用检索优先；它不是默认基础模型 |
 | 独特短音效 | 可插拔Audio Provider | 暂无满足要求且公开稳定的国产独立文生音效API | Seedance音画联合生成实验 | 暂不设伪默认 |
-| 背景音乐 | MiniMax 开放平台 | `music-2.6` | 腾讯云 MPS 聚合；火山 MemeSong 仅短主题曲 | planned；官方 API 已确认，适配器、纯音乐效果与商用授权尚待验收 |
+| 背景音乐 | MiniMax 开放平台 | `music-2.6` | 腾讯云 MPS 聚合；火山 MemeSong 仅短主题曲 | 适配器已实现；真实效果、耗时和商用授权待账号验收 |
 
 ### 已实现的 GameSpec 适配器
 
@@ -158,7 +158,7 @@ Freesound API本身的使用条款与单条声音许可证是两个独立层次�
 
 ### 背景音乐
 
-生产候选改为 MiniMax `music-2.6`：[官方音乐生成指南](https://platform.minimaxi.com/docs/guides/music-generation)与[官方 API](https://platform.minimax.io/docs/api-reference/music-generation)（访问日期：2026-07-18）提供同步音乐生成接口，并将使用场景列为视频、游戏和应用的背景音乐/主题曲。当前路由标记为 `planned`，因为仓库尚未实现适配器，也尚未核验纯器乐稳定性、生成耗时、套餐对应的商用授权和内容权利；公共 `resolveExecutableModelTargets` 对 planned 路由返回空数组。腾讯云 MPS 聚合可作为统一云入口备选，但底层模型和合同仍需逐项记录。火山 MemeSong 只支持中文、15 秒内模板化歌唱，更适合短主题曲，不冒充通用 BGM 或 SFX。
+MiniMax `music-2.6` 的[官方音乐生成指南](https://platform.minimaxi.com/docs/guides/music-generation)与[官方 API](https://platform.minimax.io/docs/api-reference/music-generation)（访问日期：2026-07-18）提供同步音乐生成接口，并将使用场景列为视频、游戏和应用的背景音乐/主题曲。仓库现已实现 `MinimaxMusicProvider` 与 `generate_music_asset`：固定 `stream=false`、`output_format=hex`、`is_instrumental=true` 和 MP3，限制官方 HTTPS host、Prompt 2000 字符、响应 envelope 与 16 MiB 音频上限；生成 POST 硬性限制为单次发送。工具在调用前执行 asset revision 预检，成功后以唯一 `bgm` 角色写入 Asset Store，并记录 model、prompt、license 与 SHA-256。16 MiB 足以覆盖官方约 5 分钟、256kbps 的输出，同时降低 hex JSON 多份缓冲造成的内存峰值。MiniMax 官方 API 文档没有直接授予通用商用权，因此只有服务端同时配置 API key、输出根和账号持有人确认的 `GAMEFORGE_MUSIC_LICENSE` 时才注册；真实纯音乐效果、生成耗时、循环点和商用权仍待付费账号验收。腾讯云 MPS 聚合可作为统一云入口备选，但底层模型和合同仍需逐项记录。火山 MemeSong 只支持中文、15 秒内模板化歌唱，更适合短主题曲，不冒充通用 BGM 或 SFX。
 
 玩法代码、剧情、美术和配乐不得共用一个“万能默认模型”：玩法走 CodeArts `coding`，剧情走 CodeArts `story`，美术走 Seedream `image`，配乐走 MiniMax `music`。CodeArts `orchestration` 只负责拆分任务、选择已启用路由并汇总证据；MCP 媒体工具仍然只执行一次确定性 Provider 调用。
 
@@ -173,6 +173,7 @@ CodeArts Agent / Agent Team
        ├─ validate_asset_manifest   已实现：资产来源清单校验
        ├─ generate_game_project     已实现：dry-run + 原子新建固定模板
        ├─ request_image_asset       已实现：单次Seedream调用 + 安全资产落盘
+       ├─ generate_music_asset      已实现：单次MiniMax纯音乐调用 + 安全BGM落盘
        ├─ submit/query/materialize_voice_job 已实现：异步TTS作业三步工具
        └─ search_sound_asset        已实现：有界只读检索 + 许可证与API用途过滤
 
@@ -181,10 +182,10 @@ Provider adapters
   ├─ ImageGenerationProvider     Seedream适配器已实现，真实账号待验证
   ├─ TextToSpeechProvider
   ├─ SoundSearchProvider          Freesound适配器已实现，真实账号待验证
-  └─ AudioGenerationProvider
+  └─ AudioGenerationProvider      MiniMax Music 2.6已实现，真实账号待验证
 ```
 
-MCP工具只执行一次明确业务操作、返回结构化结果并记录元数据，不在内部进行自主规划、反思或循环调用。共享传输层只对 408、429、5xx、超时和网络错误做最多三次的有界退避，并把认证、授权、配额、限流、调用方取消、超时、网络、服务端和请求错误分类为 `ProviderRequestError`；调用方取消立即停止，错误消息不读取或回显上游 body。Seedream 生图和 TTS submit 默认单次发送，因为官方没有幂等保证；TTS query/materialize 与 Freesound GET 可以安全重试。任务拆解与业务级重试仍由CodeArts负责。
+MCP工具只执行一次明确业务操作、返回结构化结果并记录元数据，不在内部进行自主规划、反思或循环调用。共享传输层只对 408、429、5xx、超时和网络错误做最多三次的有界退避，并把认证、授权、配额、限流、调用方取消、超时、网络、服务端和请求错误分类为 `ProviderRequestError`；调用方取消立即停止，错误消息不读取或回显上游 body。Seedream 生图、MiniMax 配乐和 TTS submit 默认单次发送，因为官方没有幂等保证；TTS query/materialize 与 Freesound GET 可以安全重试。任务拆解与业务级重试仍由CodeArts负责。
 
 所有外部资产都进入统一Manifest，至少记录：
 
@@ -217,7 +218,7 @@ type AssetProvenance = {
 ## 实际结果
 
 已完成官方资料调研、架构决策、Provider配置、运行事件和资产Manifest契约，并实现Seedream文生图与Freesound搜索适配器。Seedream适配器已通过模拟HTTP响应验证Bearer请求、超时/网络错误脱敏、受限 JSON、Base64解码、模型一致性、图片格式识别、SHA-256和资产来源记录；同时限制官方API主机、参考图主机白名单和最大响应字节数。Freesound适配器已通过模拟响应验证Token Header、许可证查询、预览选择、非商业许可证拒绝、官方端点限制和错误脱敏。MCP仅在服务端同时配置API密钥与用途声明时注册`search_sound_asset`。
-此外已经实现 Freesound preview 素材化、安全资产存储，以及火山异步长文本 TTS 的提交、查询和素材化闭环。Freesound preview 下载按 16 MiB 上限流式读取，缺少或伪造 `Content-Length` 的 chunked 响应也会在越界时取消，不会先执行无界 `arrayBuffer()`。TTS 适配器测试覆盖官方 Header/URL/字段、签名句柄、跨项目拒绝、下载主机白名单、格式识别、哈希与凭据脱敏；当前仍未使用真实付费账号验证音色效果和实际 CDN 主机。
+此外已经实现 Freesound preview 素材化、安全资产存储、MiniMax 纯音乐生成，以及火山异步长文本 TTS 的提交、查询和素材化闭环。Freesound preview 下载按 16 MiB 上限流式读取，缺少或伪造 `Content-Length` 的 chunked 响应也会在越界时取消，不会先执行无界 `arrayBuffer()`。MiniMax 适配器测试覆盖官方 Bearer/URL/字段、hex 解码、MP3 魔数、Provider 状态、响应上限、单次 POST、超时和凭据脱敏；TTS 适配器测试覆盖官方 Header/URL/字段、签名句柄、跨项目拒绝、下载主机白名单、格式识别、哈希与凭据脱敏。当前仍未使用真实付费账号验证音乐/音色效果、生成耗时、实际 CDN 主机或输出商用权。
 
 工作台侧已经增加严格的Wire RunEvent契约、连续序列批次校验、轮询回放函数和SSE客户端边界；它会忽略重复事件，并在序列缺口时要求回补。仓库现在包含只负责保存和发布事件的本地Run Relay，配置`VITE_AGENT_BASE_URL`后工作台可以创建或连接真实运行。Relay不执行游戏生成任务，也不实现Agent循环；任务执行和工具编排仍由CodeArts负责。未配置Relay时界面继续明确显示“事件演示 · 未连接Agent”。
 
@@ -225,7 +226,7 @@ type AssetProvenance = {
 
 ## 结论与置信度
 
-- 高置信度：采用配置化国产模型路由；Qwen负责默认文本/代码任务；Seedream负责默认图片；豆包语音负责默认TTS；常见音效执行许可证过滤检索。
+- 高置信度：采用配置化国产模型路由；CodeArts 内置模型按玩法/剧情/复核分工；Seedream负责默认图片；豆包语音负责默认TTS；MiniMax负责纯音乐配乐；常见音效执行许可证过滤检索。
 - 中置信度：具体Qwen和Seedream模型快照。云端模型更新较快，接入时需要在控制台再次确认可用ID。
 - 低置信度：独立国产短音效生成和生成内容商业授权。在获得明确API及条款前不设置默认实现。
 
@@ -241,6 +242,7 @@ type AssetProvenance = {
 
 - `request_image_asset` 已实现为“单次 Seedream 请求 + 安全资产落盘”，只有服务端同时具备方舟密钥、模型 ID、输出许可声明与项目根目录时才注册。
 - `import_sound_asset` 已实现为“有界 Freesound preview GET + 安全资产落盘”。只读下载遇到瞬时故障时可有限退避；preview 不需要 OAuth2，原始文件 `/download/` 需要 OAuth2，当前工具不会调用它。允许 CC0 与 Attribution，后者把作者、声音名称、原始页面和许可写入 provenance。
+- `generate_music_asset` 已实现为“单次 MiniMax Music 2.6 非流式纯音乐请求 + 安全 BGM 落盘”。只接受官方 host 和 hex MP3；调用前执行 replacement revision 预检，生成请求不自动重试；账号级输出许可仍必须显式确认。
 - 豆包旧版单向流式 TTS 使用二进制 WebSocket `wss://openspeech.bytedance.com/api/v1/tts/ws_binary`，客户端必须拼接音频帧并识别结束序列；它不能按普通 JSON HTTP 适配器实现。
 - 长文本 TTS 是 `/api/v1/tts_async/submit` 与 `/query` 的异步作业，结果通常需等待数十分钟、最长可到 3 小时，且回调不保证到达。当前已经实现 `submit_voice_job`、`query_voice_job`、`materialize_voice_job` 三个确定性工具：作业句柄经 HMAC 签名并绑定 project ID、asset ID、voice type、格式和文本哈希；CodeArts 决定查询时机，MCP 内部不循环等待。submit/query 后以结构化 `voice.job.updated` 保存 signed handle 和状态，新 CodeArts 会话可从 Relay 回放后继续 query 或 materialize；Workbench 不保存或显示完整 handle，普通日志也不得包含它。素材化只接受配置白名单中的 HTTPS 音频主机，并检查 Content-Type、64 MiB 上限、媒体魔数、格式和 SHA-256。
 

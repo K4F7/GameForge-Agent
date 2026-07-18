@@ -125,11 +125,11 @@ GAMEFORGE_SPEC_MODEL=qwen3.6-flash
 
 `get_gameforge_capabilities` 始终注册，返回本次 MCP 进程实际可用的国产模型、媒体和工程能力布尔快照，不返回密钥、Token、主机白名单或本机路径。CodeArts 将它发布为 `capabilities.ready` 后，Workbench 才把对应 Provider 标记为“本次 MCP 已配置”；未收到事件时显示等待，完整依赖链缺一项时显示未配置。
 
-Provider HTTP 适配器统一使用有界超时和结构化错误。百炼、Freesound GET 与 TTS 查询/下载可对 408、429、5xx、超时和网络错误最多尝试三次；认证、授权和普通请求错误立即失败。Seedream 生图与 TTS submit 默认只发送一次，因为官方没有可核验的幂等保证，避免模糊网络失败造成重复计费任务。完整依据与边界见 [国产模型与游戏媒体资产策略](docs/model-media-strategy.md)。
+Provider HTTP 适配器统一使用有界超时和结构化错误。百炼、Freesound GET 与 TTS 查询/下载可对 408、429、5xx、超时和网络错误最多尝试三次；认证、授权和普通请求错误立即失败。Seedream 生图、MiniMax 配乐与 TTS submit 默认只发送一次，因为官方没有可核验的幂等保证，避免模糊网络失败造成重复计费任务。完整依据与边界见 [国产模型与游戏媒体资产策略](docs/model-media-strategy.md)。
 
 当前国产 SOTA、Artificial Analysis/LMArena/OpenCompass、SWE-bench/Terminal-Bench、视觉/生图/TTS 榜单和 oh-my-opencode 改名状态的交叉评估见 [2026-07 模型评估](docs/model-evaluation-2026-07.md)。榜单只作为先验；宿主实际模型列表与 GameForge 同 Task 证据优先。
 
-[`config/model-routing.example.json`](config/model-routing.example.json) 是无密钥的国产模型角色/类别路由建议，并由 `modelRoutingPolicySchema` 与集成测试验证。当前 CodeArts 账号真实列出的模型按工种分配：DeepSeek V3.2 负责玩法代码，GLM-5 负责剧情对白，GLM-5.1 负责独立复核；Seedream 负责美术，豆包 TTS 负责配音，Freesound 负责常见音效检索。MiniMax Music 2.6 配乐路由在确定性适配器、纯音乐效果和商用授权验收前保持 `planned`，公共解析函数不会返回它。Kimi K3 只用于宿主确实提供时的长上下文、视觉和跨宿主评估。配置中的期望模型不能替代宿主 `models` 输出，实验必须记录实际生效模型。
+[`config/model-routing.example.json`](config/model-routing.example.json) 是无密钥的国产模型角色/类别路由建议，并由 `modelRoutingPolicySchema` 与集成测试验证。当前 CodeArts 账号真实列出的模型按工种分配：DeepSeek V3.2 负责玩法代码，GLM-5 负责剧情对白，GLM-5.1 负责独立复核；Seedream 负责美术，豆包 TTS 负责配音，Freesound 负责常见音效检索，MiniMax Music 2.6 负责纯音乐配乐。Kimi K3 只用于宿主确实提供时的长上下文、视觉和跨宿主评估。配置中的期望模型不能替代宿主 `models` 输出，实验必须记录实际生效模型。
 
 启用许可证过滤的音效搜索工具时，在启动MCP服务的进程环境中设置：
 
@@ -154,7 +154,7 @@ GAMEFORGE_CHROME_EXECUTABLE=C:\Program Files\Google\Chrome\Application\chrome.ex
 
 同一输出目录还注册 `get_project_assets`，用于 CodeArts 重启后读取并验证已落盘 Manifest，补发缺失的 `asset.ready`，而不是重复生成或下载已有素材。
 
-图片、Freesound preview 和已完成的 TTS 素材都支持显式替换：先读取 Manifest，再对同一 `assetId` 传入 `mode: "replace"` 与当前 `expectedRevision`。Asset Store 会在锁内再次执行 revision CAS、校验旧文件哈希并切换文件与 Manifest；成功后 revision 增加且仍发布 `asset.ready`。明显 stale 的图片/音效替换会在云 Provider 调用前拒绝，TTS 会先本地验签提取 assetId。替换不会按角色猜测目标，也不会覆盖未纳入 Manifest 的现有文件。
+图片、Freesound preview、MiniMax 配乐和已完成的 TTS 素材都支持显式替换：先读取 Manifest，再对同一 `assetId` 传入 `mode: "replace"` 与当前 `expectedRevision`。Asset Store 会在锁内再次执行 revision CAS、校验旧文件哈希并切换文件与 Manifest；成功后 revision 增加且仍发布 `asset.ready`。明显 stale 的图片/音效/配乐替换会在云 Provider 调用前拒绝，TTS 会先本地验签提取 assetId。替换不会按角色猜测目标，也不会覆盖未纳入 Manifest 的现有文件。
 
 首次创建和替换都会在任何临时媒体写入前创建 0600 的 `.gameforge/assets.transaction.json`。若 MCP 进程在切换中途终止，`recover_project_assets` 会在写锁内验证日志、Manifest revision/规范哈希和媒体哈希：旧 Manifest 仍权威时删除属于未提交 create 的孤儿，或回滚 replace；新 Manifest 已权威时完成清理。未知版本、第三种状态或任何哈希冲突均保守拒绝。该工具不调用云 Provider，OpenCode 权限继承未匹配 `gameforge_*` 的默认 `ask`。
 
@@ -188,6 +188,16 @@ GAMEFORGE_IMAGE_REFERENCE_HOSTS=example-oss.cn-beijing.aliyuncs.com
 ```
 
 只有同时设置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 和上述三个必填变量时，MCP 才注册 `request_image_asset`。其角色只能是 `player`、`collectible`、`hazard` 或 `background`；无效音频角色会在调用 Seedream 前被 MCP Schema 拒绝。Seedream 等生图模型输出的角色图片会在生成游戏中归一化到固定显示尺寸与碰撞体，不让源分辨率改变玩法尺度。Freesound 与输出目录均配置后，还会注册 `import_sound_asset`；它只下载搜索结果中的官方 preview，不把 Token 拼入 URL，也不替代需要 OAuth2 的原始文件下载接口。选择 `collect-sound` 或 `hit-sound` 时按音效入库，明确选择 `bgm` 时按音乐入库；生成游戏会在玩家第一次交互后循环播放 BGM。
+
+启用 MiniMax Music 2.6 纯音乐配乐：
+
+```text
+MINIMAX_API_KEY=<MiniMax API key>
+GAMEFORGE_MUSIC_MODEL=music-2.6
+GAMEFORGE_MUSIC_LICENSE=<当前账号与用途对应的输出许可说明>
+```
+
+同时配置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 后才注册 `generate_music_asset`。工具固定使用官方 HTTPS API、非流式 hex MP3、`is_instrumental=true`，不发送歌词，也不自动重试生成 POST；成功素材以唯一 `bgm` 角色进入 Manifest。官方 API 文档没有直接授予通用商用权，`GAMEFORGE_MUSIC_LICENSE` 必须由账号持有人按实际套餐和用途确认，不能填写猜测值。
 
 启用火山引擎异步长文本配音：
 

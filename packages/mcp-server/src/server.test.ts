@@ -359,6 +359,71 @@ describe("GameForge MCP server", () => {
     }
   });
 
+  it("registers music generation only when provider and store are both configured", async () => {
+    const calls: string[] = [];
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer({
+      musicProvider: {
+        id: "minimax",
+        capability: "audio-generation",
+        async execute(request) {
+          calls.push(`provider:${request.assetId}`);
+          return {
+            bytes: new Uint8Array([0x49, 0x44, 0x33, 0x04]),
+            mimeType: "audio/mpeg" as const,
+            provenance: {
+              assetId: request.assetId,
+              kind: "music" as const,
+              origin: "generated" as const,
+              provider: "minimax",
+              model: "music-2.6",
+              prompt: request.prompt,
+              license: "account-confirmed-output-terms",
+              sha256: "e".repeat(64),
+            },
+          };
+        },
+      },
+      assetStore: {
+        async store(request) {
+          calls.push(`store:${request.role}`);
+          return {
+            entry: {
+              assetId: request.provenance.assetId,
+              kind: "music",
+              role: "bgm",
+              path: "assets/music/theme.mp3",
+              mimeType: "audio/mpeg",
+              bytes: request.bytes.length,
+              sha256: request.provenance.sha256,
+              provenance: request.provenance,
+            },
+            manifestRevision: 1,
+          };
+        },
+      },
+    });
+    const client = new Client({ name: "gameforge-music-test", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const capabilities = await client.callTool({ name: "get_gameforge_capabilities", arguments: {} });
+      if (!Array.isArray(capabilities.content)) throw new Error("Expected capability content array.");
+      const first = capabilities.content[0];
+      if (first?.type !== "text") throw new Error("Expected capability snapshot text.");
+      expect(JSON.parse(first.text)).toMatchObject({ providers: { music: { provider: "minimax", ready: true } } });
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("generate_music_asset");
+      expect((await client.callTool({
+        name: "generate_music_asset",
+        arguments: { projectId: "safety-sprint", assetId: "music/theme", prompt: "Instrumental theme" },
+      })).isError).not.toBe(true);
+      expect(calls).toEqual(["provider:music/theme", "store:bgm"]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("registers image materialization only when provider and store are both configured", async () => {
     const calls: string[] = [];
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

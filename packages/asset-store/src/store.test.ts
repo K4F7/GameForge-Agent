@@ -176,6 +176,37 @@ afterEach(async () => {
 });
 
 describe("ProjectAssetStore", () => {
+  it("stores generated MiniMax music as the unique Laya BGM asset", async () => {
+    const { root, store } = await douyinFixture();
+    const hash = createHash("sha256").update(mp3).digest("hex");
+    const stored = await store.store({
+      projectId: "safety-sprint",
+      bytes: mp3,
+      mimeType: "audio/mpeg",
+      role: "bgm",
+      provenance: {
+        assetId: "music/main-theme",
+        kind: "music",
+        origin: "generated",
+        provider: "minimax",
+        model: "music-2.6",
+        prompt: "Instrumental casual game loop",
+        license: "account-confirmed-output-terms",
+        sha256: hash,
+      },
+    });
+    expect(stored).toMatchObject({
+      manifestRevision: 1,
+      entry: { kind: "music", role: "bgm", path: "assets/music/main-theme.mp3", mimeType: "audio/mpeg" },
+    });
+    expect(await readFile(path.join(root, "safety-sprint", "assets", "resources", "assets", "music", "main-theme.mp3")))
+      .toEqual(Buffer.from(mp3));
+    await expect(store.read("safety-sprint")).resolves.toMatchObject({
+      revision: 1,
+      assets: [{ role: "bgm", provenance: { provider: "minimax", model: "music-2.6" } }],
+    });
+  });
+
   it("stores the same logical asset paths in the Laya resources tree for Douyin projects", async () => {
     const { root, store } = await douyinFixture();
     await expect(store.store(imageRequest())).resolves.toMatchObject({

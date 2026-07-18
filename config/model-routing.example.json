@@ -78,7 +78,7 @@
       "primary": { "provider": "minimax", "mode": "model", "model": "music-2.6", "capabilities": ["music-generation"] },
       "fallbacks": [],
       "reasoning": "none",
-      "availability": "planned"
+      "availability": "enabled"
     }
   }
 }

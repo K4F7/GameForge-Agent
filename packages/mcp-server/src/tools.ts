@@ -11,6 +11,8 @@ import type {
   FreesoundPreviewResult,
   SeedreamImageRequest,
   SeedreamImageResult,
+  MinimaxMusicRequest,
+  MinimaxMusicResult,
   DraftGameSpecRequest,
   DraftGameSpecResult,
   SubmitAsyncTtsRequest,
@@ -18,7 +20,7 @@ import type {
   AsyncTtsJobResult,
   AsyncTtsAudioResult,
 } from "@gameforge/providers";
-import type { ImageGenerationProvider, SoundSearchProvider } from "@gameforge/contracts";
+import type { AudioGenerationProvider, ImageGenerationProvider, SoundSearchProvider } from "@gameforge/contracts";
 import type { StoreAssetRequest, StoreAssetResult } from "@gameforge/asset-store";
 import type {
   GamePreviewRequest,
@@ -302,6 +304,39 @@ export async function importSoundAssetTool(
         text: JSON.stringify({
           error: "sound_asset_import_failed",
           message: error instanceof Error ? error.message : "Sound asset import failed.",
+        }),
+      }],
+    };
+  }
+}
+
+export async function generateMusicAssetTool(
+  provider: AudioGenerationProvider<MinimaxMusicRequest, MinimaxMusicResult>,
+  store: AssetStore,
+  request: MinimaxMusicRequest & { projectId: string } & AssetWriteControl,
+): Promise<CallToolResult> {
+  try {
+    const { projectId, mode, expectedRevision, ...generationRequest } = request;
+    await assertAssetWritePrecondition(store, projectId, generationRequest.assetId, mode, expectedRevision);
+    const generated = await provider.execute(generationRequest);
+    const stored = await store.store({
+      projectId,
+      bytes: generated.bytes,
+      mimeType: generated.mimeType,
+      provenance: generated.provenance,
+      role: "bgm",
+      ...(mode === undefined ? {} : { mode }),
+      ...(expectedRevision === undefined ? {} : { expectedRevision }),
+    });
+    return { content: [{ type: "text", text: JSON.stringify(stored, null, 2) }] };
+  } catch (error) {
+    return {
+      isError: true,
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          error: "music_asset_generation_failed",
+          message: error instanceof Error ? error.message : "Music asset generation failed.",
         }),
       }],
     };

@@ -290,6 +290,7 @@ export function createDemoEvents(runId: string): ReadonlyArray<RunEvent> {
           image: { provider: "volcengine-ark", ready: false },
           tts: { provider: "volcengine-speech", ready: false },
           sound: { provider: "freesound", ready: false },
+          music: { provider: "minimax", ready: false },
         },
         engineering: { assetStore: false, generator: true, douyinBuild: false, verifier: true, preview: true, runRelay: false, taskInbox: false },
       },

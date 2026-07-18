@@ -74,7 +74,7 @@ try {
     const drafted = await call("draft_game_spec", { prompt: "制作一个中文单屏收集游戏，玩家收集三枚星星并躲避一个障碍。", language: "zh-CN" });
     spec = drafted.spec as Record<string, unknown>;
   }
-  if ((selected.includes("seedream") || selected.includes("freesound") || selected.includes("tts")) && spec === undefined) {
+  if ((selected.includes("seedream") || selected.includes("freesound") || selected.includes("tts") || selected.includes("music")) && spec === undefined) {
     throw new Error("Media smoke requires qwen in --providers so the temporary project is generated from a real validated GameSpec.");
   }
   if (spec !== undefined && selected.some((provider) => provider !== "qwen")) {
@@ -103,6 +103,14 @@ try {
       report.ttsPending = true;
       throw new Error("TTS job did not reach succeeded within the bounded smoke window.");
     }
+  }
+  if (selected.includes("music")) {
+    await call("generate_music_asset", {
+      projectId,
+      assetId: "smoke-music",
+      prompt: "轻快、无歌词、适合中文休闲收集小游戏的无缝循环背景音乐",
+      watermark: false,
+    });
   }
   report.ok = true;
 } catch (error) {

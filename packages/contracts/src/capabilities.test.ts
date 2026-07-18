@@ -9,6 +9,7 @@ describe("gameforgeCapabilitySnapshotSchema", () => {
         image: { provider: "volcengine-ark", ready: false },
         tts: { provider: "volcengine-speech", ready: false },
         sound: { provider: "freesound", ready: true },
+        music: { provider: "minimax", ready: false },
       },
       engineering: { assetStore: true, generator: true, douyinBuild: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
     } as const;

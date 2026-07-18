@@ -5,6 +5,7 @@ import {
   BailianGameSpecProvider,
   FreesoundPreviewProvider,
   FreesoundProvider,
+  MinimaxMusicProvider,
   SeedreamProvider,
   VolcengineAsyncTtsProvider,
 } from "@gameforge/providers";
@@ -29,6 +30,9 @@ const toolAuditDirectory = process.env.GAMEFORGE_MCP_AUDIT_DIR?.trim();
 const seedreamApiKey = process.env.VOLCENGINE_ARK_API_KEY?.trim();
 const seedreamModel = process.env.GAMEFORGE_IMAGE_MODEL?.trim();
 const seedreamLicense = process.env.GAMEFORGE_IMAGE_LICENSE?.trim();
+const minimaxApiKey = process.env.MINIMAX_API_KEY?.trim();
+const minimaxMusicModel = process.env.GAMEFORGE_MUSIC_MODEL?.trim();
+const minimaxMusicLicense = process.env.GAMEFORGE_MUSIC_LICENSE?.trim();
 const seedreamReferenceHosts = process.env.GAMEFORGE_IMAGE_REFERENCE_HOSTS
   ?.split(",")
   .map((host) => host.trim())
@@ -97,6 +101,17 @@ if (speechApiToken !== undefined && speechApiToken.length > 0) {
     throw new Error("GAMEFORGE_TTS_AUDIO_HOSTS is required when VOLCENGINE_SPEECH_API_TOKEN is set.");
   }
 }
+if (minimaxApiKey !== undefined && minimaxApiKey.length > 0) {
+  if (projectOutputRoot === undefined || projectOutputRoot.length === 0) {
+    throw new Error("GAMEFORGE_PROJECT_OUTPUT_ROOT is required when MINIMAX_API_KEY is set.");
+  }
+  if (minimaxMusicLicense === undefined || minimaxMusicLicense.length === 0) {
+    throw new Error("GAMEFORGE_MUSIC_LICENSE is required when MINIMAX_API_KEY is set.");
+  }
+  if (minimaxMusicModel !== undefined && minimaxMusicModel !== "music-2.6" && minimaxMusicModel !== "music-2.6-free") {
+    throw new Error("GAMEFORGE_MUSIC_MODEL must be music-2.6 or music-2.6-free.");
+  }
+}
 const server = createServer({
   ...(toolAudit === undefined ? {} : { toolAudit }),
   ...(bailianApiKey === undefined || bailianApiKey.length === 0
@@ -162,6 +177,17 @@ const server = createServer({
           appId: speechAppId as string,
           license: ttsLicense as string,
           allowedAudioHosts: ttsAudioHosts as string[],
+      }),
+    }),
+  ...(minimaxApiKey === undefined || minimaxApiKey.length === 0
+    ? {}
+    : {
+        musicProvider: new MinimaxMusicProvider({
+          apiKey: minimaxApiKey,
+          license: minimaxMusicLicense as string,
+          ...(minimaxMusicModel === undefined || minimaxMusicModel.length === 0
+            ? {}
+            : { model: minimaxMusicModel as "music-2.6" | "music-2.6-free" }),
         }),
       }),
 });

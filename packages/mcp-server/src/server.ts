@@ -15,6 +15,7 @@ import {
   runIdSchema,
   imageRuntimeAssetRoleSchema,
   type ImageGenerationProvider,
+  type AudioGenerationProvider,
   type SoundSearchProvider,
   gameforgeCapabilitySnapshotSchema,
   type GameforgeCapabilitySnapshot,
@@ -24,12 +25,15 @@ import {
   freesoundSearchRequestSchema,
   freesoundPreviewRequestSchema,
   seedreamImageRequestSchema,
+  minimaxMusicRequestSchema,
   submitAsyncTtsRequestSchema,
   asyncTtsJobRequestSchema,
   type FreesoundSearchRequest,
   type FreesoundSearchResult,
   type SeedreamImageRequest,
   type SeedreamImageResult,
+  type MinimaxMusicRequest,
+  type MinimaxMusicResult,
 } from "@gameforge/providers";
 import { z } from "zod";
 import { gamePreviewRequestSchema, verifyGameRequestSchema } from "@gameforge/game-verifier";
@@ -53,6 +57,7 @@ import {
   publishRunEventsTool,
   replayGameRunTool,
   requestImageAssetTool,
+  generateMusicAssetTool,
   stopGameRunTool,
   startGamePreviewTool,
   stopGamePreviewTool,
@@ -78,6 +83,7 @@ export type CreateServerOptions = {
   gameSpecDraftProvider?: GameSpecDraftProvider;
   assetStore?: AssetStore;
   imageProvider?: ImageGenerationProvider<SeedreamImageRequest, SeedreamImageResult>;
+  musicProvider?: AudioGenerationProvider<MinimaxMusicRequest, MinimaxMusicResult>;
   soundPreviewProvider?: FreesoundPreviewToolProvider;
   asyncTtsProvider?: AsyncTtsToolProvider;
   projectVerifier?: ProjectVerifier;
@@ -120,6 +126,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       image: { provider: "volcengine-ark", ready: options.imageProvider !== undefined && options.assetStore !== undefined },
       tts: { provider: "volcengine-speech", ready: options.asyncTtsProvider !== undefined && options.assetStore !== undefined },
       sound: { provider: "freesound", ready: options.soundSearchProvider !== undefined && options.soundPreviewProvider !== undefined && options.assetStore !== undefined },
+      music: { provider: "minimax", ready: options.musicProvider !== undefined && options.assetStore !== undefined },
     },
     engineering: {
       assetStore: options.assetStore?.read !== undefined && options.assetStore.recover !== undefined,
@@ -418,6 +425,26 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         },
       },
       async (request) => importSoundAssetTool(soundPreviewProvider, assetStore, request),
+    );
+  }
+
+  if (options.musicProvider !== undefined && options.assetStore !== undefined) {
+    const musicProvider = options.musicProvider;
+    const assetStore = options.assetStore;
+    registerTool(
+      "generate_music_asset",
+      {
+        title: "Generate and store instrumental game music",
+        description:
+          "Perform one official MiniMax Music 2.6 request for instrumental MP3 and store it as the project's BGM. No automatic generation retry is performed. Replacement requires mode=replace and the current expectedRevision.",
+        inputSchema: {
+          projectId: projectIdSchema,
+          ...minimaxMusicRequestSchema.shape,
+          mode: z.enum(["create", "replace"]).optional(),
+          expectedRevision: z.number().int().nonnegative().optional(),
+        },
+      },
+      async (request) => generateMusicAssetTool(musicProvider, assetStore, request),
     );
   }
 

@@ -131,13 +131,6 @@ export const modelRoutingPolicySchema = z.strictObject({
       }
     }
   }
-  if (policy.tools.music.availability === "enabled") {
-    context.addIssue({
-      code: "custom",
-      path: ["tools", "music", "availability"],
-      message: "Music generation must remain planned until a deterministic MCP adapter is implemented and verified.",
-    });
-  }
 });
 
 export type ModelRoutingPolicy = z.infer<typeof modelRoutingPolicySchema>;

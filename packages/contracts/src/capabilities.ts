@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const providerCapabilitySchema = z.strictObject({
-  provider: z.enum(["bailian-qwen", "volcengine-ark", "volcengine-speech", "freesound"]),
+  provider: z.enum(["bailian-qwen", "volcengine-ark", "volcengine-speech", "freesound", "minimax"]),
   ready: z.boolean(),
 });
 
@@ -11,6 +11,7 @@ export const gameforgeCapabilitySnapshotSchema = z.strictObject({
     image: providerCapabilitySchema,
     tts: providerCapabilitySchema,
     sound: providerCapabilitySchema,
+    music: providerCapabilitySchema.default({ provider: "minimax", ready: false }),
   }),
   engineering: z.strictObject({
     assetStore: z.boolean(),

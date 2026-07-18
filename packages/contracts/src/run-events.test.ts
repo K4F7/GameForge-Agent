@@ -254,6 +254,7 @@ describe("run event contracts", () => {
           image: { provider: "volcengine-ark", ready: true },
           tts: { provider: "volcengine-speech", ready: false },
           sound: { provider: "freesound", ready: false },
+          music: { provider: "minimax", ready: false },
         },
         engineering: { assetStore: true, generator: true, douyinBuild: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
       },

@@ -71,6 +71,7 @@ describe("runReducer", () => {
         image: { provider: "volcengine-ark" as const, ready: false },
         tts: { provider: "volcengine-speech" as const, ready: false },
         sound: { provider: "freesound" as const, ready: true },
+        music: { provider: "minimax" as const, ready: true },
       },
       engineering: { assetStore: true, generator: true, douyinBuild: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
     };

@@ -80,10 +80,13 @@ describe("model routing policy", () => {
     expect(() => modelRoutingPolicySchema.parse(input)).toThrow("Freesound retrieval");
   });
 
-  it("keeps music generation planned until its deterministic adapter is verified", () => {
+  it("returns the verified music adapter as an executable route", () => {
     const input = policy();
     (input.tools.music as { availability: string }).availability = "enabled";
-    expect(() => modelRoutingPolicySchema.parse(input)).toThrow("must remain planned");
+    const parsed = modelRoutingPolicySchema.parse(input);
+    expect(resolveExecutableModelTargets(parsed.tools.music)).toMatchObject([
+      { provider: "minimax", model: "music-2.6" },
+    ]);
   });
 
   it("never returns executable targets for a planned route", () => {

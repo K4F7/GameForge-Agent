@@ -229,6 +229,7 @@ MCP 侧提供两个条件注册工具：
 
 - `request_image_asset`：执行一次 Seedream 官方请求，再将校验后的图片写入项目；MCP 输入只接受四个图片角色，无效的语音或音频角色在 Provider 调用前拒绝；
 - `import_sound_asset`：执行一个官方 Freesound preview 导入操作，再记录来源、许可、署名和哈希；只读 GET 可按 Provider 传输策略有限退避。
+- `generate_music_asset`：执行一次官方 MiniMax Music 2.6 非流式纯音乐请求，校验 hex MP3 后以唯一 `bgm` 角色写入项目；生成 POST 不自动重试，输出许可必须由账号持有人显式配置。
 
 两者均不重试、不修改玩法代码，也不实现 Agent 循环。
 

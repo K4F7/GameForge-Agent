@@ -9,6 +9,7 @@ import {
   getProjectAssetsTool,
   recoverProjectAssetsTool,
   generateGameProjectTool,
+  generateMusicAssetTool,
   recoverGameProjectUpdateTool,
   importSoundAssetTool,
   completeGameRunTool,
@@ -530,6 +531,56 @@ describe("validation tool handlers", () => {
 
     expect(result.isError).not.toBe(true);
     expect(classifications).toEqual(["music"]);
+  });
+
+  it("performs one instrumental music request and stores it as BGM", async () => {
+    const calls: string[] = [];
+    const bytes = new Uint8Array([0x49, 0x44, 0x33, 0x04]);
+    const result = await generateMusicAssetTool(
+      {
+        id: "minimax",
+        capability: "audio-generation",
+        async execute(request) {
+          calls.push(`generate:${request.assetId}`);
+          return {
+            bytes,
+            mimeType: "audio/mpeg",
+            provenance: {
+              assetId: request.assetId,
+              kind: "music",
+              origin: "generated",
+              provider: "minimax",
+              model: "music-2.6",
+              prompt: request.prompt,
+              license: "account-confirmed-output-terms",
+              sha256: "e".repeat(64),
+            },
+          };
+        },
+      },
+      {
+        async store(request) {
+          calls.push(`store:${request.projectId}:${request.role}`);
+          expect(request.provenance.kind).toBe("music");
+          return {
+            entry: {
+              assetId: request.provenance.assetId,
+              kind: "music",
+              role: "bgm",
+              path: "assets/music/theme.mp3",
+              mimeType: "audio/mpeg",
+              bytes: request.bytes.length,
+              sha256: request.provenance.sha256,
+              provenance: request.provenance,
+            },
+            manifestRevision: 1,
+          };
+        },
+      },
+      { projectId: "safety-sprint", assetId: "music/theme", prompt: "An instrumental puzzle loop" },
+    );
+    expect(result.isError).not.toBe(true);
+    expect(calls).toEqual(["generate:music/theme", "store:safety-sprint:bgm"]);
   });
 
   it("keeps asynchronous TTS submit, query, and materialization deterministic", async () => {

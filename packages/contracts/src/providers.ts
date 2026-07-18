@@ -134,6 +134,7 @@ export const defaultProviderConfig = providerConfigSchema.parse({
     { id: "volcengine-ark", capabilities: ["image"] },
     { id: "volcengine-speech", capabilities: ["tts"] },
     { id: "freesound", capabilities: ["sound-search"] },
+    { id: "minimax", capabilities: ["audio-generation"] },
   ],
   llm: {
     planner: { provider: "bailian", model: "qwen3.7-plus" },
@@ -147,6 +148,7 @@ export const defaultProviderConfig = providerConfigSchema.parse({
   },
   tts: { provider: "volcengine-speech" },
   soundSearch: { provider: "freesound" },
+  audioGeneration: { provider: "minimax", model: "music-2.6" },
 });
 
 export interface ProviderAdapter<

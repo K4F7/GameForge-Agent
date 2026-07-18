@@ -1,4 +1,4 @@
-export const providerNames = ["qwen", "seedream", "freesound", "tts"] as const;
+export const providerNames = ["qwen", "seedream", "freesound", "tts", "music"] as const;
 export type ProviderName = typeof providerNames[number];
 
 const requirements: Record<ProviderName, readonly string[]> = {
@@ -12,6 +12,7 @@ const requirements: Record<ProviderName, readonly string[]> = {
     "GAMEFORGE_TTS_AUDIO_HOSTS",
     "GAMEFORGE_TTS_SMOKE_VOICE",
   ],
+  music: ["MINIMAX_API_KEY", "GAMEFORGE_MUSIC_LICENSE"],
 };
 
 export function parseProviderSelection(value: string | undefined): ProviderName[] {

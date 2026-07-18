@@ -47,6 +47,7 @@ describe("GameForge doctor core", () => {
         image: { ready: true },
         tts: { ready: false },
         sound: { ready: true },
+        music: { ready: true },
       },
       engineering: { assetStore: true, generator: true, douyinBuild: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
     })).toEqual([
@@ -55,6 +56,7 @@ describe("GameForge doctor core", () => {
       "complete_game_run",
       "create_game_run",
       "generate_game_project",
+      "generate_music_asset",
       "get_game_task",
       "get_project_assets",
       "import_sound_asset",

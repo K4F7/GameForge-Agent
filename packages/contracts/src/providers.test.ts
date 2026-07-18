@@ -15,7 +15,7 @@ describe("providerConfigSchema", () => {
     });
     expect(result.image.provider).toBe("volcengine-ark");
     expect(result.tts.provider).toBe("volcengine-speech");
-    expect(result.audioGeneration).toBeUndefined();
+    expect(result.audioGeneration).toEqual({ provider: "minimax", model: "music-2.6" });
   });
 
   it("allows model IDs to be replaced without changing the schema", () => {

@@ -28,6 +28,7 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
    - `request_image_asset`：一次 Seedream 官方 API 请求并安全落盘；只选择 `player`、`collectible`、`hazard` 或 `background` 图片角色，语音和音频角色不会进入该工具 Schema；
    - `search_sound_asset`：一个 Freesound 官方搜索操作，默认 CC0；只读 HTTP 遇到明确瞬时故障时可做传输层有限退避；
    - `import_sound_asset`：一个预览导入操作并记录许可、署名和哈希；只读下载可做传输层有限退避，短音效使用 `collect-sound`/`hit-sound`，明确选作背景音乐的候选使用 `bgm`，工具会将后者记录为 `music`；
+   - `generate_music_asset`：一次 MiniMax Music 2.6 官方非流式纯音乐请求，以 hex MP3 返回并安全落盘为唯一 `bgm`；生成 POST 默认不自动重试，必须记录账号确认的输出许可；
    - `submit_voice_job`：提交一次火山长文本 TTS 作业；
    - `query_voice_job`：查询一次带签名且绑定项目的作业；
    - `materialize_voice_job`：成功后查询一次、下载一次并写入 `voice` 角色。

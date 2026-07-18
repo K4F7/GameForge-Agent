@@ -16,7 +16,7 @@ describe("committed model routing example", () => {
     expect(policy.agent.story.primary).toMatchObject({ provider: "zhipu", model: "huaweicloud-maas/GLM-5" });
     expect(policy.tools.sound.primary).toMatchObject({ provider: "freesound", mode: "retrieval" });
     expect(policy.tools.music).toMatchObject({
-      availability: "planned",
+      availability: "enabled",
       primary: { provider: "minimax", model: "music-2.6" },
     });
     expect(text).not.toMatch(/api[_-]?key|access[_-]?key|secret|token/i);

@@ -38,6 +38,7 @@ export function redactEnvironmentValues(message: string, environment: NodeJS.Pro
     "FREESOUND_API_KEY",
     "VOLCENGINE_SPEECH_API_TOKEN",
     "VOLCENGINE_SPEECH_APP_ID",
+    "MINIMAX_API_KEY",
   ];
   return sensitiveNames.reduce((result, name) => {
     const value = environment[name]?.trim();
@@ -46,7 +47,7 @@ export function redactEnvironmentValues(message: string, environment: NodeJS.Pro
 }
 
 export function expectedConditionalTools(snapshot: {
-  providers: { spec: { ready: boolean }; image: { ready: boolean }; tts: { ready: boolean }; sound: { ready: boolean } };
+  providers: { spec: { ready: boolean }; image: { ready: boolean }; tts: { ready: boolean }; sound: { ready: boolean }; music: { ready: boolean } };
   engineering: { assetStore: boolean; generator: boolean; douyinBuild: boolean; verifier: boolean; preview: boolean; runRelay: boolean; taskInbox: boolean };
 }): ReadonlyArray<string> {
   return [
@@ -54,6 +55,7 @@ export function expectedConditionalTools(snapshot: {
     ...(snapshot.providers.image.ready ? ["request_image_asset"] : []),
     ...(snapshot.providers.tts.ready ? ["submit_voice_job", "query_voice_job", "materialize_voice_job"] : []),
     ...(snapshot.providers.sound.ready ? ["search_sound_asset", "import_sound_asset"] : []),
+    ...(snapshot.providers.music.ready ? ["generate_music_asset"] : []),
     ...(snapshot.engineering.assetStore ? ["get_project_assets", "recover_project_assets"] : []),
     ...(snapshot.engineering.generator ? ["generate_game_project", "recover_game_project_update"] : []),
     ...(snapshot.engineering.douyinBuild ? ["build_douyin_mini_game"] : []),

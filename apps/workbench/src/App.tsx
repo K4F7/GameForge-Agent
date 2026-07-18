@@ -115,6 +115,7 @@ export function App(): React.JSX.Element {
       item("Seedream", capabilities?.image.ready),
       item("豆包语音", capabilities?.tts.ready),
       item("Freesound", capabilities?.sound.ready),
+      item("MiniMax 音乐", capabilities?.music.ready),
     ];
   }, [runState.capabilities]);
 
