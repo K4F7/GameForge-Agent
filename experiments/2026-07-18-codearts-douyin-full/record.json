@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "codearts-douyin-local-production",
+  "definitionFingerprint": "ef2ba388e180d0061da51917362d187106ff347703902f5c52c05ebde7eb4330",
+  "client": {
+    "name": "codearts",
+    "version": "26.6.2",
+    "model": "huaweicloud-maas/deepseek-v3.2",
+    "provider": "huaweicloud-maas"
+  },
+  "taskId": "task-275499c9-be18-4ec5-9d0a-36175e60e806",
+  "runId": "run-codearts-douyin-20260718-2217",
+  "terminalStatus": "completed",
+  "durationMs": 268782,
+  "events": {
+    "count": 6,
+    "types": {
+      "run.started": 1,
+      "capabilities.ready": 1,
+      "spec.ready": 1,
+      "gameplay.verified": 1,
+      "build.ready": 1,
+      "run.completed": 1
+    }
+  },
+  "tools": {
+    "count": 16,
+    "names": [
+      "create_game_task",
+      "claim_game_task",
+      "bind_mcp_audit_context",
+      "replay_game_run",
+      "get_gameforge_capabilities",
+      "get_agent_model_route",
+      "validate_game_spec",
+      "publish_run_events",
+      "generate_game_project",
+      "verify_minigame_gameplay",
+      "build_douyin_mini_game",
+      "complete_game_run",
+      "get_game_task"
+    ],
+    "errors": 0
+  },
+  "toolAudit": {
+    "sessionId": "21391924-00ba-4ab1-9a2e-4bf4de2b5171",
+    "sha256": "36ab5c7e5ee2b12d9d1163d119ece0038a8089ff35bdf1bdf203d884b632cdbb",
+    "taskId": "task-275499c9-be18-4ec5-9d0a-36175e60e806",
+    "runId": "run-codearts-douyin-20260718-2217"
+  },
+  "minigame": {
+    "projectId": "codearts-douyin-arcade-20260718-2217",
+    "target": "douyin-mini-game",
+    "genre": "arcade",
+    "gameplay": {
+      "passed": true,
+      "scenarios": [
+        {
+          "name": "genre-win",
+          "outcome": "won",
+          "actions": 3
+        },
+        {
+          "name": "timeout-loss",
+          "outcome": "lost",
+          "actions": 1
+        }
+      ],
+      "durationMs": 122
+    },
+    "build": {
+      "passed": true,
+      "cliVersion": "3.4.0",
+      "fileCount": 14,
+      "totalBytes": 1112075,
+      "mainPackageBytes": 1112075,
+      "subpackageCount": 0,
+      "deviceOrientation": "portrait",
+      "assetManifestRevision": 0,
+      "assetCount": 0,
+      "stdoutTruncated": false,
+      "stderrTruncated": false
+    }
+  },
+  "humanInterventions": [
+    "Allowed eight local GameForge tools in the ignored non-interactive experiment config.",
+    "Restored the tracked CodeArts context file after host initialization rewrote it.",
+    "Reviewed one unexpected sandboxed timestamp shell call and the final absolute-path disclosure."
+  ],
+  "failure": "none",
+  "evidence": [
+    "experiments/2026-07-18-codearts-douyin-full/result.md"
+  ]
+}

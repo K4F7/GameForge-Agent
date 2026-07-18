@@ -1,0 +1,16 @@
+{
+  "benchmarkId": "codearts-douyin-local-production",
+  "prompt": "制作一个45秒内可完成的中文抖音街机收集小游戏，使用程序化素材，并完成本地逻辑验收与LayaAir构建。",
+  "language": "zh-CN",
+  "target": {
+    "genre": "collect",
+    "platform": "douyin-mini-game",
+    "runtimeGenre": "arcade",
+    "durationSeconds": 45,
+    "collectibleCount": 3,
+    "hazardCount": 2,
+    "startingLives": 3,
+    "movementSpeed": 220,
+    "mediaEnabled": false
+  }
+}

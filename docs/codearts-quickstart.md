@@ -111,6 +111,8 @@ bun run dev:local
 
 OpenCode-compatible 启动器把客户端工作目录固定为仓库根，并只生成本地 MCP 官方字段 `type`、`command`、`environment`、`enabled`、`timeout`；CodeArts 26.6.2 会拒绝非标准 `cwd`。变量未设置时动态配置不注入 token 引用；显式设置为空白会在写配置前 fail-closed，非空 token 继续执行 32–512 字符校验。
 
+通过 `bun run codearts` 使用动态配置时，可在新终端显式设置 `GAMEFORGE_LAYAIR_CLI`。启动器只接受绝对、已存在、非符号链接的普通文件并将路径写入被忽略的临时配置；未设置时不猜测用户目录或 PATH，显式空白会直接拒绝。MCP 启动后仍会独立核验 CLI 版本精确为 3.4.0。
+
 `GAMEFORGE_MCP_AUDIT_DIR` 默认关闭；配置绝对目录后，每次 MCP 启动会创建一个唯一 JSON 会话文件。文件只含工具名、顺序、时间、耗时和结果状态，不含调用参数或返回值。`bun run codearts`/`bun run opencode` 启动器会自动使用仓库忽略目录；手工配置时不要指向同步盘或公开目录。单次隔离实验也可改用未存在的绝对 `GAMEFORGE_MCP_AUDIT_FILE`，两者不能同时配置。
 
 若 Relay 进程启用了 `GAMEFORGE_RUN_RELAY_TOKEN`，CodeArts 启动环境与 Relay 必须使用同一个至少 32 字符的值；手工 MCP 配置可在本机私有 `env` 中增加该项，但不得提交。仓库生成的 OpenCode 配置只保存 `{env:GAMEFORGE_RUN_RELAY_TOKEN}` 引用。Workbench 不接收此秘密；带认证的浏览器访问必须通过同源认证代理。
@@ -142,6 +144,8 @@ draft_game_spec({ prompt: task.prompt, language: task.language })
 
 同日又使用非交互 CodeArts、内置 `huaweicloud-maas/GLM-5.1` 和临时无持久化 Relay，真实完成 `create_game_task → claim_game_task → replay_game_run`。MCP Audit 记录三个成功调用，Relay 只有唯一 `run.started`；CodeArts 未修改项目或调用媒体 Provider。记录见 `experiments/2026-07-18-codearts-headless-task-create/`。这证明无 GUI Task 启动协议，不等同于完整小游戏生产、平台构建或真机验收。
 
+随后使用非交互 CodeArts、内置 `huaweicloud-maas/deepseek-v3.2`、隔离持久化 Relay 和 LayaAir CLI 3.4.0，真实完成抖音小游戏 Task 创建、认领、规格、项目生成、双终态玩法验收、静态构建、事件发布与 Run 完成。16 次 GameForge MCP 调用均成功；严格 record 只保存脱敏摘要。记录见 `experiments/2026-07-18-codearts-douyin-full/`。该证据证明无 GUI 本地生产链路，不证明开发者工具、真机、上传、审核或发布。
+
 官方 MCP 页面访问日期：2026-07-16。
 
 仓库已用真实 MCP SDK 客户端验证上述 `node + dist/index.js + env` stdio 方式可以握手并列出无密钥基础工具；`bun run dev:local` 也已取得游戏、Workbench 和 Relay 三个 HTTP 200。可复现记录见 `experiments/2026-07-16-local-bootstrap/`。
@@ -171,7 +175,7 @@ Task 到达终态后，先准备严格 `definition.json` 与人工核验的 `met
 bun run benchmark -- capture definition.json metadata.json --task-id <Task-ID> --mcp-audit <会话审计.json> --out codearts.record.json
 ```
 
-命令从配置的 `GAMEFORGE_RUN_RELAY_URL`（默认 loopback 8787）分页读取完整保留期事件，校验定义、sequence 和终态。客户端版本、模型和人工干预只能写入 metadata；缺失工具历史时必须使用 `count: null`/`errors: null`，不得从 RunEvent 数量推断。选择已由 `bind_mcp_audit_context` 绑定的 MCP 会话 audit 后，capture 会将其 Task/Run 与 Relay 权威 Task 交叉核验，再机械计算工具总数、唯一名称与错误数；未绑定、错绑定或截断文件都会被拒绝，record 同时保存绑定 ID、session ID 与内容 SHA-256。输出采用 allowlist 摘要，不包含 Task Prompt、调用参数/结果、日志正文、素材提示、URL、绝对路径或 TTS job handle，并拒绝覆盖已有 record。
+命令从配置的 `GAMEFORGE_RUN_RELAY_URL`（默认 loopback 8787）分页读取完整保留期事件，校验定义、sequence 和终态。客户端版本、模型和人工干预只能写入 metadata；缺失工具历史时必须使用 `count: null`/`errors: null`，不得从 RunEvent 数量推断。选择已由 `bind_mcp_audit_context` 绑定的 MCP 会话 audit 后，capture 会将其 Task/Run 与 Relay 权威 Task 交叉核验，再机械计算工具总数、唯一名称与错误数；未绑定、错绑定或截断文件都会被拒绝。浏览器完成证据来自 `verification.ready`；小游戏定义还必须显式写入 `platform` 和 `runtimeGenre`，并由同项目、同 target、同规格参数且顺序正确的 `gameplay.verified` 与 `build.ready` 共同证明。record 保存绑定 ID、session ID 与内容 SHA-256，采用 allowlist 摘要，不包含 Task Prompt、调用参数/结果、日志正文、素材提示、URL、绝对路径、模板哈希或 TTS job handle，并拒绝覆盖已有 record。
 
 ## 官方文档
 
