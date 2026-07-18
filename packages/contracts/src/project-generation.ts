@@ -10,12 +10,14 @@ export const projectIdSchema = z
 
 export const projectGenerationModeSchema = z.enum(["dry-run", "apply"]);
 export const projectGenerationOperationSchema = z.enum(["create", "update"]);
+export const gamePlatformTargetSchema = z.enum(["web", "douyin-mini-game"]);
 
 export const projectGenerationRequestSchema = z.strictObject({
   projectId: projectIdSchema,
   spec: gameSpecSchema,
   mode: projectGenerationModeSchema.default("dry-run"),
   operation: projectGenerationOperationSchema.default("create"),
+  target: gamePlatformTargetSchema.default("web"),
   expectedPlanSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
 });
 
@@ -31,6 +33,7 @@ export const generatedProjectFileSchema = z.strictObject({
 export const generatedProjectPlanSchema = z.strictObject({
   generatorVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
   projectId: projectIdSchema,
+  target: gamePlatformTargetSchema.default("web"),
   specSha256: z.string().regex(/^[a-f0-9]{64}$/),
   planSha256: z.string().regex(/^[a-f0-9]{64}$/),
   files: z.array(generatedProjectFileSchema).min(1).max(30),
@@ -40,6 +43,7 @@ export const managedGeneratedProjectManifestSchema = z.strictObject({
   schemaVersion: z.literal("1.0"),
   generatorVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
   projectId: projectIdSchema,
+  target: gamePlatformTargetSchema.default("web"),
   specSha256: z.string().regex(/^[a-f0-9]{64}$/),
   planSha256: z.string().regex(/^[a-f0-9]{64}$/),
   files: z.array(generatedProjectFileSchema).min(1).max(30),
@@ -63,6 +67,7 @@ export const projectGenerationResultSchema = z.strictObject({
 });
 
 export type ProjectGenerationRequest = z.input<typeof projectGenerationRequestSchema>;
+export type GamePlatformTarget = z.infer<typeof gamePlatformTargetSchema>;
 export type GeneratedProjectPlan = z.infer<typeof generatedProjectPlanSchema>;
 export type ProjectGenerationResult = z.infer<typeof projectGenerationResultSchema>;
 export type ManagedGeneratedProjectManifest = z.infer<typeof managedGeneratedProjectManifestSchema>;

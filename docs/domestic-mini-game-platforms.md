@@ -35,7 +35,9 @@
 
 ## 引擎判断
 
-没有找到当前 Phaser 4 的官方抖音/微信导出链。Phaser 官网可见的微信文章来自 2018 年且针对旧版 Phaser CE，只能作为历史参考。Cocos Creator 与 LayaAir 对国内小游戏有明确构建支持；LayaAir 官方列出微信、抖音、OPPO、vivo、小米和支付宝。但第一步仍按 ADR-0002 做有退出条件的 Phaser 兼容性 spike，失败后再用同一 GameSpec 做独立 LayaAir/Cocos 后端对照。
+没有找到当前 Phaser 4 的官方抖音/微信导出链。Phaser 官网可见的微信文章来自 2018 年且针对旧版 Phaser CE，只能作为历史参考。实际 Phaser 4.2.1 无 DOM 动态导入探测已失败，并确认广泛依赖浏览器媒体、Canvas、RAF 和可见性 API，因此不继续浏览器 shim 路线。
+
+抖音官方明确写明 Cocos、Laya、Egret 已完成适配并可直接导出抖音小游戏，也提供 Unity WebGL/Wasm、Godot专题和原生 JavaScript/单 Canvas 路线，但没有指定唯一推荐引擎。GameForge V1 选择 LayaAir 3.2 作为首选抖音生成后端：它使用 TypeScript，输出 `game.js`、`game.json`、`projectconfig.json`、`microgame-adapter.js`，并提供可脚本化的 `bytedancegame` 构建任务。Cocos Creator 3.8 LTS 作为成熟编辑器/Asset Bundle 分包备选；Unity WebGL 需要 C#/Unity/StarkSDK 和 Wasm 工具链，留给已有 Unity 项目而非 TS 第一版。
 
 ## 官方资料
 
@@ -50,4 +52,3 @@
 - [快手小游戏 API](https://ks-game-docs.kuaishou.com/minigame/api/api.html)
 - [LayaAir 抖音小游戏发布](https://layaair.layabox.com/3.x/doc/released/miniGame/byteDance/readme.html)
 - [Cocos Creator 微信小游戏发布](https://docs.cocos.com/creator/3.2/manual/zh/editor/publish/publish-wechatgame.html)
-

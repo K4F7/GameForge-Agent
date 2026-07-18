@@ -37,6 +37,7 @@ describe("GameProjectGenerator", () => {
 
     expect(first).toEqual(second);
     expect(first.mode).toBe("dry-run");
+    expect(first.plan.target).toBe("web");
     expect(first.plan.files.map((file) => file.path)).toContain("src/main.ts");
     expect(first.plan.files.map((file) => file.path)).toContain("src/game.ts");
     expect(first.plan.files.map((file) => file.path)).toContain("public/assets/manifest.json");
@@ -61,9 +62,16 @@ describe("GameProjectGenerator", () => {
     const manifest = JSON.parse(await readFile(
       path.join(root, "safety-sprint", ".gameforge", "manifest.json"),
       "utf8",
-    )) as { planSha256: string; files: unknown[] };
+    )) as { planSha256: string; target: string; files: unknown[] };
     expect(manifest.planSha256).toBe(result.plan.planSha256);
+    expect(manifest.target).toBe("web");
     expect(manifest.files).toHaveLength(result.plan.files.length - 1);
+  });
+
+  it("refuses to pretend the declared Douyin target is implemented", async () => {
+    const { generator } = await createGenerator();
+    await expect(generator.execute({ projectId: "douyin-spike", spec, target: "douyin-mini-game" }))
+      .rejects.toThrow("platform compatibility generator");
   });
 
   it("never overwrites an existing project", async () => {

@@ -152,6 +152,7 @@ describe("validation tool handlers", () => {
       plan: {
         generatorVersion: "0.1.0",
         projectId: "safety-sprint",
+        target: "web",
         specSha256: "a".repeat(64),
         planSha256: "b".repeat(64),
         files: [{ path: "src/main.ts", bytes: 100, sha256: "c".repeat(64) }],

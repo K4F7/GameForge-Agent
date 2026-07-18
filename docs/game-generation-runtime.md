@@ -14,7 +14,7 @@ GameForge把“理解需求”和“生成工程”分开：
 
 ## 项目生成器
 
-`@gameforge/generator`生成一个独立的Phaser 4 + Vite + TypeScript项目。固定输出包括：
+`@gameforge/generator` 0.8.0 在生成请求、计划和托管 Manifest 中记录显式 target。旧请求默认 `web`，继续生成独立的 Phaser 4 + Vite + TypeScript 项目；`douyin-mini-game` 已进入严格契约，但在兼容生成器完成前会明确拒绝 dry-run/apply，不能把浏览器文件伪装成平台产物。固定 Web 输出包括：
 
 - `game-spec.json`
 - `src/main.ts`
@@ -36,6 +36,8 @@ GameForge把“理解需求”和“生成工程”分开：
 | `strategy` | 较慢的指令式移动、状态切换、时间与风险权衡 |
 
 这是供CodeArts继续修改的稳定可玩基线，不声称仅凭GameSpec中几句自然语言就能无损表达任意玩法。
+
+抖音小游戏静态发布检查由 `@gameforge/minigame-validator` 提供。对已有平台工程执行 `bun run minigame:validate -- <绝对工程路径>`，会验证 `game.js`、`game.json`、`project.config.json`、方向与超时字段、符号链接边界、分包根唯一性、4 MiB 主包和 20 MiB 总目录限制，并拒绝入口直接依赖 `document.*`/`window.*`。它不运行抖音 Runtime，也不能替代开发者工具与真机验收。
 
 GameSpec 可选 `gameplay` 对象提供四个有界核心参数：`collectibleCount` 1–10、`hazardCount` 0–6、`startingLives` 1–9、`movementSpeed` 100–360 px/s。旧规格缺少该对象时保持各 genre 的 0.2.x 默认值；百炼严格 JSON Schema 要求新草案显式给出四项。生成运行时用它们控制实际出生数量、生命和连续移动速度，platformer 与 arena 均消费同一规格，不只是 Workbench 展示字段。
 

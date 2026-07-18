@@ -17,7 +17,15 @@ describe("project generation contracts", () => {
       projectId: "safety-sprint",
       mode: "dry-run",
       operation: "create",
+      target: "web",
     });
+  });
+
+  it("accepts only explicit supported platform targets", () => {
+    expect(projectGenerationRequestSchema.parse({ projectId: "safety-sprint", spec, target: "douyin-mini-game" }).target)
+      .toBe("douyin-mini-game");
+    expect(projectGenerationRequestSchema.safeParse({ projectId: "safety-sprint", spec, target: "wechat-mini-game" }).success)
+      .toBe(false);
   });
 
   it("accepts an explicit managed update CAS without a force mode", () => {

@@ -180,6 +180,18 @@
         "vitest": "4.1.10",
       },
     },
+    "packages/minigame-validator": {
+      "name": "@gameforge/minigame-validator",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "4.4.3",
+      },
+      "devDependencies": {
+        "@types/node": "22.20.1",
+        "typescript": "7.0.2",
+        "vitest": "4.1.10",
+      },
+    },
     "packages/opencode-plugin": {
       "name": "@gameforge/opencode-plugin",
       "version": "0.1.0",
@@ -303,6 +315,8 @@
     "@gameforge/integrations": ["@gameforge/integrations@workspace:integrations"],
 
     "@gameforge/mcp-server": ["@gameforge/mcp-server@workspace:packages/mcp-server"],
+
+    "@gameforge/minigame-validator": ["@gameforge/minigame-validator@workspace:packages/minigame-validator"],
 
     "@gameforge/opencode-plugin": ["@gameforge/opencode-plugin@workspace:packages/opencode-plugin"],
 

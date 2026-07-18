@@ -20,7 +20,7 @@ import path from "node:path";
 import { z } from "zod";
 import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
 
-const GENERATOR_VERSION = "0.7.0";
+const GENERATOR_VERSION = "0.8.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 
 type GeneratedFile = { path: string; content: string; bytes: number; sha256: string };
@@ -78,10 +78,11 @@ export class GameProjectGenerator {
 
   async execute(request: ProjectGenerationRequest): Promise<ProjectGenerationResult> {
     const input = projectGenerationRequestSchema.parse(request);
-    const generated = createGeneratedFiles(input.projectId, input.spec);
+    const generated = createGeneratedFiles(input.projectId, input.spec, input.target);
     const plan = generatedProjectPlanSchema.parse({
       generatorVersion: GENERATOR_VERSION,
       projectId: input.projectId,
+      target: input.target,
       specSha256: generated.specSha256,
       planSha256: generated.planSha256,
       files: generated.files.map(({ path: filePath, bytes, sha256 }) => ({
@@ -370,11 +371,14 @@ export class GameProjectGenerator {
   }
 }
 
-function createGeneratedFiles(projectId: string, spec: GameSpec): {
+function createGeneratedFiles(projectId: string, spec: GameSpec, target: "web" | "douyin-mini-game"): {
   files: ReadonlyArray<GeneratedFile>;
   specSha256: string;
   planSha256: string;
 } {
+  if (target !== "web") {
+    throw new Error("douyin-mini-game target is declared but requires the platform compatibility generator before apply or dry-run.");
+  }
   const specContent = `${JSON.stringify(spec, null, 2)}\n`;
   const baseFiles = [
     file(".npmrc", "registry=https://registry.npmjs.org/\n"),
@@ -418,15 +422,19 @@ function createGeneratedFiles(projectId: string, spec: GameSpec): {
   ].sort((left, right) => left.path.localeCompare(right.path));
 
   const specSha256 = sha256(specContent);
-  const planSha256 = sha256(JSON.stringify(baseFiles.map(({ path: filePath, bytes, sha256: hash }) => ({
-    path: filePath,
-    bytes,
-    sha256: hash,
-  }))));
+  const planSha256 = sha256(JSON.stringify({
+    target,
+    files: baseFiles.map(({ path: filePath, bytes, sha256: hash }) => ({
+      path: filePath,
+      bytes,
+      sha256: hash,
+    })),
+  }));
   const manifest = file(".gameforge/manifest.json", `${JSON.stringify({
     schemaVersion: "1.0",
     generatorVersion: GENERATOR_VERSION,
     projectId,
+    target,
     specSha256,
     planSha256,
     files: baseFiles.map(({ path: filePath, bytes, sha256: hash }) => ({

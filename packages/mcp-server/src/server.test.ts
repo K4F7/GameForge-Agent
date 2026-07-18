@@ -152,6 +152,7 @@ describe("GameForge MCP server", () => {
       plan: {
         generatorVersion: "0.1.0",
         projectId: "safety-sprint",
+        target: "web",
         specSha256: "a".repeat(64),
         planSha256: "b".repeat(64),
         files: [{ path: "game-spec.json", bytes: 10, sha256: "c".repeat(64) }],

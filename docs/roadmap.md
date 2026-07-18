@@ -6,8 +6,9 @@
 
 第一版首要发布目标已从泛浏览器游戏收窄为抖音小游戏；微信小游戏是第二导出目标。浏览器 Phaser 项目继续承担快速预览和 Chrome 回归，但不能作为小游戏平台验收。决策与官方约束见 [ADR-0002](./decisions/0002-domestic-mini-game-v1.md)。
 
-- [ ] 为生成请求、计划和 Manifest 增加显式 `web` / `douyin-mini-game` target；
-- [ ] 完成 Phaser 4 抖音小游戏单 Canvas/无 DOM 兼容性 spike，并按退出条件决定是否保留；
+- [x] 为生成请求、计划和 Manifest 增加显式 `web` / `douyin-mini-game` target；旧请求默认 `web`，未实现平台 target 会明确失败；
+- [x] 完成 Phaser 4 抖音小游戏无 DOM 兼容性 spike；动态导入与初始化触发广泛浏览器依赖，按 ADR 停止 shim 路线；
+- [ ] 以 LayaAir 3.2 `bytedancegame` 为首选后端，用同一 GameSpec 与 Cocos Creator 3.8 LTS 对照工具链、包体、真机和 CodeArts 修复成本；
 - [ ] 生成 `game.js`、`game.json`、`project.config.json` 与平台适配入口；
 - [ ] 增加主包 4MB、整体 20MB、文件类型、远程脚本、HTTPS 域名与 capability 静态校验；
 - [ ] 在抖音小游戏开发者工具完成导入、预览和上传前检查；
