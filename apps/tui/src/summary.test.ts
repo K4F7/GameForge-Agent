@@ -25,15 +25,25 @@ describe("terminal run summary", () => {
         },
       },
       {
-        type: "verification.ready", runId: "run-1", sequence: 4, emittedAt, projectId: "safety-sprint",
+        type: "build.ready", runId: "run-1", sequence: 4, emittedAt, projectId: "safety-sprint",
+        target: "douyin-mini-game", cliVersion: "3.4.0", passed: true, fileCount: 16,
+        totalBytes: 1_108_438, mainPackageBytes: 1_108_438, subpackages: [], deviceOrientation: "portrait",
+        capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+        allowedNetworkHosts: [], assetManifestRevision: 1, assetCount: 1,
+        stdoutTruncated: false, stderrTruncated: false,
+      },
+      {
+        type: "verification.ready", runId: "run-1", sequence: 5, emittedAt, projectId: "safety-sprint",
         passed: true, outcome: "won", score: 2, lives: 3, remainingSeconds: 50,
         evidencePath: ".gameforge/verification/proof.png", canvas: { width: 960, height: 540 },
         diagnostics: { consoleErrors: 0, pageErrors: 0, failedRequests: 0 }, actionsExecuted: 7, durationMs: 1000,
       },
-      { type: "run.completed", runId: "run-1", sequence: 5, emittedAt },
+      { type: "run.completed", runId: "run-1", sequence: 6, emittedAt },
     ];
     const summary = summarizeRun(events);
     expect(summary).toMatchObject({ status: "succeeded", locale: "en-US", title: "Safety Sprint", assets: 1 });
+    expect(summary?.build).toMatchObject({ cliVersion: "3.4.0", fileCount: 16, assetCount: 1 });
+    expect(formatSummary(summary!)).toContain("Douyin build: LayaAir 3.4.0 portrait files=16");
     expect(formatSummary(summary!)).toContain("Verification: passed won score=2 lives=3");
   });
 

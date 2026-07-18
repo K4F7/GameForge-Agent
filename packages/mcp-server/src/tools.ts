@@ -37,6 +37,7 @@ import type {
   ReplayRunEventsRequest,
   WireRunEvent,
   GameforgeCapabilitySnapshot,
+  RunEvent,
 } from "@gameforge/contracts";
 import type { ZodType } from "zod";
 import type { DouyinMiniGameBuildResult } from "@gameforge/minigame-validator";
@@ -104,7 +105,26 @@ export async function buildDouyinMiniGameTool(
 ): Promise<CallToolResult> {
   try {
     const result = await builder.build(projectId);
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    const buildEvent: Omit<Extract<RunEvent, { type: "build.ready" }>, "runId" | "sequence" | "emittedAt"> = {
+      type: "build.ready",
+      projectId: result.projectId,
+      target: "douyin-mini-game",
+      cliVersion: result.cliVersion,
+      passed: true,
+      fileCount: result.validation.fileCount,
+      totalBytes: result.validation.totalBytes,
+      mainPackageBytes: result.validation.mainPackageBytes,
+      subpackages: [...result.validation.subpackages],
+      deviceOrientation: result.validation.deviceOrientation,
+      capabilities: result.validation.capabilities,
+      allowedNetworkHosts: [...result.validation.allowedNetworkHosts],
+      assetManifestRevision: result.validation.assetManifestRevision,
+      assetCount: result.validation.assetCount,
+      stdoutTruncated: result.stdoutTruncated,
+      stderrTruncated: result.stderrTruncated,
+    };
+    const { outputPath: _outputPath, ...safeResult } = result;
+    return { content: [{ type: "text", text: JSON.stringify({ ...safeResult, buildEvent }, null, 2) }] };
   } catch {
     return {
       isError: true,

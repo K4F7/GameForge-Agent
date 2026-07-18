@@ -160,7 +160,7 @@ GAMEFORGE_CHROME_EXECUTABLE=C:\Program Files\Google\Chrome\Application\chrome.ex
 
 Asset Store 的互斥锁包含 0600 owner metadata。MCP 崩溃遗留的锁只有在 metadata 完整、hostname 与当前机器一致、PID 明确不存在且创建时间超过 10 分钟时才自动恢复；活进程、近期锁、异地主机、空锁或旧格式一律保守拒绝。不要用脚本无条件删除 `.gameforge/assets.lock`。
 
-验收工具只处理生成器托管的项目，动作脚本最多 100 步；运行时阻断外部网络，捕获控制台错误、页面异常和失败请求，并等待 telemetry 与非空白 Canvas 首帧后再读取 `window.__GAMEFORGE_TEST__` 和截图，避免把刚创建但尚未渲染的 Canvas 误报为通过。证据写入项目的 `.gameforge/verification/`。CodeArts 将验收摘要发布为 `verification.ready`，Workbench 显示胜负状态、诊断计数和项目内证据路径；绝对路径与诊断全文不进入浏览器事件流。CodeArts 可将 `start_game_preview` 返回的 URL 原样发布为 `preview.ready` RunEvent；Workbench 收到后自动切换预览。事件 URL 只接受 HTTPS 或 loopback HTTP，iframe 使用受限 sandbox。
+验收工具只处理生成器托管的项目，动作脚本最多 100 步；运行时阻断外部网络，捕获控制台错误、页面异常和失败请求，并等待 telemetry 与非空白 Canvas 首帧后再读取 `window.__GAMEFORGE_TEST__` 和截图，避免把刚创建但尚未渲染的 Canvas 误报为通过。证据写入项目的 `.gameforge/verification/`。CodeArts 将验收摘要发布为 `verification.ready`；抖音官方构建与静态校验通过后另发布无主机路径的 `build.ready`，Workbench/TUI 显示 CLI、包体、方向与媒体 revision。绝对路径、原始构建日志与诊断全文不进入浏览器事件流。CodeArts 可将 `start_game_preview` 返回的 URL 原样发布为 `preview.ready` RunEvent；Workbench 收到后自动切换预览。事件 URL 只接受 HTTPS 或 loopback HTTP，iframe 使用受限 sandbox。
 
 启用 Run Relay 生命周期工具：
 
@@ -200,7 +200,7 @@ GAMEFORGE_TTS_AUDIO_HOSTS=<控制台/真实 query 响应确认的音频 CDN 主�
 
 不要猜测 `GAMEFORGE_TTS_AUDIO_HOSTS`；以当前账号真实返回的 `audio_url` 主机为准，只填写主机名。配置完整后注册 `submit_voice_job`、`query_voice_job` 和 `materialize_voice_job`。作业句柄经过 HMAC 签名并绑定项目；MCP 不会自动轮询，完成音频只允许从服务端白名单中的 HTTPS 主机下载。
 
-工作台连接本地任务/RunEvent中继时设置`VITE_AGENT_BASE_URL=http://127.0.0.1:8787/`。配置后“提交给 CodeArts”会把当前 Prompt 写入受限任务收件箱，并原子创建对应 Run；MCP 同时注册 `list_game_tasks`、`get_game_task`、`claim_game_task`，供 CodeArts 读取和幂等认领。CodeArts 发布 `spec.ready`、`asset.ready`、`preview.ready` 后，Workbench 分别展示真实 GameSpec、已落盘资产及当前游戏预览；场景结构和地图视图由已验证 GameSpec 与资产清单确定性派生，明确标注真实绑定、程序化回退和“模板示意”边界。未收到事件时显示等待状态，不使用硬编码生产结果。Relay 不调用模型，也不自动执行任务。完整接口、安全边界和验证步骤见[确定性游戏生成与运行事件服务](docs/game-generation-runtime.md)。
+工作台连接本地任务/RunEvent中继时设置`VITE_AGENT_BASE_URL=http://127.0.0.1:8787/`。配置后“提交给 CodeArts”会把当前 Prompt 写入受限任务收件箱，并原子创建对应 Run；MCP 同时注册 `list_game_tasks`、`get_game_task`、`claim_game_task`，供 CodeArts 读取和幂等认领。CodeArts 发布 `spec.ready`、`asset.ready`、`build.ready`、`preview.ready` 后，Workbench 分别展示真实 GameSpec、已落盘资产、抖音产物摘要及当前游戏预览；场景结构和地图视图由已验证 GameSpec 与资产清单确定性派生，明确标注真实绑定、程序化回退和“模板示意”边界。未收到事件时显示等待状态，不使用硬编码生产结果。Relay 不调用模型，也不自动执行任务。完整接口、安全边界和验证步骤见[确定性游戏生成与运行事件服务](docs/game-generation-runtime.md)。
 
 Workbench 的 SSE 出错或出现 sequence 缺口时会关闭旧连接，从最后连续游标执行 Schema 回放，再重建 stream；自动恢复采用 0.5/1/2/4/8 秒有限退避，409/410 游标冲突直接停止。耗尽后界面显示“恢复连接”，由用户从同一游标显式重试。该循环只恢复确定性 RunEvent，不调用模型或 MCP 工具。
 

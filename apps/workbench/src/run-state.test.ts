@@ -303,9 +303,36 @@ describe("runReducer", () => {
         manifestRevision: 1,
         entry,
       },
+      {
+        type: "build.ready",
+        runId: "run-1",
+        sequence: 4,
+        projectId: "safety-sprint",
+        target: "douyin-mini-game",
+        cliVersion: "3.4.0",
+        passed: true,
+        fileCount: 16,
+        totalBytes: 1_108_438,
+        mainPackageBytes: 1_108_438,
+        subpackages: [],
+        deviceOrientation: "portrait",
+        capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+        allowedNetworkHosts: [],
+        assetManifestRevision: 1,
+        assetCount: 1,
+        stdoutTruncated: false,
+        stderrTruncated: false,
+      },
     ];
     const state = events.reduce(runReducer, createInitialRunState());
     expect(state.spec).toEqual(spec);
     expect(state.assets).toEqual([entry]);
+    expect(state.build).toMatchObject({
+      projectId: "safety-sprint",
+      cliVersion: "3.4.0",
+      fileCount: 16,
+      assetCount: 1,
+      deviceOrientation: "portrait",
+    });
   });
 });

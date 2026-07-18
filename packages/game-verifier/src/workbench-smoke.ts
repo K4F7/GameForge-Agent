@@ -124,6 +124,8 @@ async function runWorkbenchSmokeOnce(): Promise<SmokeReport> {
     await page.locator(".section-title .count-badge").filter({ hasText: "1" }).waitFor({ state: "visible" });
     assertions.push("asset manifest count is 1");
     await expectText(page, "验收通过", assertions);
+    await expectText(page, "构建通过", assertions);
+    await expectText(page, "LayaAir 3.4.0", assertions);
     const progress = await page.getByLabel("阶段完成百分比").getAttribute("value");
     if (progress !== "100") throw new Error(`Workbench progress was not complete: ${progress ?? "missing"}`);
     assertions.push("phase progress is 100%");
@@ -193,14 +195,20 @@ function fixtureEvents(runId: string, previewUrl: string): WireRunEvent[] {
     { type: "phase.completed", runId, sequence: 6, emittedAt, phase: "assets", detail: "Runtime assets prepared" },
     { type: "phase.completed", runId, sequence: 7, emittedAt, phase: "code", detail: "Managed source generated" },
     { type: "phase.completed", runId, sequence: 8, emittedAt, phase: "build", detail: "Managed build passed" },
-    { type: "phase.completed", runId, sequence: 9, emittedAt, phase: "test", detail: "Automated tests passed" },
-    { type: "phase.completed", runId, sequence: 10, emittedAt, phase: "visual", detail: "Browser verification passed" },
-    { type: "preview.ready", runId, sequence: 11, emittedAt, projectId: "workbench-smoke", url: previewUrl },
-    { type: "verification.ready", runId, sequence: 12, emittedAt, projectId: "workbench-smoke", passed: true,
+    { type: "build.ready", runId, sequence: 9, emittedAt, projectId: "workbench-smoke",
+      target: "douyin-mini-game", cliVersion: "3.4.0", passed: true, fileCount: 16,
+      totalBytes: 1_108_438, mainPackageBytes: 1_108_438, subpackages: [], deviceOrientation: "portrait",
+      capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+      allowedNetworkHosts: [], assetManifestRevision: 1, assetCount: 1,
+      stdoutTruncated: false, stderrTruncated: false },
+    { type: "phase.completed", runId, sequence: 10, emittedAt, phase: "test", detail: "Automated tests passed" },
+    { type: "phase.completed", runId, sequence: 11, emittedAt, phase: "visual", detail: "Browser verification passed" },
+    { type: "preview.ready", runId, sequence: 12, emittedAt, projectId: "workbench-smoke", url: previewUrl },
+    { type: "verification.ready", runId, sequence: 13, emittedAt, projectId: "workbench-smoke", passed: true,
       outcome: "won", score: 1, lives: 3, remainingSeconds: 42,
       evidencePath: ".gameforge/verification/workbench-smoke.png", canvas: { width: 960, height: 540 },
       diagnostics: { consoleErrors: 0, pageErrors: 0, failedRequests: 0 }, actionsExecuted: 2, durationMs: 250 },
-    { type: "log.appended", runId, sequence: 13, emittedAt, source: "agent", level: "success",
+    { type: "log.appended", runId, sequence: 14, emittedAt, source: "agent", level: "success",
       message: "Deterministic Workbench browser smoke completed." },
   ];
 }

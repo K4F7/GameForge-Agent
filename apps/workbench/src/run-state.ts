@@ -53,6 +53,23 @@ export type VerificationState = {
   durationMs: number;
 };
 
+export type BuildState = {
+  projectId: string;
+  target: "douyin-mini-game";
+  cliVersion: "3.4.0";
+  fileCount: number;
+  totalBytes: number;
+  mainPackageBytes: number;
+  subpackages: ReadonlyArray<{ root: string; bytes: number }>;
+  deviceOrientation: "portrait" | "landscape";
+  capabilities: { network: boolean; login: boolean; share: boolean; ads: boolean; payments: boolean };
+  allowedNetworkHosts: readonly string[];
+  assetManifestRevision: number;
+  assetCount: number;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+};
+
 export type RunState = {
   runId: string | null;
   language: "zh-CN" | "en-US" | null;
@@ -65,6 +82,7 @@ export type RunState = {
   assets: ReadonlyArray<RuntimeAssetEntry>;
   voiceJobs: ReadonlyArray<VoiceJobState>;
   verification: VerificationState | null;
+  build: BuildState | null;
   capabilities: GameforgeCapabilitySnapshot | null;
 };
 
@@ -97,6 +115,7 @@ export function createInitialRunState(): RunState {
     assets: [],
     voiceJobs: [],
     verification: null,
+    build: null,
     capabilities: null,
   };
 }
@@ -160,6 +179,26 @@ export function runReducer(state: RunState, event: RunStateAction): RunState {
       return {
         ...eventState,
         preview: { projectId: event.projectId, url: event.url },
+      };
+    case "build.ready":
+      return {
+        ...eventState,
+        build: {
+          projectId: event.projectId,
+          target: event.target,
+          cliVersion: event.cliVersion,
+          fileCount: event.fileCount,
+          totalBytes: event.totalBytes,
+          mainPackageBytes: event.mainPackageBytes,
+          subpackages: event.subpackages,
+          deviceOrientation: event.deviceOrientation,
+          capabilities: event.capabilities,
+          allowedNetworkHosts: event.allowedNetworkHosts,
+          assetManifestRevision: event.assetManifestRevision,
+          assetCount: event.assetCount,
+          stdoutTruncated: event.stdoutTruncated,
+          stderrTruncated: event.stderrTruncated,
+        },
       };
     case "verification.ready":
       return {

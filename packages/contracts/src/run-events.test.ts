@@ -215,6 +215,33 @@ describe("run event contracts", () => {
     }).success).toBe(false);
   });
 
+  it("accepts a secret-free Douyin build summary and rejects host paths or oversized packages", () => {
+    const event = {
+      type: "build.ready",
+      runId: "run-1",
+      sequence: 4,
+      emittedAt,
+      projectId: "safety-sprint",
+      target: "douyin-mini-game",
+      cliVersion: "3.4.0",
+      passed: true,
+      fileCount: 16,
+      totalBytes: 1_108_438,
+      mainPackageBytes: 1_108_438,
+      subpackages: [],
+      deviceOrientation: "portrait",
+      capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+      allowedNetworkHosts: [],
+      assetManifestRevision: 2,
+      assetCount: 2,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    } as const;
+    expect(runEventSchema.safeParse(event).success).toBe(true);
+    expect(runEventSchema.safeParse({ ...event, outputPath: "D:/generated/safety-sprint/release" }).success).toBe(false);
+    expect(runEventSchema.safeParse({ ...event, mainPackageBytes: 4 * 1024 * 1024 + 1 }).success).toBe(false);
+  });
+
   it("accepts a secret-free MCP capability snapshot event", () => {
     expect(runEventSchema.safeParse({
       type: "capabilities.ready",

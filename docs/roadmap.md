@@ -59,6 +59,7 @@
 - [x] 显示阶段进度、最近日志、GameSpec locale、资产与验证摘要；
 - [x] 支持从游标回放后连接 SSE，显式报告序列缺口和 Relay 断线；
 - [x] 支持按 Task ID 自动解析 Run 并跟随至终态，无需用户猜测 Run ID；
+- [x] Workbench 与 TUI 消费持久化 `build.ready`，显示抖音 CLI、包体、方向、能力和媒体 revision，不泄露绝对输出路径；
 - [x] 保持 URL 只允许 HTTPS 或 loopback HTTP，禁止凭据、query 和 fragment；
 - [x] 增加 Windows/macOS/Linux CI，以及交互 TTY 的退出键、resize 重绘和 raw mode 清理测试。
 

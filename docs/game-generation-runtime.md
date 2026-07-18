@@ -121,10 +121,11 @@ URL 契约只允许 HTTPS，或主机严格为 `localhost`、`127.0.0.1`、`[::1
 - `capabilities.ready`：携带本次 MCP 实际注册能力的无密钥快照；Provider `ready` 只有在其完整调用链可用时为 true；
 - `spec.ready`：携带完整 GameSpec，并再次经过 `gameSpecSchema`；
 - `asset.ready`：携带项目 ID、正整数 manifest revision 和一个完整 `runtimeAssetEntrySchema` 条目。
+- `build.ready`：携带通过校验的抖音产物摘要，包括 LayaAir 版本、文件/包体/分包、方向、平台能力、域名和媒体 Manifest revision；禁止绝对输出路径与原始日志。
 - `voice.job.updated`：携带项目 ID、asset ID、签名异步作业 handle 与 processing/succeeded/failed；用于 CodeArts 中断恢复，不写入普通日志。
 - `verification.ready`：携带一次浏览器验收的有界摘要和项目内 PNG 路径；用于会话恢复和 Workbench 验收卡，不携带绝对路径或诊断全文。
 
-CodeArts 在 `validate_game_spec` 成功后发布 `spec.ready`；图片、音效或配音工具真正完成安全落盘后，原样使用返回的 `entry` 与 `manifestRevision` 发布 `asset.ready`。候选搜索结果、纯日志和未写入文件的 Provider 响应不能伪装成已就绪资产。
+CodeArts 在 `validate_game_spec` 成功后发布 `spec.ready`；图片、音效或配音工具真正完成安全落盘后，原样使用返回的 `entry` 与 `manifestRevision` 发布 `asset.ready`。抖音构建和 validator 都成功后，把 `build_douyin_mini_game` 的无路径 `buildEvent` 补齐 Run envelope 后发布；MCP 对外响应不包含 builder 内部绝对 `outputPath`。候选搜索结果、纯日志、未写入文件的 Provider 响应或失败构建不能伪装成已就绪产物。
 
 素材迭代复用同一 `asset.ready` 契约。CodeArts 先读取 `get_project_assets`，再以明确 assetId、`mode: "replace"` 和当前 `expectedRevision` 调用原媒体工具；Asset Store 在同一写锁内再次 CAS，旧文件哈希必须与 Manifest 一致。成功时完整 entry 替换、revision 增加；Workbench reducer 按 assetId 归并新 entry，用户刷新 preview iframe 后模板重新获取 Manifest。revision 冲突不会自动重放 Provider。
 
@@ -180,7 +181,7 @@ CodeArts 新会话调用一次不带 status 的 `list_game_tasks`，优先恢复
 VITE_AGENT_BASE_URL=http://127.0.0.1:8787/
 ```
 
-配置后工作台显示 Run ID 和 Prompt，“提交给 CodeArts”调用 `/tasks`，展示返回的 Task ID，并从 `run.started` 游标立即连接对应 SSE。连接已有 Run 仍可独立使用。GameSpec 与资产面板分别只消费 `spec.ready` 和 `asset.ready`，新 Run 会清空旧产物；未收到时明确显示等待。收到序列缺口时不会跳过事件，而是从最后连续游标自动回放并重建 stream；有限重试耗尽后显示手动恢复入口。收到 `preview.ready` 后，预览 iframe 自动切换到事件中的项目 URL；iframe 仅开放脚本与 pointer lock，不发送 referrer。未收到事件时才使用 `VITE_GAME_PREVIEW_URL`（默认 `http://localhost:5173/`）作为回退。
+配置后工作台显示 Run ID 和 Prompt，“提交给 CodeArts”调用 `/tasks`，展示返回的 Task ID，并从 `run.started` 游标立即连接对应 SSE。连接已有 Run 仍可独立使用。GameSpec、资产面板和抖音构建卡分别只消费 `spec.ready`、`asset.ready` 与 `build.ready`，新 Run 会清空旧产物；构建卡显示 CLI 版本、方向、文件数、主包/总量、媒体数量和 Manifest revision，不显示主机路径。收到序列缺口时不会跳过事件，而是从最后连续游标自动回放并重建 stream；有限重试耗尽后显示手动恢复入口。收到 `preview.ready` 后，预览 iframe 自动切换到事件中的项目 URL；iframe 仅开放脚本与 pointer lock，不发送 referrer。未收到事件时才使用 `VITE_GAME_PREVIEW_URL`（默认 `http://localhost:5173/`）作为回退。
 
 ## 语言链路与生成运行时
 

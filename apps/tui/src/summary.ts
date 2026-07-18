@@ -8,6 +8,16 @@ export type RunSummary = {
   title?: string;
   assets: number;
   previewUrl?: string;
+  build?: {
+    projectId: string;
+    cliVersion: "3.4.0";
+    fileCount: number;
+    totalBytes: number;
+    mainPackageBytes: number;
+    assetCount: number;
+    assetManifestRevision: number;
+    deviceOrientation: "portrait" | "landscape";
+  };
   verification?: { passed: boolean; outcome: "running" | "won" | "lost"; score: number; lives: number };
   phases: Partial<Record<string, string>>;
   logs: string[];
@@ -41,6 +51,18 @@ export function summarizeRun(events: readonly WireRunEvent[]): RunSummary | null
       case "spec.ready": summary.locale = event.spec.locale ?? "zh-CN"; summary.title = event.spec.title; break;
       case "asset.ready": assetIds.add(event.entry.assetId); summary.assets = assetIds.size; break;
       case "preview.ready": summary.previewUrl = event.url; break;
+      case "build.ready":
+        summary.build = {
+          projectId: event.projectId,
+          cliVersion: event.cliVersion,
+          fileCount: event.fileCount,
+          totalBytes: event.totalBytes,
+          mainPackageBytes: event.mainPackageBytes,
+          assetCount: event.assetCount,
+          assetManifestRevision: event.assetManifestRevision,
+          deviceOrientation: event.deviceOrientation,
+        };
+        break;
       case "verification.ready":
         summary.verification = {
           passed: event.passed,
@@ -68,8 +90,19 @@ export function formatSummary(summary: RunSummary): string {
       `${summary.verification.outcome} score=${summary.verification.score} lives=${summary.verification.lives}`,
     );
   }
+  if (summary.build !== undefined) {
+    lines.push(
+      `Douyin build: LayaAir ${summary.build.cliVersion} ${summary.build.deviceOrientation} ` +
+      `files=${summary.build.fileCount} main=${formatMiB(summary.build.mainPackageBytes)} ` +
+      `total=${formatMiB(summary.build.totalBytes)} assets=${summary.build.assetCount}@r${summary.build.assetManifestRevision}`,
+    );
+  }
   const phases = Object.entries(summary.phases);
   if (phases.length > 0) lines.push(`Phases: ${phases.map(([key, value]) => `${key}=${value}`).join(" ")}`);
   if (summary.logs.length > 0) lines.push("Logs:", ...summary.logs.map((line) => `  ${line}`));
   return lines.join("\n");
+}
+
+function formatMiB(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(2)}MiB`;
 }

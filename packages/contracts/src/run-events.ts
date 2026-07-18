@@ -5,6 +5,7 @@ import { runtimeAssetEntrySchema } from "./runtime-assets.js";
 import { assetIdSchema } from "./assets.js";
 import { signedJobHandleSchema } from "./providers.js";
 import { gameforgeCapabilitySnapshotSchema } from "./capabilities.js";
+import { douyinPlatformPolicySchema } from "./douyin-platform.js";
 
 export const runIdSchema = z
   .string()
@@ -61,6 +62,11 @@ const verificationDiagnosticCountsSchema = z.strictObject({
   failedRequests: z.number().int().min(0).max(100),
 });
 
+const douyinBuildSubpackageSchema = z.strictObject({
+  root: z.string().trim().min(1).max(200).regex(/^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/),
+  bytes: z.number().int().nonnegative().max(20 * 1024 * 1024),
+});
+
 const eventBaseShape = {
   runId: runIdSchema,
   sequence: z.number().int().positive(),
@@ -97,6 +103,25 @@ export const runEventSchema = z.discriminatedUnion("type", [
     type: z.literal("preview.ready"),
     projectId: projectIdSchema,
     url: gamePreviewUrlSchema,
+  }),
+  z.strictObject({
+    ...eventBaseShape,
+    type: z.literal("build.ready"),
+    projectId: projectIdSchema,
+    target: z.literal("douyin-mini-game"),
+    cliVersion: z.literal("3.4.0"),
+    passed: z.literal(true),
+    fileCount: z.number().int().positive().max(100_000),
+    totalBytes: z.number().int().nonnegative().max(20 * 1024 * 1024),
+    mainPackageBytes: z.number().int().nonnegative().max(4 * 1024 * 1024),
+    subpackages: z.array(douyinBuildSubpackageSchema).max(100),
+    deviceOrientation: z.enum(["portrait", "landscape"]),
+    capabilities: douyinPlatformPolicySchema.shape.capabilities,
+    allowedNetworkHosts: douyinPlatformPolicySchema.shape.allowedNetworkHosts,
+    assetManifestRevision: z.number().int().nonnegative(),
+    assetCount: z.number().int().nonnegative().max(1_000),
+    stdoutTruncated: z.boolean(),
+    stderrTruncated: z.boolean(),
   }),
   z.strictObject({
     ...eventBaseShape,

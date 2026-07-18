@@ -22,6 +22,7 @@ import {
   verifyGameProjectTool,
   stopGameRunTool,
   searchSoundAssetTool,
+  buildDouyinMiniGameTool,
   validateAssetManifestTool,
   validateGameSpecTool,
   validateProviderConfigTool,
@@ -38,6 +39,38 @@ function readJsonResult(result: ReturnType<typeof validateGameSpecTool>): unknow
 }
 
 describe("validation tool handlers", () => {
+  it("returns a path-free build event payload beside the local Douyin output", async () => {
+    const result = await buildDouyinMiniGameTool({
+      async build(projectId) {
+        return {
+          projectId,
+          cliVersion: "3.4.0",
+          outputPath: "D:/private/generated/safe-game/release/bytedancegame",
+          validation: {
+            platform: "douyin-mini-game",
+            passed: true,
+            projectId,
+            fileCount: 16,
+            totalBytes: 1_108_438,
+            mainPackageBytes: 1_108_438,
+            subpackages: [],
+            deviceOrientation: "portrait",
+            capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+            allowedNetworkHosts: [],
+            assetManifestRevision: 2,
+            assetCount: 2,
+          },
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        };
+      },
+    }, "safe-game");
+    const parsed = readJsonResult(result) as { outputPath?: string; buildEvent?: Record<string, unknown> };
+    expect(parsed).not.toHaveProperty("outputPath");
+    expect(parsed.buildEvent).toMatchObject({ type: "build.ready", projectId: "safe-game", assetManifestRevision: 2 });
+    expect(parsed.buildEvent).not.toHaveProperty("outputPath");
+  });
+
   it("returns validated game specifications", () => {
     const result = validateGameSpecTool({
       title: "Safety Sprint",

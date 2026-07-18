@@ -597,6 +597,24 @@ export function App(): React.JSX.Element {
           <progress className="progress-track" value={progress} max={100} aria-label="阶段完成百分比" />
           <div className="progress-caption"><span>阶段进度</span><strong>{progress}%</strong></div>
 
+          {runState.build !== null && (
+            <section className="verification-card passed build-card" aria-label="抖音小游戏构建报告">
+              <header><span>DOUYIN ARTIFACT</span><strong>构建通过</strong></header>
+              <div className="verification-outcome"><b>LayaAir {runState.build.cliVersion}</b><span>{runState.build.deviceOrientation}</span></div>
+              <dl>
+                <div><dt>文件</dt><dd>{runState.build.fileCount}</dd></div>
+                <div><dt>主包</dt><dd>{(runState.build.mainPackageBytes / 1024 / 1024).toFixed(2)}M</dd></div>
+                <div><dt>总量</dt><dd>{(runState.build.totalBytes / 1024 / 1024).toFixed(2)}M</dd></div>
+                <div><dt>资产</dt><dd>{runState.build.assetCount}</dd></div>
+              </dl>
+              <code title={runState.build.projectId}>{runState.build.projectId}</code>
+              <small>
+                Manifest r{runState.build.assetManifestRevision} · {runState.build.subpackages.length} 分包
+                {(runState.build.stdoutTruncated || runState.build.stderrTruncated) ? " · 日志已截断" : ""}
+              </small>
+            </section>
+          )}
+
           {runState.verification !== null && (
             <section className={`verification-card ${runState.verification.passed ? "passed" : "failed"}`} aria-label="浏览器验收报告">
               <header><span>BROWSER PROOF</span><strong>{runState.verification.passed ? "验收通过" : "验收失败"}</strong></header>
