@@ -12,7 +12,11 @@ import {
 import { ProjectAssetStore } from "@gameforge/asset-store";
 import { GamePreviewManager, GameVerifier } from "@gameforge/game-verifier";
 import { GameProjectGenerator, ManagedLayaGameplayVerifier } from "@gameforge/generator";
-import { DouyinMiniGameBuilder, WechatMiniGameBuilder } from "@gameforge/minigame-validator";
+import {
+  DouyinMiniGameBuilder,
+  DouyinMiniGameCliProbe,
+  WechatMiniGameBuilder,
+} from "@gameforge/minigame-validator";
 import { RunRelayClient } from "@gameforge/run-relay/client";
 import { createServer } from "./server.js";
 import { McpToolAuditRecorder } from "./tool-audit.js";
@@ -26,6 +30,8 @@ const freesoundApiKey = process.env.FREESOUND_API_KEY?.trim();
 const freesoundApiUsage = process.env.FREESOUND_API_USAGE?.trim();
 const projectOutputRoot = process.env.GAMEFORGE_PROJECT_OUTPUT_ROOT?.trim();
 const layaAirCliPath = process.env.GAMEFORGE_LAYAIR_CLI?.trim();
+const douyinMiniGameCliInput = process.env.GAMEFORGE_DOUYIN_MINIGAME_CLI;
+const douyinMiniGameCliPath = douyinMiniGameCliInput?.trim();
 const runRelayUrl = process.env.GAMEFORGE_RUN_RELAY_URL?.trim();
 const runRelayToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
 const toolAuditFile = process.env.GAMEFORGE_MCP_AUDIT_FILE?.trim();
@@ -58,6 +64,9 @@ const modelRoutingPolicy = await loadModelRoutingPolicy(
     ? defaultModelRoutingPolicy
     : configuredModelRoutingPolicy,
 );
+if (douyinMiniGameCliInput !== undefined && douyinMiniGameCliPath?.length === 0) {
+  throw new Error("GAMEFORGE_DOUYIN_MINIGAME_CLI must be unset or contain an absolute regular file path.");
+}
 const previewManager = projectOutputRoot === undefined || projectOutputRoot.length === 0
   ? undefined
   : new GamePreviewManager({ projectsRoot: projectOutputRoot });
@@ -161,6 +170,9 @@ const server = createServer({
   ...(runRelayClient === undefined
     ? {}
     : { runRelayClient, taskRelayClient: runRelayClient }),
+  ...(douyinMiniGameCliPath === undefined || douyinMiniGameCliPath.length === 0
+    ? {}
+    : { douyinMiniGameCliProbe: new DouyinMiniGameCliProbe({ cliPath: douyinMiniGameCliPath }) }),
   ...(seedreamApiKey === undefined || seedreamApiKey.length === 0
     ? {}
     : {

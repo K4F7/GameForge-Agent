@@ -70,6 +70,7 @@ import {
   verifyGameProjectTool,
   getGameforgeCapabilitiesTool,
   getProjectAssetsTool,
+  getDouyinMiniGameCliStatusTool,
   buildDouyinMiniGameTool,
   buildWechatMiniGameTool,
   verifyMiniGameGameplayTool,
@@ -84,6 +85,7 @@ import {
   type ProjectVerifier,
   type ProjectPreviewManager,
   type DouyinProjectBuilder,
+  type DouyinMiniGameCliStatusProvider,
   type WechatProjectBuilder,
   type LayaGameplayVerifier,
 } from "./tools.js";
@@ -100,6 +102,7 @@ export type CreateServerOptions = {
   projectPreviewManager?: ProjectPreviewManager;
   projectGenerator?: ProjectGenerator;
   douyinProjectBuilder?: DouyinProjectBuilder;
+  douyinMiniGameCliProbe?: DouyinMiniGameCliStatusProvider;
   wechatProjectBuilder?: WechatProjectBuilder;
   layaGameplayVerifier?: LayaGameplayVerifier;
   runRelayClient?: RunRelayToolClient;
@@ -145,6 +148,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       assetStore: options.assetStore?.read !== undefined && options.assetStore.recover !== undefined,
       generator: options.projectGenerator?.recover !== undefined,
       douyinBuild: options.douyinProjectBuilder !== undefined,
+      douyinCliProbe: options.douyinMiniGameCliProbe !== undefined,
       wechatBuild: options.wechatProjectBuilder !== undefined,
       gameplayVerifier: options.layaGameplayVerifier !== undefined,
       verifier: options.projectVerifier !== undefined,
@@ -303,6 +307,25 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         inputSchema: { projectId: projectIdSchema },
       },
       async ({ projectId }) => buildDouyinMiniGameTool(options.douyinProjectBuilder as DouyinProjectBuilder, projectId),
+    );
+  }
+
+  if (options.douyinMiniGameCliProbe !== undefined) {
+    registerTool(
+      "get_douyin_mini_game_cli_status",
+      {
+        title: "Inspect the configured Douyin mini-game CLI",
+        description:
+          "Run only `bin/tmg.js --version` through the official tt-minigame-ide-cli 2.1.1 entry. This tool never queries a project version, configures an account, opens DevTools, builds npm, previews, uploads, submits for review, or publishes.",
+        inputSchema: {},
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      async () => getDouyinMiniGameCliStatusTool(options.douyinMiniGameCliProbe as DouyinMiniGameCliStatusProvider),
     );
   }
 

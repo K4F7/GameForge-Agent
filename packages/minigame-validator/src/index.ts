@@ -156,6 +156,13 @@ export {
   type WechatMiniGameBuildResult,
 } from "./builder.js";
 
+export {
+  DouyinMiniGameCliProbe,
+  douyinMiniGameCliPolicy,
+  type DouyinMiniGameCliProbeOptions,
+  type DouyinMiniGameCliProbeReport,
+} from "./douyin-cli.js";
+
 async function readRequiredFile(root: string, relativePath: string, maximumBytes: number): Promise<{ text: string }> {
   const filePath = path.join(root, relativePath);
   const info = await lstat(filePath).catch(() => undefined);

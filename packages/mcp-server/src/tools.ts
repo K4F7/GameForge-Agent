@@ -44,7 +44,11 @@ import type {
   RunEvent,
 } from "@gameforge/contracts";
 import type { ZodType } from "zod";
-import type { DouyinMiniGameBuildResult, WechatMiniGameBuildResult } from "@gameforge/minigame-validator";
+import type {
+  DouyinMiniGameBuildResult,
+  DouyinMiniGameCliProbeReport,
+  WechatMiniGameBuildResult,
+} from "@gameforge/minigame-validator";
 import type { LayaGameplayVerificationReport } from "@gameforge/generator";
 
 function validationResult(
@@ -103,6 +107,30 @@ export function getGameforgeCapabilitiesTool(snapshot: GameforgeCapabilitySnapsh
 export type DouyinProjectBuilder = {
   build(projectId: string): Promise<DouyinMiniGameBuildResult>;
 };
+
+export type DouyinMiniGameCliStatusProvider = {
+  probe(): Promise<DouyinMiniGameCliProbeReport>;
+};
+
+export async function getDouyinMiniGameCliStatusTool(
+  provider: DouyinMiniGameCliStatusProvider,
+): Promise<CallToolResult> {
+  try {
+    const report = await provider.probe();
+    return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
+  } catch {
+    return {
+      isError: true,
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          code: "douyin_cli_probe_failed",
+          message: "Configured Douyin mini-game CLI failed the bounded version-only probe.",
+        }),
+      }],
+    };
+  }
+}
 
 export type WechatProjectBuilder = {
   build(projectId: string): Promise<WechatMiniGameBuildResult>;

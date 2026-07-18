@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { gameforgeCapabilitySnapshotSchema, type GameforgeCapabilitySnapshot } from "@gameforge/contracts";
-import { evaluateDoctorPreflight, expectedConditionalTools, redactEnvironmentValues } from "./doctor-core.js";
+import { evaluateDoctorPreflight, expectedConditionalTools, sanitizeDoctorDiagnostic } from "./doctor-core.js";
 
 const executeFile = promisify(execFile);
 const root = process.cwd();
@@ -70,12 +70,18 @@ if (issues.length === 0) {
       const relayProbe = await client.callTool({ name: "list_game_tasks", arguments: { limit: 1 } });
       if (relayProbe.isError === true) throw new Error("Configured Run Relay failed the bounded task-list probe.");
     }
+    if (capabilities.engineering.douyinCliProbe) {
+      const cliProbe = await client.callTool({ name: "get_douyin_mini_game_cli_status", arguments: {} });
+      if (cliProbe.isError === true) {
+        throw new Error("Configured Douyin mini-game CLI failed the bounded version-only probe.");
+      }
+    }
   } catch (error) {
     const cause = error instanceof Error ? error.message : String(error);
     const detail = serverStderr.trim().length === 0 ? cause : `${cause} ${serverStderr.trim()}`;
     issues.push({
       code: "mcp_startup",
-      message: redactEnvironmentValues(detail.replace(/[\r\n]+/g, " "), process.env).slice(0, 4_000),
+      message: sanitizeDoctorDiagnostic(detail, process.env, [root]).slice(0, 4_000),
     });
   } finally {
     await client.close().catch(() => undefined);

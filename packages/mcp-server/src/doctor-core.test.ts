@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { evaluateDoctorPreflight, expectedConditionalTools, redactEnvironmentValues } from "./doctor-core.js";
+import {
+  evaluateDoctorPreflight,
+  expectedConditionalTools,
+  redactEnvironmentValues,
+  sanitizeDoctorDiagnostic,
+} from "./doctor-core.js";
 
 describe("GameForge doctor core", () => {
   it("accepts the pinned runtimes, one Bun lock, and a built server", () => {
@@ -32,12 +37,24 @@ describe("GameForge doctor core", () => {
     const environment = {
       DASHSCOPE_API_KEY: "dashscope-secret-value",
       FREESOUND_API_KEY: "freesound-secret-value",
+      GAMEFORGE_RUN_RELAY_TOKEN: "relay-secret-value",
+      CODEARTS_CLI_AK: "codearts-access-value",
+      CODEARTS_CLI_SK: "codearts-secret-value",
+      GAMEFORGE_IMAGE_LICENSE: "private-license-value",
     };
     const message = redactEnvironmentValues(
-      "failed dashscope-secret-value / freesound-secret-value",
+      "failed dashscope-secret-value / freesound-secret-value / relay-secret-value / codearts-access-value / codearts-secret-value / private-license-value",
       environment,
     );
-    expect(message).toBe("failed [REDACTED] / [REDACTED]");
+    expect(message).toBe("failed [REDACTED] / [REDACTED] / [REDACTED] / [REDACTED] / [REDACTED] / [REDACTED]");
+  });
+
+  it("removes known local roots and collapses multiline startup diagnostics", () => {
+    expect(sanitizeDoctorDiagnostic(
+      "Error at D:\\private\\repo\\packages\\mcp-server\nsecret relay-value",
+      { GAMEFORGE_RUN_RELAY_TOKEN: "relay-value", USERPROFILE: "D:\\private" },
+      ["D:\\private\\repo"],
+    )).toBe("Error at [LOCAL_PATH]\\packages\\mcp-server secret [REDACTED]");
   });
 
   it("maps ready capabilities to the exact conditional MCP surface", () => {
@@ -49,7 +66,7 @@ describe("GameForge doctor core", () => {
         sound: { ready: true },
         music: { ready: true },
       },
-      engineering: { assetStore: true, generator: true, douyinBuild: true, wechatBuild: true, gameplayVerifier: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+      engineering: { assetStore: true, generator: true, douyinBuild: true, douyinCliProbe: true, wechatBuild: true, gameplayVerifier: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
     })).toEqual([
       "build_douyin_mini_game",
       "build_wechat_mini_game",
@@ -59,6 +76,7 @@ describe("GameForge doctor core", () => {
       "create_game_task",
       "generate_game_project",
       "generate_music_asset",
+      "get_douyin_mini_game_cli_status",
       "get_game_task",
       "get_project_assets",
       "import_sound_asset",

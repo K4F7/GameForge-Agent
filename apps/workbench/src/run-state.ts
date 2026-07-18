@@ -315,7 +315,7 @@ export function createDemoEvents(runId: string): ReadonlyArray<RunEvent> {
           sound: { provider: "freesound", ready: false },
           music: { provider: "minimax", ready: false },
         },
-        engineering: { assetStore: false, generator: true, douyinBuild: false, wechatBuild: false, gameplayVerifier: false, verifier: true, preview: true, runRelay: false, taskInbox: false },
+        engineering: { assetStore: false, generator: true, douyinBuild: false, douyinCliProbe: false, wechatBuild: false, gameplayVerifier: false, verifier: true, preview: true, runRelay: false, taskInbox: false },
       },
     },
     {

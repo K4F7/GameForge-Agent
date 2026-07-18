@@ -18,6 +18,7 @@
     "test": "bun run build:foundation && bun run --filter @gameforge/mcp-server build && bun run --filter '*' test",
     "audit": "bun audit --prod",
     "doctor": "bun run build:foundation && bun run --filter @gameforge/mcp-server build && node packages/mcp-server/dist/doctor.js",
+    "doctor:douyin": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/minigame-validator build && node packages/minigame-validator/dist/douyin-cli-doctor.js",
     "doctor:browser": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/game-verifier build && node packages/game-verifier/dist/browser-doctor.js",
     "doctor:desktop": "bun run --filter @gameforge/workbench build && bun run --filter @gameforge/desktop doctor",
     "workbench:smoke": "bun run build:foundation && bun run --filter @gameforge/workbench check && bun run --filter @gameforge/game-verifier smoke:workbench",

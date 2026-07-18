@@ -32,23 +32,45 @@ export function evaluateDoctorPreflight(input: DoctorPreflightInput): ReadonlyAr
 }
 
 export function redactEnvironmentValues(message: string, environment: NodeJS.ProcessEnv): string {
-  const sensitiveNames = [
+  const alwaysSensitiveNames = new Set([
     "DASHSCOPE_API_KEY",
     "VOLCENGINE_ARK_API_KEY",
     "FREESOUND_API_KEY",
     "VOLCENGINE_SPEECH_API_TOKEN",
     "VOLCENGINE_SPEECH_APP_ID",
     "MINIMAX_API_KEY",
-  ];
-  return sensitiveNames.reduce((result, name) => {
-    const value = environment[name]?.trim();
-    return value === undefined || value.length === 0 ? result : result.split(value).join("[REDACTED]");
-  }, message);
+  ]);
+  const privateName = /(?:^|_)(?:AK|SK|KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|LICENSE|PATH|DIR|FILE|ROOT|CLI|BIN)(?:_|$)/i;
+  const values = Object.entries(environment)
+    .filter(([name]) => alwaysSensitiveNames.has(name) || privateName.test(name))
+    .flatMap(([, value]) => value?.trim() === undefined || value.trim().length === 0 ? [] : [value.trim()])
+    .sort((left, right) => right.length - left.length);
+  return values.reduce((result, value) => result.split(value).join("[REDACTED]"), message);
+}
+
+export function sanitizeDoctorDiagnostic(
+  message: string,
+  environment: NodeJS.ProcessEnv,
+  localPaths: readonly string[] = [],
+): string {
+  const knownLocalPaths = [
+    ...localPaths,
+    environment.USERPROFILE,
+    environment.HOME,
+    environment.TEMP,
+    environment.TMP,
+  ].flatMap((value) => value?.trim() === undefined || value.trim().length === 0 ? [] : [value.trim()])
+    .sort((left, right) => right.length - left.length);
+  const withoutPaths = knownLocalPaths.reduce(
+    (result, value) => result.split(value).join("[LOCAL_PATH]"),
+    redactEnvironmentValues(message, environment),
+  );
+  return withoutPaths.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 export function expectedConditionalTools(snapshot: {
   providers: { spec: { ready: boolean }; image: { ready: boolean }; tts: { ready: boolean }; sound: { ready: boolean }; music: { ready: boolean } };
-  engineering: { assetStore: boolean; generator: boolean; douyinBuild: boolean; wechatBuild: boolean; gameplayVerifier: boolean; verifier: boolean; preview: boolean; runRelay: boolean; taskInbox: boolean };
+  engineering: { assetStore: boolean; generator: boolean; douyinBuild: boolean; douyinCliProbe: boolean; wechatBuild: boolean; gameplayVerifier: boolean; verifier: boolean; preview: boolean; runRelay: boolean; taskInbox: boolean };
 }): ReadonlyArray<string> {
   return [
     ...(snapshot.providers.spec.ready ? ["draft_game_spec"] : []),
@@ -59,6 +81,7 @@ export function expectedConditionalTools(snapshot: {
     ...(snapshot.engineering.assetStore ? ["get_project_assets", "recover_project_assets"] : []),
     ...(snapshot.engineering.generator ? ["generate_game_project", "recover_game_project_update"] : []),
     ...(snapshot.engineering.douyinBuild ? ["build_douyin_mini_game"] : []),
+    ...(snapshot.engineering.douyinCliProbe ? ["get_douyin_mini_game_cli_status"] : []),
     ...(snapshot.engineering.wechatBuild ? ["build_wechat_mini_game"] : []),
     ...(snapshot.engineering.gameplayVerifier ? ["verify_minigame_gameplay"] : []),
     ...(snapshot.engineering.verifier ? ["verify_game_project"] : []),

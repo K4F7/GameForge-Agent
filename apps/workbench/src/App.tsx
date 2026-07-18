@@ -105,6 +105,7 @@ export function App(): React.JSX.Element {
   );
   const providers = useMemo(() => {
     const capabilities = runState.capabilities?.providers;
+    const engineering = runState.capabilities?.engineering;
     const item = (name: string, ready: boolean | undefined) => ({
       name,
       detail: ready === undefined ? "等待 capability 事件" : ready ? "本次 MCP 已配置" : "本次 MCP 未配置",
@@ -116,6 +117,7 @@ export function App(): React.JSX.Element {
       item("豆包语音", capabilities?.tts.ready),
       item("Freesound", capabilities?.sound.ready),
       item("MiniMax 音乐", capabilities?.music.ready),
+      item("抖音 tmg 探针", engineering?.douyinCliProbe),
     ];
   }, [runState.capabilities]);
 

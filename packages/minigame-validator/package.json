@@ -5,7 +5,10 @@
   "type": "module",
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "bin": { "gameforge-minigame-validate": "dist/cli.js" },
+  "bin": {
+    "gameforge-minigame-validate": "dist/cli.js",
+    "gameforge-douyin-cli-doctor": "dist/douyin-cli-doctor.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit",

@@ -73,7 +73,7 @@ describe("runReducer", () => {
         sound: { provider: "freesound" as const, ready: true },
         music: { provider: "minimax" as const, ready: true },
       },
-      engineering: { assetStore: true, generator: true, douyinBuild: true, wechatBuild: true, gameplayVerifier: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+      engineering: { assetStore: true, generator: true, douyinBuild: true, douyinCliProbe: false, wechatBuild: true, gameplayVerifier: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
     };
     const state = runReducer(
       runReducer(createInitialRunState(), { type: "run.started", runId: "run-1", sequence: 1 }),

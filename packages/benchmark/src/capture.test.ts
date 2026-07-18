@@ -352,6 +352,7 @@ function douyinEvents(): WireRunEvent[] {
           assetStore: true,
           generator: true,
           douyinBuild: true,
+          douyinCliProbe: false,
           wechatBuild: true,
           gameplayVerifier: true,
           verifier: true,

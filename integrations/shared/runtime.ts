@@ -51,17 +51,8 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
       throw new Error("GAMEFORGE_RUN_RELAY_TOKEN must be unset or contain between 32 and 512 characters without newlines.");
     }
   }
-  const layaAirCliInput = process.env.GAMEFORGE_LAYAIR_CLI;
-  const layaAirCliPath = layaAirCliInput?.trim();
-  if (layaAirCliInput !== undefined) {
-    if (layaAirCliPath === undefined || layaAirCliPath.length === 0 || !path.isAbsolute(layaAirCliPath)) {
-      throw new Error("GAMEFORGE_LAYAIR_CLI must be unset or contain an absolute regular file path.");
-    }
-    const cliInfo = await lstat(layaAirCliPath).catch(() => undefined);
-    if (cliInfo === undefined || !cliInfo.isFile() || cliInfo.isSymbolicLink()) {
-      throw new Error("GAMEFORGE_LAYAIR_CLI must be unset or contain an absolute regular file path.");
-    }
-  }
+  const layaAirCliPath = await optionalRegularFileEnvironment("GAMEFORGE_LAYAIR_CLI");
+  const douyinMiniGameCliPath = await optionalRegularFileEnvironment("GAMEFORGE_DOUYIN_MINIGAME_CLI");
   const config = {
     $schema: "https://opencode.ai/config.json",
     lsp: false,
@@ -77,6 +68,9 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
             ? {}
             : { GAMEFORGE_RUN_RELAY_TOKEN: "{env:GAMEFORGE_RUN_RELAY_TOKEN}" }),
           ...(layaAirCliPath === undefined ? {} : { GAMEFORGE_LAYAIR_CLI: layaAirCliPath }),
+          ...(douyinMiniGameCliPath === undefined
+            ? {}
+            : { GAMEFORGE_DOUYIN_MINIGAME_CLI: douyinMiniGameCliPath }),
           GAMEFORGE_MCP_AUDIT_DIR: runtime.auditDirectory,
           GAMEFORGE_MODEL_ROUTING_POLICY: path.join(runtime.repoRoot, "config", "model-routing.example.json"),
         },
@@ -94,6 +88,20 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
     },
   };
   await writeFile(runtime.configPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
+async function optionalRegularFileEnvironment(name: string): Promise<string | undefined> {
+  const input = process.env[name];
+  if (input === undefined) return undefined;
+  const value = input.trim();
+  if (value.length === 0 || !path.isAbsolute(value)) {
+    throw new Error(`${name} must be unset or contain an absolute regular file path.`);
+  }
+  const info = await lstat(value).catch(() => undefined);
+  if (info === undefined || !info.isFile() || info.isSymbolicLink()) {
+    throw new Error(`${name} must be unset or contain an absolute regular file path.`);
+  }
+  return path.resolve(value);
 }
 
 export async function findRepoRoot(startDirectory: string): Promise<string> {
