@@ -137,6 +137,15 @@ describe("validation tool handlers", () => {
     });
   });
 
+  it("returns structured issues for malformed GameSpec objects", () => {
+    const result = validateGameSpecTool({ title: "Broken" });
+    expect(result.isError).toBe(true);
+    expect(readJsonResult(result)).toMatchObject({
+      valid: false,
+      issues: expect.any(Array),
+    });
+  });
+
   it("rejects provider configuration containing secret fields", () => {
     const result = validateProviderConfigTool({
       ...defaultProviderConfig,

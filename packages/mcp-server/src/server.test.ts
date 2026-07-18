@@ -213,6 +213,32 @@ describe("GameForge MCP server", () => {
         "validate_game_spec",
         "validate_provider_config",
       ]);
+      const gameSpecTool = tools.tools.find((tool) => tool.name === "validate_game_spec");
+      if (gameSpecTool === undefined) throw new Error("Expected validate_game_spec metadata.");
+      expect(gameSpecTool.description).toContain("JSON object");
+      const specInputSchema = gameSpecTool.inputSchema.properties?.spec as
+        | { type?: string; description?: string }
+        | undefined;
+      expect(specInputSchema).toMatchObject({ type: "object" });
+      expect(specInputSchema?.description).toContain("not a JSON-encoded string");
+
+      const malformedSpec = await client.callTool({
+        name: "validate_game_spec",
+        arguments: { spec: { title: "Broken" } },
+      });
+      expect(malformedSpec.isError).toBe(true);
+      if (!Array.isArray(malformedSpec.content) || malformedSpec.content[0]?.type !== "text") {
+        throw new Error("Expected malformed GameSpec validation text.");
+      }
+      expect(JSON.parse(malformedSpec.content[0].text)).toMatchObject({
+        valid: false,
+        issues: expect.any(Array),
+      });
+      const encodedSpec = await client.callTool({
+        name: "validate_game_spec",
+        arguments: { spec: "{\"title\":\"Encoded\"}" },
+      });
+      expect(encodedSpec.isError).toBe(true);
 
       const capabilities = await client.callTool({ name: "get_gameforge_capabilities", arguments: {} });
       expect(capabilities.isError).not.toBe(true);

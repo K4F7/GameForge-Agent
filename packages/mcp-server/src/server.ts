@@ -243,9 +243,12 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     "validate_game_spec",
     {
       title: "Validate game specification",
-      description: "Validate a structured game requirement before implementation starts.",
+      description:
+        "Validate a structured game requirement before implementation starts. Pass spec as a JSON object, never as a JSON-encoded string.",
       inputSchema: {
-        spec: z.unknown().describe("A candidate GameForge game specification"),
+        spec: z.object({}).passthrough().describe(
+          "A candidate GameForge game specification passed directly as a JSON object, not a JSON-encoded string. Malformed objects return structured validation issues.",
+        ),
       },
     },
     async ({ spec }) => validateGameSpecTool(spec),
