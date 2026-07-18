@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { modelRoutingPolicySchema } from "@gameforge/contracts";
+import { modelRoutingPolicySchema, resolveAgentModelRoute } from "@gameforge/contracts";
 import { describe, expect, it } from "vitest";
 
 describe("committed model routing example", () => {
@@ -13,7 +13,19 @@ describe("committed model routing example", () => {
       model: "huaweicloud-maas/deepseek-v3.2",
     });
     expect(policy.tools.image.primary.provider).toBe("volcengine-ark");
-    expect(policy.agent.story.primary).toMatchObject({ provider: "zhipu", model: "huaweicloud-maas/GLM-5" });
+    expect(policy.agent.story.primary).toMatchObject({
+      provider: "zhipu",
+      model: "huaweicloud-maas/Glm-5-internal",
+    });
+    expect(resolveAgentModelRoute(policy.agent.story, [policy.agent.story.primary])).toMatchObject({
+      status: "selected",
+      source: "task-route-primary",
+      target: { model: "huaweicloud-maas/Glm-5-internal" },
+    });
+    expect(resolveAgentModelRoute(policy.agent.story, [{
+      ...policy.agent.story.primary,
+      model: "huaweicloud-maas/GLM-5-INTERNAL",
+    }])).toMatchObject({ status: "unavailable" });
     expect(policy.tools.sound.primary).toMatchObject({ provider: "freesound", mode: "retrieval" });
     expect(policy.tools.music).toMatchObject({
       availability: "enabled",

@@ -172,7 +172,7 @@ export function resolveAgentModelRoute(
 }
 
 function modelTargetKey(target: ModelTarget): string {
-  return `${target.provider}:${target.mode}:${target.model?.toLowerCase() ?? "retrieval"}`;
+  return `${target.provider}:${target.mode}:${target.model ?? "retrieval"}`;
 }
 
 export function validateModelRoutingPolicy(input: unknown): ModelRoutingPolicy {

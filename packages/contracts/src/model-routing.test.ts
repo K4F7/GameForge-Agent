@@ -112,6 +112,19 @@ describe("model routing policy", () => {
     });
   });
 
+  it("treats host model IDs as case-sensitive opaque identifiers", () => {
+    const parsed = modelRoutingPolicySchema.parse(policy());
+    const primary = parsed.agent.coding.primary;
+    expect(resolveAgentModelRoute(parsed.agent.coding, [primary])).toMatchObject({
+      status: "selected",
+      source: "task-route-primary",
+    });
+    expect(resolveAgentModelRoute(parsed.agent.coding, [{
+      ...primary,
+      model: primary.model?.toUpperCase(),
+    }])).toMatchObject({ status: "unavailable" });
+  });
+
   it("does not silently ignore an unavailable explicit override", () => {
     const parsed = modelRoutingPolicySchema.parse(policy());
     expect(resolveAgentModelRoute(parsed.agent.coding, [model()], model("moonshot"))).toMatchObject({

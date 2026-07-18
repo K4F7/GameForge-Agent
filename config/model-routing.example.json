@@ -27,7 +27,7 @@
     },
     "story": {
       "owner": "codearts",
-      "primary": { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5", "capabilities": ["narrative", "long-context", "tool-use"] },
+      "primary": { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/Glm-5-internal", "capabilities": ["narrative", "long-context", "tool-use"] },
       "fallbacks": [
         { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5.1", "capabilities": ["narrative", "long-context", "tool-use"] }
       ],
