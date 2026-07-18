@@ -12,7 +12,29 @@ async function project(gameConfig: Record<string, unknown> = { deviceOrientation
   await writeFile(path.join(root, "game.js"), "const canvas = tt.createCanvas();\n");
   await writeFile(path.join(root, "game.json"), `${JSON.stringify(gameConfig)}\n`);
   await writeFile(path.join(root, "project.config.json"), '{"description":"GameForge","setting":{"es6":true}}\n');
+  await mkdir(path.join(root, "resources"));
+  await writePolicy(root);
   return root;
+}
+
+async function writePolicy(
+  root: string,
+  overrides: { network?: boolean; login?: boolean; share?: boolean; ads?: boolean; payments?: boolean; hosts?: string[] } = {},
+): Promise<void> {
+  await writeFile(path.join(root, "resources", "gameforge-platform.json"), `${JSON.stringify({
+    schemaVersion: "1.0",
+    target: "douyin-mini-game",
+    adapter: { engine: "layaair", version: "3.4.0" },
+    capabilities: {
+      network: overrides.network ?? false,
+      login: overrides.login ?? false,
+      share: overrides.share ?? false,
+      ads: overrides.ads ?? false,
+      payments: overrides.payments ?? false,
+    },
+    allowedNetworkHosts: overrides.hosts ?? [],
+    remoteScripts: false,
+  })}\n`);
 }
 
 afterEach(async () => {
@@ -27,6 +49,8 @@ describe("Douyin mini-game artifact validator", () => {
     await expect(validateDouyinMiniGameProject(root)).resolves.toMatchObject({
       platform: "douyin-mini-game", passed: true, deviceOrientation: "portrait",
       subpackages: [{ root: "levels/two" }],
+      capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+      allowedNetworkHosts: [],
     });
   });
 
@@ -56,5 +80,75 @@ describe("Douyin mini-game artifact validator", () => {
       .rejects.toThrow();
     await expect(validateDouyinMiniGameProject(await project({ subPackages: [{ root: "levels" }, { root: "levels/" }] })))
       .rejects.toThrow("unique");
+  });
+
+  it("rejects unsupported file types and remote JavaScript", async () => {
+    const unsupported = await project();
+    await writeFile(path.join(unsupported, "payload.exe"), "not executable\n");
+    await expect(validateDouyinMiniGameProject(unsupported)).rejects.toThrow("unsupported file type");
+    const remoteScript = await project();
+    await writePolicy(remoteScript, { network: true, hosts: ["cdn.example.com"] });
+    await writeFile(path.join(remoteScript, "game.js"), 'require("https://cdn.example.com/game.js");\n');
+    await expect(validateDouyinMiniGameProject(remoteScript)).rejects.toThrow("remote JavaScript");
+    await writeFile(path.join(remoteScript, "game.js"), 'Laya.loader.load("https://cdn.example.com/feature.js");\n');
+    await expect(validateDouyinMiniGameProject(remoteScript)).rejects.toThrow("remote JavaScript");
+    await writeFile(path.join(remoteScript, "game.js"), 'importScripts("data:text/javascript,alert(1)");\n');
+    await expect(validateDouyinMiniGameProject(remoteScript)).rejects.toThrow("remote JavaScript");
+  });
+
+  it("requires HTTPS, safe declared hosts and network capability for remote URLs", async () => {
+    const insecure = await project();
+    await writePolicy(insecure, { network: true, hosts: ["api.example.com"] });
+    await writeFile(path.join(insecure, "game.js"), 'const endpoint = "http://api.example.com/data";\n');
+    await expect(validateDouyinMiniGameProject(insecure)).rejects.toThrow("must use HTTPS");
+    await writeFile(path.join(insecure, "game.js"), 'const endpoint = "//api.example.com/data";\n');
+    await expect(validateDouyinMiniGameProject(insecure)).rejects.toThrow("explicitly use HTTPS");
+
+    const undeclaredCapability = await project();
+    await writeFile(path.join(undeclaredCapability, "game.js"), 'const endpoint = "https://api.example.com/data";\n');
+    await expect(validateDouyinMiniGameProject(undeclaredCapability)).rejects.toThrow("without declaring network capability");
+
+    const undeclaredHost = await project();
+    await writePolicy(undeclaredHost, { network: true, hosts: ["api.example.com"] });
+    await writeFile(path.join(undeclaredHost, "game.js"), 'const endpoint = "https://cdn.example.com/data";\n');
+    await expect(validateDouyinMiniGameProject(undeclaredHost)).rejects.toThrow("host is not declared");
+
+    const loopback = await project();
+    await writePolicy(loopback, { network: true, hosts: ["api.example.com"] });
+    await writeFile(path.join(loopback, "game.js"), 'const endpoint = "https://127.0.0.1/data";\n');
+    await expect(validateDouyinMiniGameProject(loopback)).rejects.toThrow("host is unsafe");
+
+    const safe = await project();
+    await writePolicy(safe, { network: true, hosts: ["api.example.com"] });
+    await writeFile(path.join(safe, "game.js"), 'const endpoint = "https://api.example.com/data";\n');
+    await expect(validateDouyinMiniGameProject(safe)).resolves.toMatchObject({ allowedNetworkHosts: ["api.example.com"] });
+  });
+
+  it("rejects platform API use unless its capability is declared", async () => {
+    const login = await project();
+    await writeFile(path.join(login, "game.js"), "tt.login({});\n");
+    await expect(validateDouyinMiniGameProject(login)).rejects.toThrow("undeclared login capability");
+    await writePolicy(login, { login: true });
+    await expect(validateDouyinMiniGameProject(login)).resolves.toMatchObject({ capabilities: { login: true } });
+
+    const bracketLogin = await project();
+    await writeFile(path.join(bracketLogin, "game.js"), "tt['login']({});\n");
+    await expect(validateDouyinMiniGameProject(bracketLogin)).rejects.toThrow("undeclared login capability");
+
+    const untrustedLibrary = await project();
+    await mkdir(path.join(untrustedLibrary, "libs"));
+    await writeFile(path.join(untrustedLibrary, "libs", "evil.js"), "tt.login({});\n");
+    await expect(validateDouyinMiniGameProject(untrustedLibrary)).rejects.toThrow("undeclared login capability");
+  });
+
+  it("rejects projects whose split packages exceed the 20 MiB total limit", async () => {
+    const root = await project({ subPackages: [{ root: "level-a" }, { root: "level-b" }] });
+    await mkdir(path.join(root, "level-a"));
+    await mkdir(path.join(root, "level-b"));
+    await writeFile(path.join(root, "level-a", "assets.bin"), "");
+    await writeFile(path.join(root, "level-b", "assets.bin"), "");
+    await truncate(path.join(root, "level-a", "assets.bin"), 11 * 1024 * 1024);
+    await truncate(path.join(root, "level-b", "assets.bin"), 10 * 1024 * 1024);
+    await expect(validateDouyinMiniGameProject(root)).rejects.toThrow("project exceeds 20 MiB");
   });
 });

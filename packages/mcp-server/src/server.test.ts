@@ -75,6 +75,8 @@ describe("GameForge MCP server", () => {
               mainPackageBytes: 1_000_000,
               subpackages: [],
               deviceOrientation: "portrait",
+              capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+              allowedNetworkHosts: [],
             },
             stdoutTruncated: false,
             stderrTruncated: false,

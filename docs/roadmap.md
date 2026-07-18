@@ -12,8 +12,8 @@
 - [x] 将已验证的最小 Laya 3.4.0 项目结构提炼为确定性 `douyin-mini-game` GameSpec 生成后端；当前只开放 arcade；
 - [x] 增加有界 `build_douyin_mini_game` MCP 工具与 `douyinBuild` capability；真实 Node stdio MCP 已调用官方 LayaAir 3.4.0 并通过校验；
 - [ ] 与 Cocos Creator 3.8 LTS 对照 CodeArts 修复成本；
-- [ ] 生成 `game.js`、`game.json`、`project.config.json` 与平台适配入口；
-- [ ] 增加主包 4MB、整体 20MB、文件类型、远程脚本、HTTPS 域名与 capability 静态校验；
+- [x] 通过官方 LayaAir 3.4.0 构建生成 `game.js`、`game.json`、`project.config.json` 与平台适配入口；
+- [x] 增加主包 4MB、整体 20MB、文件类型、远程脚本、HTTPS 域名与 capability 静态校验；生成器 0.10.0 默认声明离线且关闭登录、分享、广告和支付；
 - [ ] 在抖音小游戏开发者工具完成原型导入、预览和上传前检查；
 - [ ] 在真实抖音客户端扫码运行并记录脱敏截图、日志、包体和人工干预；
 - [x] 研判 CLI 自动化边界：本地生成/构建/静态门禁可 no-GUI；中国抖音小游戏最终预览、提审与发布没有公开的完整 no-GUI 链路；

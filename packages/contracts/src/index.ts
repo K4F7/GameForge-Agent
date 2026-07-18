@@ -1,5 +1,6 @@
 export * from "./assets.js";
 export * from "./capabilities.js";
+export * from "./douyin-platform.js";
 export * from "./game-spec.js";
 export * from "./game-tasks.js";
 export * from "./mcp-audit.js";

@@ -32,9 +32,18 @@ const args = process.argv.slice(2);
 if (args.includes("--version")) { console.log("LayaAir CLI 3.4.0"); process.exit(0); }
 const out = args[args.indexOf("--out") + 1];
 await mkdir(out, { recursive: true });
+await mkdir(out + "/resources", { recursive: true });
 await writeFile(out + "/game.js", "const canvas = tt.createCanvas();\\n");
 await writeFile(out + "/game.json", '{"deviceOrientation":"portrait"}\\n');
 await writeFile(out + "/project.config.json", '{"setting":{"es6":false}}\\n');
+await writeFile(out + "/resources/gameforge-platform.json", '${JSON.stringify({
+  schemaVersion: "1.0",
+  target: "douyin-mini-game",
+  adapter: { engine: "layaair", version: "3.4.0" },
+  capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+  allowedNetworkHosts: [],
+  remoteScripts: false,
+})}\\n');
 console.log("Build end, result=Success");
 `);
   return { root: path.join(root, "projects"), project, cli };

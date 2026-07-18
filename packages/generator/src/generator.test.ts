@@ -75,13 +75,21 @@ describe("GameProjectGenerator", () => {
     expect(first).toEqual(second);
     expect(first.plan.target).toBe("douyin-mini-game");
     expect(first.plan.files.map((entry) => entry.path)).toEqual(expect.arrayContaining([
-      "douyin-spike.laya", "assets/Scene.ls", "assets/resources/game-spec.json", "src/Main.ts",
+      "douyin-spike.laya", "assets/Scene.ls", "assets/resources/game-spec.json",
+      "assets/resources/gameforge-platform.json", "src/Main.ts",
     ]));
     expect(first.plan.files.map((entry) => entry.path)).not.toContain("index.html");
     const applied = await generator.execute({ projectId: "douyin-spike", spec, target: "douyin-mini-game", mode: "apply" });
     expect(applied.outputPath).toBe(path.join(root, "douyin-spike"));
     expect(JSON.parse(await readFile(path.join(root, "douyin-spike", "assets", "resources", "game-spec.json"), "utf8")))
       .toEqual(spec);
+    expect(JSON.parse(await readFile(path.join(root, "douyin-spike", "assets", "resources", "gameforge-platform.json"), "utf8")))
+      .toMatchObject({
+        target: "douyin-mini-game",
+        capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+        allowedNetworkHosts: [],
+        remoteScripts: false,
+      });
     expect(await readFile(path.join(root, "douyin-spike", "src", "Main.ts"), "utf8"))
       .toContain('Laya.loader.load("resources/game-spec.json"');
     expect(await readFile(path.join(root, "douyin-spike", "src", "Main.ts"), "utf8"))

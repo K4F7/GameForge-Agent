@@ -6,6 +6,7 @@ import {
   projectGenerationRequestSchema,
   projectGenerationResultSchema,
   projectIdSchema,
+  douyinPlatformPolicySchema,
   type GameSpec,
   type GamePlatformTarget,
   type GeneratedProjectPlan,
@@ -22,7 +23,7 @@ import { z } from "zod";
 import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
 import { douyinRuntimeSource } from "./douyin-template.js";
 
-const GENERATOR_VERSION = "0.9.0";
+const GENERATOR_VERSION = "0.10.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 
 type GeneratedFile = { path: string; content: string; bytes: number; sha256: string };
@@ -385,7 +386,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: "web" |
 } {
   const specContent = `${JSON.stringify(spec, null, 2)}\n`;
   if (target === "douyin-mini-game" && spec.genre !== "arcade") {
-    throw new Error("douyin-mini-game 0.9.0 currently supports only the verified arcade template.");
+    throw new Error("douyin-mini-game 0.10.0 currently supports only the verified arcade template.");
   }
   const baseFiles = (target === "web" ? [
     file(".npmrc", "registry=https://registry.npmjs.org/\n"),
@@ -461,10 +462,19 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: "web" |
 function createDouyinSourceFiles(projectId: string, specContent: string): GeneratedFile[] {
   const sceneUuid = "11111111-1111-4111-8111-111111111111";
   const runtimeUuid = "22222222-2222-4222-8222-222222222222";
+  const platformPolicy = douyinPlatformPolicySchema.parse({
+    schemaVersion: "1.0",
+    target: "douyin-mini-game",
+    adapter: { engine: "layaair", version: "3.4.0" },
+    capabilities: { network: false, login: false, share: false, ads: false, payments: false },
+    allowedNetworkHosts: [],
+    remoteScripts: false,
+  });
   return [
     file(`${projectId}.laya`, '{\n  "version": "3.4.0"\n}\n'),
     file("game-spec.json", specContent),
     file("assets/resources/game-spec.json", specContent),
+    file("assets/resources/gameforge-platform.json", `${JSON.stringify(platformPolicy, null, 2)}\n`),
     file("assets/Scene.ls", `${JSON.stringify({
       "_$ver": 1,
       "_$id": "gameforge-scene",

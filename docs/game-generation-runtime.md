@@ -14,7 +14,7 @@ GameForge把“理解需求”和“生成工程”分开：
 
 ## 项目生成器
 
-`@gameforge/generator` 0.9.0 在生成请求、计划和托管 Manifest 中记录显式 target。旧请求默认 `web`，继续生成独立的 Phaser 4 + Vite + TypeScript 项目；`douyin-mini-game` 生成固定 LayaAir 3.4.0 TypeScript 源工程，当前只开放真实构建验证过的 `arcade` 模板。跨 target update 与未验证 genre 都会明确失败。固定 Web 输出包括：
+`@gameforge/generator` 0.10.0 在生成请求、计划和托管 Manifest 中记录显式 target。旧请求默认 `web`，继续生成独立的 Phaser 4 + Vite + TypeScript 项目；`douyin-mini-game` 生成固定 LayaAir 3.4.0 TypeScript 源工程，当前只开放真实构建验证过的 `arcade` 模板。跨 target update 与未验证 genre 都会明确失败。固定 Web 输出包括：
 
 - `game-spec.json`
 - `src/main.ts`
@@ -37,9 +37,9 @@ GameForge把“理解需求”和“生成工程”分开：
 
 这是供CodeArts继续修改的稳定可玩基线，不声称仅凭GameSpec中几句自然语言就能无损表达任意玩法。
 
-抖音源工程固定输出 `<projectId>.laya`、启动场景及 UUID meta、Build/Player Settings、`src/Main.ts` 和 `assets/resources/game-spec.json`。运行时异步读取 JSON GameSpec，消费标题、目标、收集物/危险物数量、生命和移动速度；用户文本不插入可执行源码。生成器只负责确定性源文件，不内嵌或下载 LayaAir CLI。配置 `GAMEFORGE_LAYAIR_CLI` 后，`build_douyin_mini_game` 对托管 target 执行固定 3.4.0 `bytedancegame` 构建并调用 mini-game validator。Builder 使用绝对 CLI、受限子进程环境、120 秒超时、64 KiB/stdout/stderr 上限、项目构建锁和产物 realpath/符号链接检查；它不返回原始日志，也不登录、预览、上传、提审或发布。
+抖音源工程固定输出 `<projectId>.laya`、启动场景及 UUID meta、Build/Player Settings、`src/Main.ts`、`assets/resources/game-spec.json` 和严格的 `assets/resources/gameforge-platform.json`。运行时异步读取 JSON GameSpec，消费标题、目标、收集物/危险物数量、生命和移动速度；用户文本不插入可执行源码。平台策略默认 `network/login/share/ads/payments=false`、无远程域名且禁止远程脚本；后续启用能力必须同时修改声明并通过静态用法核验。生成器只负责确定性源文件，不内嵌或下载 LayaAir CLI。配置 `GAMEFORGE_LAYAIR_CLI` 后，`build_douyin_mini_game` 对托管 target 执行固定 3.4.0 `bytedancegame` 构建并调用 mini-game validator。Builder 使用绝对 CLI、受限子进程环境、120 秒超时、64 KiB/stdout/stderr 上限、项目构建锁和产物 realpath/符号链接检查；它不返回原始日志，也不登录、预览、上传、提审或发布。
 
-抖音小游戏静态发布检查由 `@gameforge/minigame-validator` 提供。对已有平台工程执行 `bun run minigame:validate -- <绝对工程路径>`，会验证 `game.js`、`game.json`、`project.config.json`、方向与超时字段、符号链接边界、分包根唯一性、4 MiB 主包和 20 MiB 总目录限制，并拒绝入口直接依赖 `document.*`/`window.*`。它不运行抖音 Runtime，也不能替代开发者工具与真机验收。
+抖音小游戏静态发布检查由 `@gameforge/minigame-validator` 提供。对已有平台工程执行 `bun run minigame:validate -- <绝对工程路径>`，会验证 `game.js`、`game.json`、`project.config.json`、平台策略、方向与超时字段、符号链接边界、允许的发布文件类型、分包根唯一性、4 MiB 主包和 20 MiB 总目录限制；同时拒绝入口 DOM 依赖、远程 JavaScript（含 HTTP(S)、协议相对、data/blob/javascript scheme）、HTTP URL、IP/localhost/端口/未声明域名，以及应用代码中未声明的网络、登录、分享、广告和支付 API。只有 SHA-256 与已验证的 LayaAir 3.4.0 `microgame-adapter.js` 和 `laya.adapter-bytedance.js` 完全一致时，通用适配器里的平台 API 才不计为游戏主动 capability；同名文件被修改会保守失败。读取文本文件时复核 realpath、文件身份和大小，调用方仍应在产物静止时校验，不能把它当成对同机恶意并发改写的沙箱。该检查是保守的静态门禁，不做完整 JavaScript 数据流分析、不运行抖音 Runtime，也不能替代开发者工具、后台合法域名配置、TLS 探测与真机验收。
 
 GameSpec 可选 `gameplay` 对象提供四个有界核心参数：`collectibleCount` 1–10、`hazardCount` 0–6、`startingLives` 1–9、`movementSpeed` 100–360 px/s。旧规格缺少该对象时保持各 genre 的 0.2.x 默认值；百炼严格 JSON Schema 要求新草案显式给出四项。生成运行时用它们控制实际出生数量、生命和连续移动速度，platformer 与 arena 均消费同一规格，不只是 Workbench 展示字段。
 

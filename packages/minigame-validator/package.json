@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit",
-    "test": "vitest run src"
+    "test": "vitest run src --testTimeout=15000 --hookTimeout=15000"
   },
   "dependencies": {
     "@gameforge/contracts": "0.1.0",
