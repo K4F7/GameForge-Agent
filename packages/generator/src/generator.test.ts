@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { hostname } from "node:os";
 import { createHash } from "node:crypto";
@@ -50,7 +50,7 @@ describe("GameProjectGenerator", () => {
 
     const result = await generator.execute({ projectId: "safety-sprint", spec, mode: "apply" });
 
-    expect(result.outputPath).toBe(path.join(root, "safety-sprint"));
+    expect(result.outputPath).toBe(await realpath(path.join(root, "safety-sprint")));
     expect(JSON.parse(await readFile(path.join(root, "safety-sprint", "game-spec.json"), "utf8"))).toEqual(spec);
     const packageJson = JSON.parse(await readFile(
       path.join(root, "safety-sprint", "package.json"),
@@ -80,7 +80,7 @@ describe("GameProjectGenerator", () => {
     ]));
     expect(first.plan.files.map((entry) => entry.path)).not.toContain("index.html");
     const applied = await generator.execute({ projectId: "douyin-spike", spec, target: "douyin-mini-game", mode: "apply" });
-    expect(applied.outputPath).toBe(path.join(root, "douyin-spike"));
+    expect(applied.outputPath).toBe(await realpath(path.join(root, "douyin-spike")));
     expect(JSON.parse(await readFile(path.join(root, "douyin-spike", "assets", "resources", "game-spec.json"), "utf8")))
       .toEqual(spec);
     expect(JSON.parse(await readFile(path.join(root, "douyin-spike", "assets", "resources", "gameforge-platform.json"), "utf8")))

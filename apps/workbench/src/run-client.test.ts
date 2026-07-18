@@ -268,6 +268,7 @@ describe("run event client", () => {
         sources.push(source);
         return source;
       },
+      retryDelaysMs: [0],
     });
     await waitUntil(() => expect(sources).toHaveLength(1));
     sources[0]?.emit("open", new Event("open"));

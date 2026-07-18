@@ -15,7 +15,7 @@
     "build:foundation": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/generator build && bun run --filter @gameforge/providers build && bun run --filter @gameforge/asset-store build && bun run --filter @gameforge/run-relay build && bun run --filter @gameforge/game-verifier build && bun run --filter @gameforge/minigame-validator build",
     "build": "bun run build:foundation && bun run --filter @gameforge/game build && bun run --filter @gameforge/workbench build && bun run --filter @gameforge/tui build && bun run --filter @gameforge/desktop build && bun run --filter @gameforge/benchmark build && bun run --filter @gameforge/bundle-budget build && bun run --filter @gameforge/opencode-plugin build && bun run --filter @gameforge/integrations build && bun run --filter @gameforge/mcp-server build",
     "check": "bun run build:foundation && bun run --filter '*' check",
-    "test": "bun run build:foundation && bun run --filter '*' test",
+    "test": "bun run build:foundation && bun run --filter @gameforge/mcp-server build && bun run --filter '*' test",
     "audit": "bun audit --prod",
     "doctor": "bun run build:foundation && bun run --filter @gameforge/mcp-server build && node packages/mcp-server/dist/doctor.js",
     "doctor:browser": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/game-verifier build && node packages/game-verifier/dist/browser-doctor.js",

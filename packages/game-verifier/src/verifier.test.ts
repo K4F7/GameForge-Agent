@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GameProjectGenerator } from "@gameforge/generator";
@@ -73,8 +73,9 @@ async function fixture(): Promise<{ root: string; runtime: FakeRuntime; verifier
   roots.push(temporary);
   const root = path.join(temporary, "projects");
   await new GameProjectGenerator({ outputRoot: root }).execute({ projectId: "safety-sprint", spec, mode: "apply" });
+  const canonicalRoot = await realpath(root);
   const runtime = new FakeRuntime();
-  return { root, runtime, verifier: new GameVerifier({ projectsRoot: root, runtime }) };
+  return { root: canonicalRoot, runtime, verifier: new GameVerifier({ projectsRoot: canonicalRoot, runtime }) };
 }
 
 afterEach(async () => {
@@ -206,7 +207,7 @@ describe("GameVerifier", () => {
         signal: AbortSignal.timeout(10_000),
       }));
       expect(loader.headers.get("access-control-allow-origin")).toBe("*");
-      expect(await loader.text()).toContain('import("/src/game.ts")');
+      expect(await loader.text()).toMatch(/import\("[^"\n]*\/src\/game\.ts"\)/);
       const game = await stage("game", fetch(new URL("src/game.ts", server.url), {
         headers: { Connection: "close" },
         signal: AbortSignal.timeout(10_000),
