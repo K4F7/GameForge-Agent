@@ -1,4 +1,9 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  McpServer,
+  type RegisteredTool,
+  type ToolCallback,
+} from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   projectGenerationRequestSchema,
   projectIdSchema,
@@ -65,6 +70,7 @@ import {
   type ProjectVerifier,
   type ProjectPreviewManager,
 } from "./tools.js";
+import type { ToolAuditRecorder } from "./tool-audit.js";
 
 export type CreateServerOptions = {
   gameSpecDraftProvider?: GameSpecDraftProvider;
@@ -78,6 +84,7 @@ export type CreateServerOptions = {
   runRelayClient?: RunRelayToolClient;
   taskRelayClient?: TaskRelayToolClient;
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
+  toolAudit?: ToolAuditRecorder;
 };
 
 export function createServer(options: CreateServerOptions = {}): McpServer {
@@ -85,6 +92,24 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     name: "gameforge",
     version: "0.1.0",
   });
+  const registerTool = <InputArgs extends Record<string, z.ZodType>>(
+    name: string,
+    config: { title?: string; description?: string; inputSchema: InputArgs },
+    callback: (args: z.infer<z.ZodObject<InputArgs>>) => CallToolResult | Promise<CallToolResult>,
+  ): RegisteredTool => {
+    const auditedCallback = (async (args: unknown) => {
+      const token = options.toolAudit?.begin(name);
+      try {
+        const result = await callback(args as z.infer<z.ZodObject<InputArgs>>);
+        if (token !== undefined) await options.toolAudit?.finish(token, result.isError === true ? "error" : "success");
+        return result;
+      } catch (error) {
+        if (token !== undefined) await options.toolAudit?.finish(token, "error");
+        throw error;
+      }
+    }) as unknown as ToolCallback<InputArgs>;
+    return server.registerTool(name, config, auditedCallback);
+  };
 
   const capabilitySnapshot: GameforgeCapabilitySnapshot = gameforgeCapabilitySnapshotSchema.parse({
     providers: {
@@ -103,7 +128,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     },
   });
 
-  server.registerTool(
+  registerTool(
     "get_gameforge_capabilities",
     {
       title: "Inspect configured GameForge capabilities",
@@ -115,7 +140,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
 
   if (options.assetStore?.read !== undefined) {
     const reader = { read: options.assetStore.read.bind(options.assetStore) };
-    server.registerTool(
+    registerTool(
       "get_project_assets",
       {
         title: "Read one managed project's asset manifest",
@@ -128,7 +153,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
 
   if (options.assetStore?.recover !== undefined) {
     const recovery = { recover: options.assetStore.recover.bind(options.assetStore) };
-    server.registerTool(
+    registerTool(
       "recover_project_assets",
       {
         title: "Recover an interrupted asset transaction",
@@ -140,7 +165,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     );
   }
 
-  server.registerTool(
+  registerTool(
     "validate_game_spec",
     {
       title: "Validate game specification",
@@ -152,7 +177,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     async ({ spec }) => validateGameSpecTool(spec),
   );
 
-  server.registerTool(
+  registerTool(
     "validate_provider_config",
     {
       title: "Validate provider configuration",
@@ -165,7 +190,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     async ({ config }) => validateProviderConfigTool(config),
   );
 
-  server.registerTool(
+  registerTool(
     "validate_asset_manifest",
     {
       title: "Validate asset provenance manifest",
@@ -180,7 +205,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
 
   if (options.projectGenerator !== undefined) {
     const projectGenerator = options.projectGenerator;
-    server.registerTool(
+    registerTool(
       "generate_game_project",
       {
         title: "Generate a deterministic Phaser project",
@@ -194,7 +219,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
 
   if (options.projectGenerator?.recover !== undefined) {
     const recovery = { recover: options.projectGenerator.recover.bind(options.projectGenerator) };
-    server.registerTool(
+    registerTool(
       "recover_game_project_update",
       {
         title: "Recover an interrupted managed project update",
@@ -208,7 +233,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
 
   if (options.runRelayClient !== undefined) {
     const runRelayClient = options.runRelayClient;
-    server.registerTool(
+    registerTool(
       "create_game_run",
       {
         title: "Create a game production run",
@@ -217,7 +242,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       },
       async ({ runId }) => createGameRunTool(runRelayClient, runId),
     );
-    server.registerTool(
+    registerTool(
       "replay_game_run",
       {
         title: "Replay game production events",
@@ -227,7 +252,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       },
       async (request) => replayGameRunTool(runRelayClient, request),
     );
-    server.registerTool(
+    registerTool(
       "publish_run_events",
       {
         title: "Publish game production events",
@@ -236,7 +261,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       },
       async (batch) => publishRunEventsTool(runRelayClient, batch),
     );
-    server.registerTool(
+    registerTool(
       "complete_game_run",
       {
         title: "Complete a game production run",
@@ -245,7 +270,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       },
       async ({ runId }) => completeGameRunTool(runRelayClient, runId),
     );
-    server.registerTool(
+    registerTool(
       "stop_game_run",
       {
         title: "Stop a game production run",
@@ -258,7 +283,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
 
   if (options.taskRelayClient !== undefined) {
     const taskRelayClient = options.taskRelayClient;
-    server.registerTool(
+    registerTool(
       "list_game_tasks",
       {
         title: "List game build tasks",
@@ -267,7 +292,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       },
       async (request) => listGameTasksTool(taskRelayClient, request),
     );
-    server.registerTool(
+    registerTool(
       "get_game_task",
       {
         title: "Read one game build task",
@@ -276,7 +301,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       },
       async ({ taskId }) => getGameTaskTool(taskRelayClient, taskId),
     );
-    server.registerTool(
+    registerTool(
       "claim_game_task",
       {
         title: "Claim one game build task",
@@ -290,7 +315,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
 
   if (options.gameSpecDraftProvider !== undefined) {
     const gameSpecDraftProvider = options.gameSpecDraftProvider;
-    server.registerTool(
+    registerTool(
       "draft_game_spec",
       {
         title: "Draft a validated game specification",
@@ -304,7 +329,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
 
   if (options.soundSearchProvider !== undefined) {
     const soundSearchProvider = options.soundSearchProvider;
-    server.registerTool(
+    registerTool(
       "search_sound_asset",
       {
         title: "Search licensed sound assets",
@@ -319,7 +344,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
   if (options.imageProvider !== undefined && options.assetStore !== undefined) {
     const imageProvider = options.imageProvider;
     const assetStore = options.assetStore;
-    server.registerTool(
+    registerTool(
       "request_image_asset",
       {
         title: "Generate and store a game image asset",
@@ -340,7 +365,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
   if (options.soundPreviewProvider !== undefined && options.assetStore !== undefined) {
     const soundPreviewProvider = options.soundPreviewProvider;
     const assetStore = options.assetStore;
-    server.registerTool(
+    registerTool(
       "import_sound_asset",
       {
         title: "Import a licensed Freesound preview",
@@ -361,7 +386,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
   if (options.asyncTtsProvider !== undefined && options.assetStore !== undefined) {
     const asyncTtsProvider = options.asyncTtsProvider;
     const assetStore = options.assetStore;
-    server.registerTool(
+    registerTool(
       "submit_voice_job",
       {
         title: "Submit an asynchronous voice generation job",
@@ -371,7 +396,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       },
       async (request) => submitVoiceJobTool(asyncTtsProvider, request),
     );
-    server.registerTool(
+    registerTool(
       "query_voice_job",
       {
         title: "Query one voice generation job",
@@ -381,7 +406,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       },
       async (request) => queryVoiceJobTool(asyncTtsProvider, request),
     );
-    server.registerTool(
+    registerTool(
       "materialize_voice_job",
       {
         title: "Materialize one completed voice job",
@@ -399,7 +424,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
 
   if (options.projectVerifier !== undefined) {
     const projectVerifier = options.projectVerifier;
-    server.registerTool(
+    registerTool(
       "verify_game_project",
       {
         title: "Verify a generated game in a browser",
@@ -413,7 +438,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
 
   if (options.projectPreviewManager !== undefined) {
     const projectPreviewManager = options.projectPreviewManager;
-    server.registerTool(
+    registerTool(
       "start_game_preview",
       {
         title: "Start a managed game preview",
@@ -423,7 +448,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       },
       async (request) => startGamePreviewTool(projectPreviewManager, request),
     );
-    server.registerTool(
+    registerTool(
       "stop_game_preview",
       {
         title: "Stop a managed game preview",

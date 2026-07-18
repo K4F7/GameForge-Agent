@@ -6,8 +6,38 @@ import type { SoundSearchProvider } from "@gameforge/contracts";
 import type { FreesoundSearchRequest, FreesoundSearchResult } from "@gameforge/providers";
 import { createServer } from "./server.js";
 import type { ProjectGenerationResult } from "@gameforge/contracts";
+import type { ToolAuditRecorder, ToolAuditToken } from "./tool-audit.js";
 
 describe("GameForge MCP server", () => {
+  it("audits executed tool callbacks without inspecting arguments or results", async () => {
+    const completed: Array<{ token: ToolAuditToken; outcome: "success" | "error" }> = [];
+    let sequence = 0;
+    const toolAudit: ToolAuditRecorder = {
+      begin(tool) {
+        sequence += 1;
+        return { sequence, tool, startedAt: new Date().toISOString(), monotonicStart: performance.now() };
+      },
+      async finish(token, outcome) { completed.push({ token, outcome }); },
+    };
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer({ toolAudit });
+    const client = new Client({ name: "gameforge-audit-test", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      await client.callTool({ name: "get_gameforge_capabilities", arguments: {} });
+      expect(completed).toMatchObject([{
+        token: { sequence: 1, tool: "get_gameforge_capabilities" },
+        outcome: "success",
+      }]);
+      expect(completed[0]?.token).not.toHaveProperty("arguments");
+      expect(completed[0]?.token).not.toHaveProperty("result");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("registers and invokes all deterministic validation tools", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer();

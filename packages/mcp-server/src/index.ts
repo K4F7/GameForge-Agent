@@ -13,6 +13,7 @@ import { GamePreviewManager, GameVerifier } from "@gameforge/game-verifier";
 import { GameProjectGenerator } from "@gameforge/generator";
 import { RunRelayClient } from "@gameforge/run-relay/client";
 import { createServer } from "./server.js";
+import { McpToolAuditRecorder } from "./tool-audit.js";
 
 const bailianApiKey = process.env.DASHSCOPE_API_KEY?.trim();
 const bailianSpecModel = process.env.GAMEFORGE_SPEC_MODEL?.trim();
@@ -20,6 +21,8 @@ const freesoundApiKey = process.env.FREESOUND_API_KEY?.trim();
 const freesoundApiUsage = process.env.FREESOUND_API_USAGE?.trim();
 const projectOutputRoot = process.env.GAMEFORGE_PROJECT_OUTPUT_ROOT?.trim();
 const runRelayUrl = process.env.GAMEFORGE_RUN_RELAY_URL?.trim();
+const toolAuditFile = process.env.GAMEFORGE_MCP_AUDIT_FILE?.trim();
+const toolAuditDirectory = process.env.GAMEFORGE_MCP_AUDIT_DIR?.trim();
 const seedreamApiKey = process.env.VOLCENGINE_ARK_API_KEY?.trim();
 const seedreamModel = process.env.GAMEFORGE_IMAGE_MODEL?.trim();
 const seedreamLicense = process.env.GAMEFORGE_IMAGE_LICENSE?.trim();
@@ -44,6 +47,15 @@ const assetStore = projectOutputRoot === undefined || projectOutputRoot.length =
 const runRelayClient = runRelayUrl === undefined || runRelayUrl.length === 0
   ? undefined
   : new RunRelayClient({ baseUrl: runRelayUrl });
+if (toolAuditFile !== undefined && toolAuditFile.length > 0 &&
+    toolAuditDirectory !== undefined && toolAuditDirectory.length > 0) {
+  throw new Error("Configure only one of GAMEFORGE_MCP_AUDIT_FILE or GAMEFORGE_MCP_AUDIT_DIR.");
+}
+const toolAudit = toolAuditFile !== undefined && toolAuditFile.length > 0
+  ? await McpToolAuditRecorder.create(toolAuditFile)
+  : toolAuditDirectory !== undefined && toolAuditDirectory.length > 0
+    ? await McpToolAuditRecorder.createInDirectory(toolAuditDirectory)
+    : undefined;
 if (
   freesoundApiKey !== undefined &&
   freesoundApiKey.length > 0 &&
@@ -80,6 +92,7 @@ if (speechApiToken !== undefined && speechApiToken.length > 0) {
   }
 }
 const server = createServer({
+  ...(toolAudit === undefined ? {} : { toolAudit }),
   ...(bailianApiKey === undefined || bailianApiKey.length === 0
     ? {}
     : {

@@ -35,6 +35,7 @@ describe("benchmark evidence capture", () => {
       metadata,
       taskId: "task-00000000-0000-0000-0000-000000000000",
       relay,
+      mcpAudit: auditFixture(),
     });
 
     expect(calls).toEqual([0, 1000]);
@@ -43,9 +44,10 @@ describe("benchmark evidence capture", () => {
       terminalStatus: "completed",
       events: { count: 1001, types: { "run.started": 1, "log.appended": 998, "verification.ready": 1, "run.completed": 1 } },
       verification: { passed: true, outcome: "won", diagnostics: 0 },
-      tools: { count: null, names: [], errors: null },
+      tools: { count: 2, names: ["validate_game_spec", "generate_game_project"], errors: 1 },
     });
     expect(record.evidence).toContain(".gameforge/verification/capture.png");
+    expect(record.toolAudit).toMatchObject({ sessionId: "00000000-0000-4000-8000-000000000001" });
     const serialized = JSON.stringify(record);
     expect(serialized).not.toContain("DASHSCOPE_API_KEY");
     expect(serialized).not.toContain("super-secret");
@@ -83,6 +85,23 @@ describe("benchmark evidence capture", () => {
       taskId: "task-00000000-0000-0000-0000-000000000000",
       relay: relayFixture(completeEvents()),
     })).rejects.toThrow();
+  });
+
+  it("rejects truncated audits and conflicts with manual tool counts", async () => {
+    await expect(captureBenchmarkEvidence({
+      definition,
+      metadata,
+      taskId: "task-00000000-0000-0000-0000-000000000000",
+      relay: relayFixture(completeEvents()),
+      mcpAudit: { ...auditFixture(), truncated: true },
+    })).rejects.toThrow("Truncated");
+    await expect(captureBenchmarkEvidence({
+      definition,
+      metadata: { ...metadata, tools: { count: 1, names: ["validate_game_spec"], errors: 0 } },
+      taskId: "task-00000000-0000-0000-0000-000000000000",
+      relay: relayFixture(completeEvents()),
+      mcpAudit: auditFixture(),
+    })).rejects.toThrow("requires unknown tools");
   });
 });
 
@@ -149,4 +168,17 @@ function completeEvents(): WireRunEvent[] {
 
 function time(sequence: number): string {
   return new Date(Date.UTC(2026, 6, 18, 0, 0, 0, sequence)).toISOString();
+}
+
+function auditFixture() {
+  return {
+    schemaVersion: 1 as const,
+    sessionId: "00000000-0000-4000-8000-000000000001",
+    startedAt: time(1),
+    truncated: false,
+    calls: [
+      { sequence: 1, tool: "validate_game_spec", startedAt: time(2), durationMs: 4, outcome: "success" as const },
+      { sequence: 2, tool: "generate_game_project", startedAt: time(3), durationMs: 8, outcome: "error" as const },
+    ],
+  };
 }

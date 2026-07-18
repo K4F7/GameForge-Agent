@@ -2,6 +2,7 @@ export * from "./assets.js";
 export * from "./capabilities.js";
 export * from "./game-spec.js";
 export * from "./game-tasks.js";
+export * from "./mcp-audit.js";
 export * from "./project-generation.js";
 export * from "./providers.js";
 export * from "./run-events.js";

@@ -49,6 +49,10 @@ export const benchmarkRecordSchema = z.strictObject({
   durationMs: z.number().int().nonnegative().optional(),
   events: eventSummarySchema,
   tools: toolSummarySchema,
+  toolAudit: z.strictObject({
+    sessionId: z.string().uuid(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  }).optional(),
   verification: z.strictObject({
     passed: z.boolean(),
     outcome: z.enum(["running", "won", "lost"]),

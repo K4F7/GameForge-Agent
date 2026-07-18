@@ -92,7 +92,8 @@ bun run dev:local
       ],
       "env": {
         "GAMEFORGE_PROJECT_OUTPUT_ROOT": "D:\\GameForgeGenerated",
-        "GAMEFORGE_RUN_RELAY_URL": "http://127.0.0.1:8787/"
+        "GAMEFORGE_RUN_RELAY_URL": "http://127.0.0.1:8787/",
+        "GAMEFORGE_MCP_AUDIT_DIR": "D:\\GameForgeAudit"
       }
     }
   }
@@ -100,6 +101,8 @@ bun run dev:local
 ```
 
 这里使用 Node 承载正式 MCP 和 Playwright Core；依赖安装、workspace 命令、检查和构建仍统一由 Bun 完成。官方配置要求 `command` 必填，`args` 和 `env` 可选，且所有环境变量值必须是字符串。保存后在“已安装”页签重启 `gameforge` MCP；官方文档明确指出修改环境变量后需要重启才能立即生效。
+
+`GAMEFORGE_MCP_AUDIT_DIR` 默认关闭；配置绝对目录后，每次 MCP 启动会创建一个唯一 JSON 会话文件。文件只含工具名、顺序、时间、耗时和结果状态，不含调用参数或返回值。`bun run codearts`/`bun run opencode` 启动器会自动使用仓库忽略目录；手工配置时不要指向同步盘或公开目录。单次隔离实验也可改用未存在的绝对 `GAMEFORGE_MCP_AUDIT_FILE`，两者不能同时配置。
 
 此基础配置不包含任何密钥，会注册规格校验、项目生成、任务/Run、浏览器验收与预览工具。需要 Qwen、Seedream、Freesound 或火山 TTS 时，只在本机 `env` 中追加 README 所列变量；不要把填入真实值的 `mcp_settings.json` 提交到仓库。是否配置成功以 CodeArts 实际列出的工具为准，不以前端 Provider 标签为准。
 
@@ -148,10 +151,10 @@ Run Relay 的可选状态文件已通过真实生产进程两次重启验证；�
 Task 到达终态后，先准备严格 `definition.json` 与人工核验的 `metadata.json`，再执行：
 
 ```powershell
-bun run benchmark -- capture definition.json metadata.json --task-id <Task-ID> --out codearts.record.json
+bun run benchmark -- capture definition.json metadata.json --task-id <Task-ID> --mcp-audit <会话审计.json> --out codearts.record.json
 ```
 
-命令从配置的 `GAMEFORGE_RUN_RELAY_URL`（默认 loopback 8787）分页读取完整保留期事件，校验定义、sequence 和终态。客户端版本、模型、工具调用和人工干预只能写入 metadata；缺失工具历史时必须使用 `count: null`/`errors: null`，不得从 RunEvent 数量推断。输出采用 allowlist 摘要，不包含 Task Prompt、日志正文、素材提示、URL、绝对路径或 TTS job handle，并拒绝覆盖已有 record。
+命令从配置的 `GAMEFORGE_RUN_RELAY_URL`（默认 loopback 8787）分页读取完整保留期事件，校验定义、sequence 和终态。客户端版本、模型和人工干预只能写入 metadata；缺失工具历史时必须使用 `count: null`/`errors: null`，不得从 RunEvent 数量推断。选择正确 MCP 会话 audit 后，工具总数、唯一名称与错误数由严格调用记录机械计算；截断文件会被拒绝，record 同时保存 session ID 与内容 SHA-256。输出采用 allowlist 摘要，不包含 Task Prompt、调用参数/结果、日志正文、素材提示、URL、绝对路径或 TTS job handle，并拒绝覆盖已有 record。
 
 ## 官方文档
 

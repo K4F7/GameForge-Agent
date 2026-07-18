@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "mcp-audit-smoke",
+  "definitionFingerprint": "4539c9a702dda30e530359427dfd1415023164bfd28f4f1b4fc3db2cc17d0e9b",
+  "client": {
+    "name": "codearts",
+    "version": "local-mcp-doctor-fixture"
+  },
+  "taskId": "task-d3f46de2-eeff-4529-b121-9086b6a73b4c",
+  "runId": "mcp-audit-real",
+  "terminalStatus": "completed",
+  "durationMs": 44,
+  "events": {
+    "count": 3,
+    "types": {
+      "run.started": 1,
+      "verification.ready": 1,
+      "run.completed": 1
+    }
+  },
+  "tools": {
+    "count": 1,
+    "names": [
+      "get_gameforge_capabilities"
+    ],
+    "errors": 0
+  },
+  "toolAudit": {
+    "sessionId": "ea1e27da-398f-4234-bf7c-605a2ce5918a",
+    "sha256": "5cd30c16de7c1e5b3224c0be556fa91530b769b793843aa5d6a70d6d35f7e6cf"
+  },
+  "verification": {
+    "passed": true,
+    "outcome": "won",
+    "score": 5,
+    "lives": 3,
+    "diagnostics": 0
+  },
+  "humanInterventions": [],
+  "failure": "none",
+  "evidence": [
+    "experiments/2026-07-18-mcp-tool-audit/result.md",
+    "experiments/2026-07-18-mcp-tool-audit/mcp-audit.json",
+    ".gameforge/verification/audit.png"
+  ]
+}

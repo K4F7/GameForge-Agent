@@ -14,7 +14,8 @@
       "cwd": ".",
       "environment": {
         "GAMEFORGE_PROJECT_OUTPUT_ROOT": "{env:GAMEFORGE_PROJECT_OUTPUT_ROOT}",
-        "GAMEFORGE_RUN_RELAY_URL": "{env:GAMEFORGE_RUN_RELAY_URL}"
+        "GAMEFORGE_RUN_RELAY_URL": "{env:GAMEFORGE_RUN_RELAY_URL}",
+        "GAMEFORGE_MCP_AUDIT_DIR": "{env:GAMEFORGE_MCP_AUDIT_DIR}"
       },
       "enabled": true,
       "timeout": 10000

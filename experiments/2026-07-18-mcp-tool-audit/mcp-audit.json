@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "ea1e27da-398f-4234-bf7c-605a2ce5918a",
+  "startedAt": "2026-07-18T00:02:47.271Z",
+  "truncated": false,
+  "calls": [
+    {
+      "sequence": 1,
+      "tool": "get_gameforge_capabilities",
+      "startedAt": "2026-07-18T00:02:47.305Z",
+      "durationMs": 0,
+      "outcome": "success"
+    }
+  ]
+}

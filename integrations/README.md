@@ -5,6 +5,7 @@
 - 默认项目输出目录：`.gameforge-validation/integrations/projects/`；
 - 临时 OpenCode 配置：`.gameforge-validation/integrations/<client>/opencode.json`；
 - 默认 Relay：`http://127.0.0.1:8787/`。
+- 每客户端 MCP 审计目录：`.gameforge-validation/integrations/<client>/mcp-audit/`，每次 MCP 启动生成唯一文件；
 
 这些文件均被根 `.gitignore` 排除。启动器不修改用户全局配置，不读取认证存储，也不把环境变量值写入日志。
 
@@ -21,6 +22,7 @@ bun run opencode
 
 - `GAMEFORGE_PROJECT_OUTPUT_ROOT`：绝对输出目录；
 - `GAMEFORGE_RUN_RELAY_URL`：HTTPS 或 loopback HTTP；
+- `GAMEFORGE_MCP_AUDIT_DIR`：可选绝对审计目录；未配置时使用上述忽略目录；
 - `CODEARTS_BIN` / `OPENCODE_BIN`：客户端可执行文件；
 - Provider 密钥仍由用户安全环境提供，启动器不生成、不保存。
 

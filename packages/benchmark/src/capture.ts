@@ -1,9 +1,12 @@
 import {
+  mcpToolAuditSchema,
+  type McpToolAudit,
   type GameTask,
   type ReplayRunEventsRequest,
   type RunEventBatch,
   type WireRunEvent,
 } from "@gameforge/contracts";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   benchmarkClientSchema,
@@ -60,9 +63,16 @@ export async function captureBenchmarkEvidence(input: {
   metadata: EvidenceCaptureMetadata;
   taskId: string;
   relay: EvidenceRelayClient;
+  mcpAudit?: McpToolAudit;
 }): Promise<BenchmarkRecord> {
   const definition = benchmarkDefinitionSchema.parse(input.definition);
   const metadata = evidenceCaptureMetadataSchema.parse(input.metadata);
+  const mcpAudit = input.mcpAudit === undefined ? undefined : mcpToolAuditSchema.parse(input.mcpAudit);
+  if (mcpAudit?.truncated === true) throw new Error("Truncated MCP tool audit cannot produce a benchmark summary.");
+  if (mcpAudit !== undefined &&
+      (metadata.tools.count !== null || metadata.tools.errors !== null || metadata.tools.names.length > 0)) {
+    throw new Error("MCP audit import requires unknown tools in manual metadata.");
+  }
   const task = await input.relay.getTask(input.taskId);
   if (task.taskId !== input.taskId) throw new Error("Relay returned a different Task ID.");
   if (task.prompt !== definition.prompt || task.language !== definition.language) {
@@ -91,7 +101,17 @@ export async function captureBenchmarkEvidence(input: {
     terminalStatus: task.status,
     durationMs: Math.max(0, lastTime - firstTime),
     events: { count: events.length, types },
-    tools: metadata.tools,
+    tools: mcpAudit === undefined ? metadata.tools : {
+      count: mcpAudit.calls.length,
+      names: [...new Set(mcpAudit.calls.map((call) => call.tool))],
+      errors: mcpAudit.calls.filter((call) => call.outcome === "error").length,
+    },
+    ...(mcpAudit === undefined ? {} : {
+      toolAudit: {
+        sessionId: mcpAudit.sessionId,
+        sha256: createHash("sha256").update(JSON.stringify(mcpAudit)).digest("hex"),
+      },
+    }),
     ...(verificationEvent === undefined ? {} : {
       verification: {
         passed: verificationEvent.passed,

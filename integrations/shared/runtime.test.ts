@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { findRepoRoot, redactArguments, safeRelayUrl } from "./runtime.js";
+import { findRepoRoot, redactArguments, resolveRuntime, safeRelayUrl, writeRuntimeConfig } from "./runtime.js";
 
 describe("integration runtime", () => {
   it("finds the repository from a nested integration directory", async () => {
@@ -35,5 +35,16 @@ describe("integration runtime", () => {
       "gameforge_generate_*": "ask",
       "gameforge_complete_*": "ask",
     });
+  });
+
+  it("generates a per-client ignored MCP audit directory", async () => {
+    const runtime = await resolveRuntime(import.meta.dirname, "codearts");
+    await writeRuntimeConfig(runtime);
+    const config = JSON.parse(await readFile(runtime.configPath, "utf8")) as {
+      mcp: { gameforge: { environment: Record<string, string> } };
+    };
+    expect(path.isAbsolute(runtime.auditDirectory)).toBe(true);
+    expect(runtime.auditDirectory).toContain(path.join("integrations", "codearts", "mcp-audit"));
+    expect(config.mcp.gameforge.environment.GAMEFORGE_MCP_AUDIT_DIR).toBe(runtime.auditDirectory);
   });
 });

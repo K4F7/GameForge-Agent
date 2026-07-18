@@ -6,6 +6,7 @@ export type IntegrationRuntime = {
   repoRoot: string;
   outputRoot: string;
   relayUrl: string;
+  auditDirectory: string;
   configPath: string;
 };
 
@@ -24,12 +25,20 @@ export async function resolveRuntime(startDirectory: string, integration: "codea
     process.env.GAMEFORGE_RUN_RELAY_URL?.trim() || "http://127.0.0.1:8787/",
   );
   const runtimeDirectory = path.join(repoRoot, ".gameforge-validation", "integrations", integration);
+  const configuredAuditDirectory = process.env.GAMEFORGE_MCP_AUDIT_DIR?.trim();
+  if (configuredAuditDirectory !== undefined && configuredAuditDirectory.length > 0 &&
+      !path.isAbsolute(configuredAuditDirectory)) {
+    throw new Error("GAMEFORGE_MCP_AUDIT_DIR must be absolute when configured.");
+  }
+  const auditDirectory = path.resolve(configuredAuditDirectory || path.join(runtimeDirectory, "mcp-audit"));
   await mkdir(outputRoot, { recursive: true });
   await mkdir(runtimeDirectory, { recursive: true });
+  await mkdir(auditDirectory, { recursive: true, mode: 0o700 });
   return {
     repoRoot,
     outputRoot,
     relayUrl,
+    auditDirectory,
     configPath: path.join(runtimeDirectory, "opencode.json"),
   };
 }
@@ -47,6 +56,7 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
         environment: {
           GAMEFORGE_PROJECT_OUTPUT_ROOT: runtime.outputRoot,
           GAMEFORGE_RUN_RELAY_URL: runtime.relayUrl,
+          GAMEFORGE_MCP_AUDIT_DIR: runtime.auditDirectory,
         },
         enabled: true,
         timeout: 10_000,
