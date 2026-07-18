@@ -68,4 +68,4 @@ bun run --filter @gameforge/mcp-server test
 - 百炼 Qwen、Seedream、火山 TTS、Freesound 的账号级调用；
 - Seedream、Freesound 和火山 TTS 真实云响应进入 `asset.ready` 的账号级端到端路径；本实验只证明 Provider 之后的生产落盘与事件链路；
 - 真实 Chrome 的 won/lost 玩法验收（另有 telemetry 实验已证明本地 won）；
-- Workbench 浏览器页面在此实验中的人工点击与视觉检查。
+- 此实验当时未完成 Workbench 浏览器点击与视觉检查；该历史边界现由 `experiments/2026-07-18-workbench-browser-smoke/` 关闭，云 Provider 仍不在浏览器 smoke 范围内。

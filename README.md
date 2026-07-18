@@ -68,6 +68,7 @@ bun run audit
 bun run doctor
 bun run doctor:browser
 bun run doctor:desktop
+bun run workbench:smoke
 bun run dev:local
 bun run tui -- list
 ```
@@ -75,6 +76,8 @@ bun run tui -- list
 `bun run doctor` 会构建基础包与 MCP，然后用真实 Node stdio Client 检查运行时版本、Bun 单锁、生产入口、必需工具、本次 capability snapshot 及 ready 能力对应的条件工具。配置 Task Inbox 时还会执行一次 `{limit: 1}` 的只读 Relay 探测，因此不可达 URL 不会显示绿灯。它不调用云 API、不输出凭据；可在与 CodeArts 相同的环境变量下运行，以提前发现半配置和路径错误。
 
 `bun run doctor:browser` 构建 Verifier 后使用正式 Node 运行时启动一次隔离的无页面 Chrome 会话并立即关闭，验证 `channel: chrome` 或 `GAMEFORGE_CHROME_EXECUTABLE`。Playwright 系统 Chrome 验收不支持由 Bun 进程直接承载；该路径会立即报错，避免已知的长时间悬挂。Bun 仍负责依赖、构建、测试和命令编排。
+
+`bun run workbench:smoke` 在系统分配且始终保持绑定的随机 loopback 端口启动真实 Relay、生产 Workbench 静态服务与受控预览页，再用系统 Chrome 从表单提交一个 Task。确定性 fixture 认领该 Task 并发布合法的规格、资产、七阶段完成、预览、浏览器验收、日志和终态事件；命令验证 UI、iframe、100% 阶段进度、Relay sequence 1–14 连续性与三类浏览器诊断，截图和脱敏 JSON 写入忽略的 `output/playwright/`。它验证 Workbench/Relay 浏览器链路，不冒充 CodeArts 或国产 Provider 账号验收。
 
 `dev:local` 通过 Bun 并行启动示例游戏（5173）、Workbench（4173）和 Run Relay（8787）。仅在 Vite 开发模式且未显式配置时，Workbench 默认连接 `http://127.0.0.1:8787/`；生产构建仍要求设置 `VITE_AGENT_BASE_URL`。MCP 是 stdio 子进程，应由 CodeArts 启动，不包含在该并行命令中。生产式本地联调先执行 `bun run build`，再使用 `bun run start:relay`；CodeArts MCP 配置见 [CodeArts 快速开始](docs/codearts-quickstart.md)。
 

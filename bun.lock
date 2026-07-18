@@ -128,6 +128,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@gameforge/contracts": "*",
+        "@gameforge/run-relay": "0.1.0",
         "phaser": "4.2.1",
         "playwright-core": "1.61.1",
         "vite": "8.1.4",

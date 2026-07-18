@@ -20,6 +20,7 @@
     "doctor": "bun run build:foundation && bun run --filter @gameforge/mcp-server build && node packages/mcp-server/dist/doctor.js",
     "doctor:browser": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/game-verifier build && node packages/game-verifier/dist/browser-doctor.js",
     "doctor:desktop": "bun run --filter @gameforge/workbench build && bun run --filter @gameforge/desktop doctor",
+    "workbench:smoke": "bun run build:foundation && bun run --filter @gameforge/workbench check && bun run --filter @gameforge/game-verifier smoke:workbench",
     "desktop:check": "bun run --filter @gameforge/desktop check && bun run --filter @gameforge/desktop test && bun run doctor:desktop",
     "desktop:build": "bun run --filter @gameforge/desktop tauri build --no-bundle",
     "provider:smoke": "bun run build:foundation && bun run --filter @gameforge/mcp-server build && node packages/mcp-server/dist/provider-smoke.js",
