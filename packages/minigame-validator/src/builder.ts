@@ -28,6 +28,7 @@ export type WechatMiniGameBuildResult = Omit<DouyinMiniGameBuildResult, "validat
 };
 
 type BuilderOptions = { projectsRoot: string; cliPath: string; timeoutMs?: number; cliPrefixArgs?: string[] };
+type ResolvedLayaCli = { command: string; prefixArgs: string[]; versionVerified: boolean };
 
 class LayaMiniGameBuilder {
   readonly #projectsRoot: string;
@@ -61,7 +62,7 @@ class LayaMiniGameBuilder {
     const projectId = projectIdSchema.parse(projectIdInput);
     const { project, manifest } = await verifiedManagedProject(this.#projectsRoot, projectId);
     if (manifest.target !== this.#target) throw new Error(`LayaAir build requires a managed ${this.#target} project.`);
-    await verifiedCli(this.#cliPath);
+    const cli = await resolveLayaCli(this.#cliPath, this.#cliPrefixArgs);
     const lockPath = path.join(project, ".gameforge", "laya-build.lock");
     const lockToken = randomUUID();
     const lock = await open(lockPath, "wx", 0o600).catch((error: unknown) => {
@@ -71,13 +72,15 @@ class LayaMiniGameBuilder {
     try {
       await lock.writeFile(`${lockToken}\n`, "utf8");
       await lock.sync();
-      const version = await this.#run(["--version"], project, 10_000);
-      if (!version.stdout.includes(EXPECTED_LAYAAIR_VERSION)) {
-        throw new Error(`LayaAir CLI version mismatch; expected ${EXPECTED_LAYAAIR_VERSION}.`);
+      if (!cli.versionVerified) {
+        const version = await this.#run(cli, ["--version"], project, 10_000);
+        if (version.stdout.trim() !== `LayaAir CLI ${EXPECTED_LAYAAIR_VERSION}`) {
+          throw new Error(`LayaAir CLI version mismatch; expected ${EXPECTED_LAYAAIR_VERSION}.`);
+        }
       }
       const outputPath = path.join(project, "release", this.#cliTarget === "wxgame" ? "wxgame" : "bytedancegame");
       await verifyOptionalOutputDirectory(project, outputPath);
-      const result = await this.#run([
+      const result = await this.#run(cli, [
         "build", this.#cliTarget, "--project", project, "--out", outputPath,
       ], project, this.#timeoutMs);
       if (result.reportedBuildFailure) {
@@ -101,16 +104,14 @@ class LayaMiniGameBuilder {
     }
   }
 
-  async #run(args: string[], cwd: string, timeoutMs: number): Promise<ProcessResult> {
-    const invocation = layaInvocation(this.#cliPath, [...this.#cliPrefixArgs, ...args]);
-    const child = spawn(invocation.command, invocation.args, {
+  async #run(cli: ResolvedLayaCli, args: string[], cwd: string, timeoutMs: number): Promise<ProcessResult> {
+    const child = spawn(cli.command, [...cli.prefixArgs, ...args], {
       cwd,
       shell: false,
       windowsHide: true,
-      windowsVerbatimArguments: invocation.windowsVerbatimArguments,
       stdio: ["pipe", "pipe", "pipe"],
       env: safeChildEnvironment(),
-      detached: process.platform !== "win32",
+      detached: false,
     });
     child.stdin.end();
     return await collectProcess(child, timeoutMs);
@@ -171,7 +172,7 @@ async function collectProcess(child: ChildProcessWithoutNullStreams, timeoutMs: 
   const first = await Promise.race([completion, timeout]);
   if (timer !== undefined) clearTimeout(timer);
   if (first === "timeout") {
-    await terminateProcessTree(child);
+    child.kill("SIGKILL");
     await Promise.race([completion, delay(2_000)]);
     throw new Error("LayaAir build timed out.");
   }
@@ -181,46 +182,101 @@ async function collectProcess(child: ChildProcessWithoutNullStreams, timeoutMs: 
   return { stdout: stdout.toString("utf8"), stdoutTruncated, stderrTruncated, reportedBuildFailure };
 }
 
-async function terminateProcessTree(child: ChildProcessWithoutNullStreams): Promise<void> {
-  if (child.pid === undefined) return;
-  if (process.platform === "win32") {
-    const taskkill = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "taskkill.exe");
-    const killer = spawn(taskkill, ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
-    await new Promise<void>((resolve) => {
-      killer.once("error", () => resolve());
-      killer.once("close", () => resolve());
-    });
-  } else {
-    try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); }
-  }
-}
-
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function layaInvocation(cliPath: string, args: string[]): { command: string; args: string[]; windowsVerbatimArguments: boolean } {
-  if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(cliPath)) {
-    const command = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe");
-    const line = `call ${[cliPath, ...args].map(quoteCmdArgument).join(" ")}`;
-    return { command, args: ["/d", "/s", "/c", line], windowsVerbatimArguments: true };
-  }
-  return { command: cliPath, args, windowsVerbatimArguments: false };
-}
-
-function quoteCmdArgument(value: string): string {
-  if (/[\r\n"%!^&|<>()]/.test(value)) throw new Error("LayaAir CLI path contains unsupported command characters.");
-  return `"${value}"`;
+function pathKey(value: string): string {
+  const normalized = path.normalize(value);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
 function safeChildEnvironment(): NodeJS.ProcessEnv {
-  const names = ["SystemRoot", "PATH", "PATHEXT", "TEMP", "TMP"];
-  return Object.fromEntries(names.flatMap((name) => process.env[name] === undefined ? [] : [[name, process.env[name]]])) as NodeJS.ProcessEnv;
+  const names = ["TEMP", "TMP"];
+  return {
+    NO_COLOR: "1",
+    PATH: path.dirname(process.execPath),
+    ...(process.platform === "win32" ? { PATHEXT: ".COM;.EXE;.BAT;.CMD" } : {}),
+    ...Object.fromEntries(names.flatMap((name) => process.env[name] === undefined ? [] : [[name, process.env[name]]])),
+  } as NodeJS.ProcessEnv;
 }
 
-async function verifiedCli(cliPath: string): Promise<void> {
+async function resolveLayaCli(cliPath: string, prefixArgs: string[]): Promise<ResolvedLayaCli> {
   const info = await lstat(cliPath).catch(() => undefined);
   if (info === undefined || !info.isFile() || info.isSymbolicLink()) throw new Error("LayaAir CLI path must be a regular file.");
+  const actual = await realpath(cliPath);
+  const basename = path.basename(actual).toLowerCase();
+  if (basename === "dispatcher.js" || basename === "layaair.cmd" || basename === "layaair") {
+    if (prefixArgs.length > 0) throw new Error("Official LayaAir CLI entries do not accept prefix arguments.");
+    const directory = path.dirname(actual);
+    const versionsPath = path.join(directory, "versions.json");
+    const versionsInfo = await lstat(versionsPath).catch(() => undefined);
+    if (versionsInfo !== undefined) return await resolveDispatcherInstall(directory);
+    if (path.basename(directory) === EXPECTED_LAYAAIR_VERSION) return await resolveVersionInstall(directory);
+    throw new Error("LayaAir CLI entry is not part of the pinned official installation layout.");
+  }
+  if (basename === "cli-main.js" && path.basename(path.dirname(actual)) === "Resources") {
+    if (prefixArgs.length > 0) throw new Error("Official LayaAir CLI entries do not accept prefix arguments.");
+    return await resolveVersionInstall(path.dirname(path.dirname(actual)));
+  }
+  return { command: actual, prefixArgs: [...prefixArgs], versionVerified: false };
+}
+
+async function resolveDispatcherInstall(installRoot: string): Promise<ResolvedLayaCli> {
+  const versions = await readBoundedJson(path.join(installRoot, "versions.json"));
+  if (versions === null || typeof versions !== "object" || Array.isArray(versions)) {
+    throw new Error("LayaAir dispatcher versions manifest is invalid.");
+  }
+  const entries = (versions as Record<string, unknown>).versions;
+  if (!Array.isArray(entries)) throw new Error("LayaAir dispatcher versions manifest is invalid.");
+  const selected = entries.find((entry) => entry !== null && typeof entry === "object" && !Array.isArray(entry) &&
+    (entry as Record<string, unknown>).version === EXPECTED_LAYAAIR_VERSION);
+  if (selected === undefined) throw new Error(`LayaAir CLI version mismatch; expected ${EXPECTED_LAYAAIR_VERSION}.`);
+  const relative = (selected as Record<string, unknown>).path;
+  if (relative !== EXPECTED_LAYAAIR_VERSION) throw new Error("LayaAir dispatcher version path is unsafe.");
+  return await resolveVersionInstall(path.join(installRoot, relative));
+}
+
+async function resolveVersionInstall(versionRootInput: string): Promise<ResolvedLayaCli> {
+  const versionInfo = await lstat(versionRootInput).catch(() => undefined);
+  if (versionInfo === undefined || !versionInfo.isDirectory() || versionInfo.isSymbolicLink()) {
+    throw new Error("LayaAir version directory is missing or unsafe.");
+  }
+  const versionRoot = await realpath(versionRootInput);
+  if (pathKey(versionRoot) !== pathKey(path.resolve(versionRootInput))) {
+    throw new Error("LayaAir version directory must not redirect to another location.");
+  }
+  const resources = path.join(versionRoot, "Resources");
+  const manifest = await readBoundedJson(path.join(resources, "package.json"));
+  if (manifest === null || typeof manifest !== "object" || Array.isArray(manifest) ||
+      (manifest as Record<string, unknown>).name !== "layaair-cli" ||
+      (manifest as Record<string, unknown>).version !== EXPECTED_LAYAAIR_VERSION) {
+    throw new Error("LayaAir CLI package identity or version is unsupported.");
+  }
+  const cliMain = path.join(resources, "cli-main.js");
+  const cliInfo = await lstat(cliMain).catch(() => undefined);
+  if (cliInfo === undefined || !cliInfo.isFile() || cliInfo.isSymbolicLink()) {
+    throw new Error("LayaAir CLI main entry is missing or unsafe.");
+  }
+  const actualCliMain = await realpath(cliMain);
+  if (pathKey(actualCliMain) !== pathKey(cliMain)) {
+    throw new Error("LayaAir CLI main entry must not redirect to another file.");
+  }
+  return { command: process.execPath, prefixArgs: [actualCliMain], versionVerified: true };
+}
+
+async function readBoundedJson(filePath: string): Promise<unknown> {
+  const info = await lstat(filePath).catch(() => undefined);
+  if (info === undefined || !info.isFile() || info.isSymbolicLink() || info.size > 64 * 1024) {
+    throw new Error("LayaAir CLI metadata file is missing or unsafe.");
+  }
+  const actual = await realpath(filePath);
+  if (pathKey(actual) !== pathKey(filePath)) throw new Error("LayaAir CLI metadata file must not redirect.");
+  try {
+    return JSON.parse(await readFile(actual, "utf8")) as unknown;
+  } catch {
+    throw new Error("LayaAir CLI metadata file is invalid.");
+  }
 }
 
 async function verifiedManagedProject(projectsRootInput: string, projectId: string) {

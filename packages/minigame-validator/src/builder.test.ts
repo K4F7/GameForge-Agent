@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -71,6 +71,46 @@ describe("DouyinMiniGameBuilder", () => {
     });
   });
 
+  it("resolves the pinned official dispatcher layout without executing its cmd wrapper", async () => {
+    const { root, cli } = await fixture();
+    const installRoot = path.join(path.dirname(root), "laya-install");
+    const resources = path.join(installRoot, "3.4.0", "Resources");
+    await mkdir(resources, { recursive: true });
+    await writeFile(path.join(installRoot, "layaair.cmd"), "@echo off\nexit /b 99\n", "utf8");
+    await writeFile(path.join(installRoot, "versions.json"), JSON.stringify({
+      versions: [{ version: "3.4.0", path: "3.4.0" }],
+    }), "utf8");
+    await writeFile(path.join(resources, "package.json"), JSON.stringify({
+      name: "layaair-cli",
+      version: "3.4.0",
+    }), "utf8");
+    await writeFile(path.join(resources, "cli-main.js"), await readFile(cli, "utf8"), "utf8");
+    const builder = new DouyinMiniGameBuilder({
+      projectsRoot: root,
+      cliPath: path.join(installRoot, "layaair.cmd"),
+    });
+    await expect(builder.build("safe-game")).resolves.toMatchObject({
+      projectId: "safe-game",
+      cliVersion: "3.4.0",
+      validation: { passed: true, platform: "douyin-mini-game" },
+    });
+  });
+
+  it("rejects an official dispatcher whose pinned version path is redirected", async () => {
+    const { root } = await fixture();
+    const installRoot = path.join(path.dirname(root), "laya-unsafe");
+    await mkdir(installRoot);
+    await writeFile(path.join(installRoot, "layaair.cmd"), "@echo off\n", "utf8");
+    await writeFile(path.join(installRoot, "versions.json"), JSON.stringify({
+      versions: [{ version: "3.4.0", path: "../outside" }],
+    }), "utf8");
+    const builder = new DouyinMiniGameBuilder({
+      projectsRoot: root,
+      cliPath: path.join(installRoot, "layaair.cmd"),
+    });
+    await expect(builder.build("safe-game")).rejects.toThrow("version path is unsafe");
+  });
+
   it("rejects web projects and unsafe project IDs before starting the CLI", async () => {
     const { root, cli } = await fixture("web");
     const builder = new DouyinMiniGameBuilder({ projectsRoot: root, cliPath: process.execPath, cliPrefixArgs: [cli] });
@@ -111,6 +151,16 @@ if (args.includes("--version")) console.log("LayaAir CLI 3.4.0");
 else { process.stderr.write("x".repeat(70000)); console.error("[Build] Build end, result=Failed"); }
 `);
     await expect(builder.build("safe-game")).rejects.toThrow("reported a failed build");
+  });
+
+  it("requires exact version output from non-official test entries and removes the build lock", async () => {
+    const { root, project, cli } = await fixture();
+    await writeFile(cli, `
+if (process.argv.includes("--version")) console.log("LayaAir CLI 3.4.0 untrusted");
+`);
+    const builder = new DouyinMiniGameBuilder({ projectsRoot: root, cliPath: process.execPath, cliPrefixArgs: [cli] });
+    await expect(builder.build("safe-game")).rejects.toThrow("version mismatch");
+    await expect(readOptional(path.join(project, ".gameforge", "laya-build.lock"))).resolves.toBeUndefined();
   });
 });
 
