@@ -52,4 +52,4 @@ git diff --check
 
 - Relay 每个 Run 默认只保留 10000 条事件；410 表示所需历史已被截断，客户端不能伪造恢复；
 - 浏览器刷新仍从当前输入的 Run ID 由零回放，不持久化 UI 私有游标；
-- TUI 当前断线仍退出并报告错误，尚未复用本次 Workbench 控制器。
+- 此条历史边界已由 `experiments/2026-07-18-shared-run-recovery/` 关闭：Workbench 与 TUI 现复用 `@gameforge/run-relay/recovery`，只保留各自传输适配。

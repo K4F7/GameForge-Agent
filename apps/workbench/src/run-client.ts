@@ -10,6 +10,11 @@ import {
   type RunEvent,
   type GameTask,
 } from "@gameforge/contracts";
+import {
+  recoverRunEvents,
+  RunRecoverySequenceError,
+  type RunRecoveryState,
+} from "@gameforge/run-relay/recovery";
 
 export type RunEventFetchOptions = {
   baseUrl: string;
@@ -206,12 +211,7 @@ export function connectRunEventStream(options: ConnectRunEventStreamOptions): ()
   return () => source.close();
 }
 
-export type RecoveringRunEventState =
-  | { status: "replaying"; cursor: number; attempt: number }
-  | { status: "waiting"; cursor: number; attempt: number; delayMs: number; error: Error }
-  | { status: "connected"; cursor: number; attempt: number }
-  | { status: "terminal"; cursor: number; attempt: number }
-  | { status: "failed"; cursor: number; attempt: number; error: Error };
+export type RecoveringRunEventState = RunRecoveryState;
 
 export type RecoveringRunEventConnection = {
   ready: Promise<void>;
@@ -233,29 +233,20 @@ export type RecoveringRunEventOptions = {
   cancelSchedule?: (timer: unknown) => void;
 };
 
-const DEFAULT_RETRY_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000] as const;
-const REPLAY_PAGE_SIZE = 1_000;
-const MAX_REPLAY_PAGES = 11;
-
 export function connectRecoveringRunEventStream(
   options: RecoveringRunEventOptions,
 ): RecoveringRunEventConnection {
   const runId = runIdSchema.parse(options.runId);
-  const retryDelays = [...(options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS)];
-  if (retryDelays.some((delay) => !Number.isSafeInteger(delay) || delay < 0)) {
-    throw new Error("Run event retry delays must be nonnegative safe integers.");
-  }
   const schedule = options.schedule ?? ((callback, delay) => globalThis.setTimeout(callback, delay));
   const cancelSchedule = options.cancelSchedule ?? ((timer) => {
     globalThis.clearTimeout(timer as ReturnType<typeof globalThis.setTimeout>);
   });
   let cursor = nonnegativeSequence(options.after);
-  let attempt = 0;
   let closed = false;
-  let recovering = false;
   let terminal = false;
-  let streamClose: (() => void) | null = null;
-  let retryTimer: unknown | null = null;
+  let currentAttempt = 0;
+  let generation = 0;
+  let controller: AbortController | null = null;
   let readySettled = false;
   let resolveReady!: () => void;
   let rejectReady!: (error: Error) => void;
@@ -271,116 +262,108 @@ export function connectRecoveringRunEventStream(
     else rejectReady(error);
   };
 
-  const closeTransport = (): void => {
-    streamClose?.();
-    streamClose = null;
-    if (retryTimer !== null) {
-      cancelSchedule(retryTimer);
-      retryTimer = null;
-    }
-  };
+  const sleep = (delayMs: number, signal?: AbortSignal): Promise<void> => new Promise((resolve) => {
+    if (signal?.aborted === true) return resolve();
+    let timer: unknown;
+    const done = (): void => {
+      cancelSchedule(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    timer = schedule(done, delayMs);
+    signal?.addEventListener("abort", done, { once: true });
+  });
 
-  const acceptEvent = (event: RunEvent): void => {
-    if (event.sequence <= cursor) return;
-    if (event.sequence !== cursor + 1) {
-      throw new Error(`Run event recovery expected sequence ${cursor + 1} but received ${event.sequence}.`);
-    }
-    options.onEvent(event);
-    cursor = event.sequence;
-    if (isTerminalRunEvent(event)) terminal = true;
-  };
-
-  const scheduleRecovery = (error: Error): void => {
+  const launch = (): void => {
     if (closed || terminal) return;
-    closeTransport();
-    const fatal = error instanceof RunEventReplayError && [409, 410].includes(error.status);
-    const delay = retryDelays[attempt];
-    if (fatal || delay === undefined) {
-      options.onState({ status: "failed", cursor, attempt, error });
-      settleReady(error);
-      return;
-    }
-    attempt += 1;
-    options.onState({ status: "waiting", cursor, attempt, delayMs: delay, error });
-    retryTimer = schedule(() => {
-      retryTimer = null;
-      void recover();
-    }, delay);
-  };
-
-  const recover = async (): Promise<void> => {
-    if (closed || terminal || recovering) return;
-    recovering = true;
-    closeTransport();
-    options.onState({ status: "replaying", cursor, attempt });
-    try {
-      for (let page = 0; page < MAX_REPLAY_PAGES; page += 1) {
-        const events = await fetchRunEvents({
-          baseUrl: options.baseUrl,
-          runId,
-          after: cursor,
-          ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-        });
-        for (const event of events) acceptEvent(event);
-        if (terminal || events.length < REPLAY_PAGE_SIZE) break;
-        if (page === MAX_REPLAY_PAGES - 1) throw new Error("Run event replay exceeded the retained event window.");
-      }
-      if (closed) return;
-      if (terminal) {
-        options.onState({ status: "terminal", cursor, attempt });
-        settleReady();
-        return;
-      }
-      streamClose = connectRunEventStream({
+    generation += 1;
+    const activeGeneration = generation;
+    controller?.abort();
+    controller = new AbortController();
+    void recoverRunEvents<RunEvent>({
+      after: cursor,
+      replay: (after) => fetchRunEvents({
         baseUrl: options.baseUrl,
         runId,
-        after: cursor,
-        onEvent(event) {
-          try {
-            acceptEvent(event);
-            if (terminal) {
-              closeTransport();
-              options.onState({ status: "terminal", cursor, attempt });
+        after,
+        ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      }),
+      stream: ({ after, onEvent, onOpen, signal }) => new Promise<void>((resolve, reject) => {
+        const disconnect = connectRunEventStream({
+          baseUrl: options.baseUrl,
+          runId,
+          after,
+          onEvent(event) {
+            try {
+              onEvent(event);
+              if (isTerminalRunEvent(event)) {
+                disconnect();
+                resolve();
+              }
+            } catch (error) {
+              disconnect();
+              reject(error);
             }
-          } catch (error) {
-            scheduleRecovery(error instanceof Error ? error : new Error("Run event stream recovery failed."));
-          }
-        },
-        onGap() {
-          closeTransport();
-          recovering = false;
-          void recover();
-        },
-        onError(error) {
-          scheduleRecovery(error);
-        },
-        onOpen() {
-          attempt = 0;
-          options.onState({ status: "connected", cursor, attempt });
+          },
+          onGap(gap) {
+            disconnect();
+            reject(new RunRecoverySequenceError(gap.expected, gap.received));
+          },
+          onError(error) {
+            disconnect();
+            reject(error);
+          },
+          onOpen,
+          ...(options.eventSourceFactory === undefined ? {} : { eventSourceFactory: options.eventSourceFactory }),
+        });
+        signal?.addEventListener("abort", () => {
+          disconnect();
+          resolve();
+        }, { once: true });
+      }),
+      onEvent(event) {
+        if (activeGeneration !== generation || closed) return;
+        options.onEvent(event);
+        cursor = event.sequence;
+        if (isTerminalRunEvent(event) && !terminal) {
+          terminal = true;
+          options.onState({ status: "terminal", cursor, attempt: currentAttempt });
           settleReady();
-        },
-        ...(options.eventSourceFactory === undefined ? {} : { eventSourceFactory: options.eventSourceFactory }),
-      });
-    } catch (error) {
-      scheduleRecovery(error instanceof Error ? error : new Error("Run event recovery failed."));
-    } finally {
-      recovering = false;
-    }
+        }
+      },
+      onState(state) {
+        if (activeGeneration !== generation || closed) return;
+        cursor = state.cursor;
+        currentAttempt = state.attempt;
+        if (state.status === "terminal" && terminal) return;
+        terminal = state.status === "terminal";
+        options.onState(state);
+        if (state.status === "connected" || state.status === "terminal") settleReady();
+      },
+      retry(error) {
+        return !(error instanceof RunEventReplayError && [409, 410].includes(error.status));
+      },
+      signal: controller.signal,
+      sleep,
+      ...(options.retryDelaysMs === undefined ? {} : { retryDelaysMs: options.retryDelaysMs }),
+    }).catch((error: unknown) => {
+      if (activeGeneration !== generation || closed) return;
+      settleReady(error instanceof Error ? error : new Error("Run event recovery failed."));
+    });
   };
 
-  void recover();
+  launch();
   return {
     ready,
     close() {
       closed = true;
-      closeTransport();
+      generation += 1;
+      controller?.abort();
       settleReady(new Error("Run event connection was closed."));
     },
     reconnect() {
       if (closed || terminal) return;
-      attempt = 0;
-      closeTransport();
-      void recover();
+      launch();
     },
     cursor: () => cursor,
   };

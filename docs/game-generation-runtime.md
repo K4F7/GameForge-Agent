@@ -155,7 +155,7 @@ Task 创建的权威 `run.started` 可携带可选 language。由 `/tasks` 创�
 
 默认状态仍仅在内存中。生产入口可设置 `GAMEFORGE_RUN_RELAY_STATE_FILE`（绝对路径）启用本地快照：每次 Task/Run 变更等待串行保存队列，快照经过严格 Schema、事件连续性和 Task/Run 终态一致性校验，并以临时文件同步后 rename。启动时恢复 Task、RunEvent、终态和游标，但不恢复 SSE 连接；Workbench 和 CodeArts 应按现有回放协议重连。文件包含 Prompt、事件和日志，应使用受限目录，不放入仓库或云同步目录。若磁盘写入失败，请求返回 500，但本进程内存可能已应用该次变更；此时应停止 Relay、处理磁盘问题并从最后成功快照恢复，再由 CodeArts 使用 `replay_game_run` 对账。本机制面向单机研究，不替代数据库事务、多实例一致性或高可用存储。
 
-Workbench 不依赖原生 `EventSource` 用旧 URL 盲目重连。SSE `error` 或真实 sequence 缺口发生后，客户端关闭旧连接，从最后成功消费的 sequence 调用 `/events?after=N` 回放连续批次，再以新游标建立 stream。网络故障采用 500/1000/2000/4000/8000 ms 的有限退避；HTTP 409 `cursor_ahead`、410 `cursor_expired` 或五次耗尽会进入显式错误，用户可点击“恢复连接”从同一游标重试。重复 sequence 被忽略，只有成功交给 reducer 后才推进游标；终态事件会关闭 stream。该恢复控制器只消费确定性 HTTP/SSE，不调用模型、MCP 或 Agent 循环。
+Workbench 不依赖原生 `EventSource` 用旧 URL 盲目重连。SSE `error` 或真实 sequence 缺口发生后，客户端关闭旧连接，从最后成功消费的 sequence 调用 `/events?after=N` 回放连续批次，再以新游标建立 stream。网络故障采用 500/1000/2000/4000/8000 ms 的有限退避；HTTP 409 `cursor_ahead`、410 `cursor_expired` 或五次耗尽会进入显式错误，用户可点击“恢复连接”从同一游标重试。重复 sequence 被忽略，只有成功交给 reducer 后才推进游标；终态事件会关闭 stream。Workbench 与 TUI 复用 `@gameforge/run-relay/recovery` 的同一纯 TypeScript 恢复状态机，仅传输适配分别使用浏览器 EventSource 和 Bun fetch stream；只有序列实际推进才重置重试预算，避免连接反复 open/断开造成无限重试。该控制器只消费确定性 HTTP/SSE，不调用模型、MCP 或 Agent 循环。
 
 配置 `GAMEFORGE_RUN_RELAY_URL` 后，MCP 除 Run 生命周期工具外还注册：
 

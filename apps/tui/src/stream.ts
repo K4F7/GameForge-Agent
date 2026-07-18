@@ -1,4 +1,5 @@
 import { runEventSchema, type WireRunEvent } from "@gameforge/contracts";
+export { isTerminalRunEvent } from "@gameforge/run-relay/recovery";
 
 export class RunStreamError extends Error {
   constructor(
@@ -103,11 +104,6 @@ function bearerHeader(value: string): string {
     throw new Error("Run relay auth token must contain between 32 and 512 characters without newlines.");
   }
   return `Bearer ${token}`;
-}
-
-export function isTerminalRunEvent(event: WireRunEvent | undefined): boolean {
-  return event?.type === "run.completed" || event?.type === "run.stopped" ||
-    (event?.type === "phase.failed" && !event.repairable);
 }
 
 function safeBaseUrl(value: string): URL {

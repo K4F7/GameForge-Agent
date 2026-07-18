@@ -50,6 +50,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@gameforge/contracts": "0.1.0",
+        "@gameforge/run-relay": "0.1.0",
         "react": "19.2.7",
         "react-dom": "19.2.7",
       },
@@ -92,6 +93,8 @@
         "gameforge-benchmark": "dist/cli.js",
       },
       "dependencies": {
+        "@gameforge/contracts": "0.1.0",
+        "@gameforge/run-relay": "0.1.0",
         "zod": "4.4.3",
       },
       "devDependencies": {
@@ -142,6 +145,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@gameforge/contracts": "0.1.0",
+        "zod": "4.4.3",
       },
       "devDependencies": {
         "@types/node": "22.20.1",

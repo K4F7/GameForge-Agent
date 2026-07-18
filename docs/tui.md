@@ -32,7 +32,7 @@ Relay 启用 Bearer 时，在 TUI 进程环境设置至少 32 字符的 `GAMEFOR
 - 浏览器 verification 的胜负、分数和生命；
 - 阶段状态与最近 8 条日志。
 
-传入 `--json` 后 stdout 只输出逐行事件 JSON，不写 ANSI 控制字符。`watch --json` 先回放历史事件，再通过 SSE 输出实时事件；恢复等待说明只写 stderr，不污染事件管道。收到 `run.completed`、`run.stopped` 或不可修复的 `phase.failed` 后自动退出。重复 sequence 被忽略；序列缺口、非终态 EOF、网络错误、HTTP 429/5xx 会从最后连续游标按 0.5/1/2/4/8 秒有限退避重新回放，缺失事件补齐后再建流。HTTP 409/410、协议错误或预算耗尽会非零退出，不静默跳过或无限重试。
+传入 `--json` 后 stdout 只输出逐行事件 JSON，不写 ANSI 控制字符。`watch --json` 先回放历史事件，再通过 SSE 输出实时事件；恢复等待说明只写 stderr，不污染事件管道。收到 `run.completed`、`run.stopped` 或不可修复的 `phase.failed` 后自动退出。重复 sequence 被忽略；序列缺口、非终态 EOF、网络错误、HTTP 429/5xx 会从最后连续游标按 0.5/1/2/4/8 秒有限退避重新回放，缺失事件补齐后再建流。HTTP 409/410、协议错误或预算耗尽会非零退出，不静默跳过或无限重试。回放、连续游标、终态和重试预算由 `@gameforge/run-relay/recovery` 的共享纯 TypeScript 控制器实现，Workbench 与 TUI 只分别适配浏览器 EventSource 和 Bun fetch stream；真正收到新事件后才重置重试预算，单纯 open 后立即断开不会导致无限重连。
 
 ## 安全和职责边界
 

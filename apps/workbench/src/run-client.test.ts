@@ -335,6 +335,47 @@ describe("run event client", () => {
     expect(scheduled).toBe(false);
   });
 
+  it("ignores late events from an EventSource closed by manual reconnect", async () => {
+    const sources: FakeEventSource[] = [];
+    const received: number[] = [];
+    const connection = connectRecoveringRunEventStream({
+      baseUrl: "http://127.0.0.1:8787/",
+      runId: "run-1",
+      after: 1,
+      fetch: async (input) => new Response(JSON.stringify({
+        runId: "run-1",
+        after: Number(new URL(String(input)).searchParams.get("after")),
+        events: [],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }),
+      onEvent: (event) => received.push(event.sequence),
+      onState() {},
+      eventSourceFactory: () => {
+        const source = new FakeEventSource();
+        sources.push(source);
+        return source;
+      },
+    });
+    await waitUntil(() => expect(sources).toHaveLength(1));
+    sources[0]?.emit("open", new Event("open"));
+    await connection.ready;
+    connection.reconnect();
+    await waitUntil(() => expect(sources).toHaveLength(2));
+    expect(sources[0]?.closed).toBe(true);
+
+    sources[0]?.emit("message", new MessageEvent("message", { data: JSON.stringify({
+      type: "run.completed", runId: "run-1", sequence: 2, emittedAt,
+    }) }));
+    expect(received).toEqual([]);
+    expect(connection.cursor()).toBe(1);
+
+    sources[1]?.emit("open", new Event("open"));
+    sources[1]?.emit("message", new MessageEvent("message", { data: JSON.stringify({
+      type: "run.completed", runId: "run-1", sequence: 2, emittedAt,
+    }) }));
+    expect(received).toEqual([2]);
+    expect(connection.cursor()).toBe(2);
+  });
+
   it("rejects insecure remote Agent URLs", async () => {
     await expect(fetchRunEvents({
       baseUrl: "http://agent.example.com/",
