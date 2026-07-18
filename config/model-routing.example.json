@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "domesticModelsOnly": true,
+  "officialApiRequired": true,
+  "resolutionOrder": [
+    "explicit-user-override",
+    "task-route-primary",
+    "task-route-fallbacks",
+    "host-default"
+  ],
+  "agent": {
+    "orchestration": {
+      "owner": "codearts",
+      "primary": { "provider": "deepseek", "mode": "model", "model": "huaweicloud-maas/deepseek-v3.2", "capabilities": ["long-context", "tool-use", "code"] },
+      "fallbacks": [
+        { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5.1", "capabilities": ["long-context", "tool-use"] }
+      ],
+      "reasoning": "max"
+    },
+    "coding": {
+      "owner": "codearts",
+      "primary": { "provider": "deepseek", "mode": "model", "model": "huaweicloud-maas/deepseek-v3.2", "capabilities": ["code", "tool-use", "long-context"] },
+      "fallbacks": [
+        { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-4.7-SFT-Harmony", "capabilities": ["code", "tool-use"] }
+      ],
+      "reasoning": "high"
+    },
+    "review": {
+      "owner": "codearts",
+      "primary": { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5.1", "capabilities": ["long-context", "tool-use"] },
+      "fallbacks": [],
+      "reasoning": "high"
+    },
+    "quick": {
+      "owner": "codearts",
+      "primary": { "provider": "deepseek", "mode": "model", "model": "huaweicloud-maas/deepseek-v3.2", "capabilities": ["tool-use", "code"] },
+      "fallbacks": [
+        { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5.1", "capabilities": ["tool-use", "long-context"] }
+      ],
+      "reasoning": "low"
+    }
+  },
+  "tools": {
+    "spec": {
+      "owner": "mcp",
+      "primary": { "provider": "bailian", "mode": "model", "model": "qwen3.6-flash", "capabilities": ["json-schema"] },
+      "fallbacks": [],
+      "reasoning": "low"
+    },
+    "image": {
+      "owner": "mcp",
+      "primary": { "provider": "volcengine-ark", "mode": "model", "model": "doubao-seedream-4-0-250828", "capabilities": ["image-generation"] },
+      "fallbacks": [],
+      "reasoning": "high"
+    },
+    "tts": {
+      "owner": "mcp",
+      "primary": { "provider": "volcengine-speech", "mode": "model", "model": "doubao-tts-async", "capabilities": ["text-to-speech"] },
+      "fallbacks": [],
+      "reasoning": "none"
+    },
+    "sound": {
+      "owner": "mcp",
+      "primary": { "provider": "freesound", "mode": "retrieval", "capabilities": ["sound-search"] },
+      "fallbacks": [],
+      "reasoning": "none"
+    }
+  }
+}

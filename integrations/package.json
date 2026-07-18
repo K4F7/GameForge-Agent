@@ -6,7 +6,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit",
-    "test": "vitest run shared/runtime.test.ts codearts/executable.test.ts"
+    "test": "vitest run shared/runtime.test.ts shared/model-routing.test.ts codearts/executable.test.ts"
+  },
+  "dependencies": {
+    "@gameforge/contracts": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "22.20.1",

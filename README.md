@@ -32,6 +32,7 @@
 │   ├── codearts-quickstart.md         # 安装与首次验证
 │   ├── comparison.md                 # 三种代码智能体对比
 │   ├── model-media-strategy.md       # 国产模型、生图、TTS与音效策略
+│   ├── model-evaluation-2026-07.md    # 国产 SOTA、权威榜单与 oh-my-openagent 评估
 │   ├── game-generation-runtime.md    # 项目生成器与事件服务
 │   ├── roadmap.md                    # CodeArts 实验与第二轮 TUI/GUI 计划
 │   ├── codearts-opencode-analysis.md # CodeArts 与 OpenCode 官方资料研判
@@ -123,6 +124,10 @@ GAMEFORGE_SPEC_MODEL=qwen3.6-flash
 `get_gameforge_capabilities` 始终注册，返回本次 MCP 进程实际可用的国产模型、媒体和工程能力布尔快照，不返回密钥、Token、主机白名单或本机路径。CodeArts 将它发布为 `capabilities.ready` 后，Workbench 才把对应 Provider 标记为“本次 MCP 已配置”；未收到事件时显示等待，完整依赖链缺一项时显示未配置。
 
 Provider HTTP 适配器统一使用有界超时和结构化错误。百炼、Freesound GET 与 TTS 查询/下载可对 408、429、5xx、超时和网络错误最多尝试三次；认证、授权和普通请求错误立即失败。Seedream 生图与 TTS submit 默认只发送一次，因为官方没有可核验的幂等保证，避免模糊网络失败造成重复计费任务。完整依据与边界见 [国产模型与游戏媒体资产策略](docs/model-media-strategy.md)。
+
+当前国产 SOTA、Artificial Analysis/LMArena/OpenCompass、SWE-bench/Terminal-Bench、视觉/生图/TTS 榜单和 oh-my-opencode 改名状态的交叉评估见 [2026-07 模型评估](docs/model-evaluation-2026-07.md)。榜单只作为先验；宿主实际模型列表与 GameForge 同 Task 证据优先。
+
+[`config/model-routing.example.json`](config/model-routing.example.json) 是无密钥的国产模型角色/类别路由建议，并由 `modelRoutingPolicySchema` 与集成测试验证。当前 CodeArts 账号真实列出的 DeepSeek V3.2/GLM 系列优先用于主 Agent；Kimi K3 用于宿主确实提供时的长上下文、视觉和跨宿主评估；Qwen GameSpec、Seedream、豆包 TTS 与 Freesound 仍位于确定性 MCP 工具侧。配置中的期望模型不能替代宿主 `models` 输出，实验必须记录实际生效模型。
 
 启用许可证过滤的音效搜索工具时，在启动MCP服务的进程环境中设置：
 

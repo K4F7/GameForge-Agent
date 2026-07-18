@@ -27,6 +27,8 @@ sh -c "$(curl -L https://cnnorth4-cloudide-marketplace.obs.cn-north-4.myhuaweicl
 
 ## 3. 打开项目
 
+本机同时安装独立 OpenCode 时，优先从仓库运行 `bun run codearts`，不要让两个客户端共用 OpenCode 默认数据库。CodeArts 26.6.2 与 OpenCode 1.18.3 已实际观察到不同迁移数量；共享 `%USERPROFILE%\.local\share\opencode\opencode.db` 会分别触发重复列或重复表错误。仓库启动器把 CodeArts 指向 `%USERPROFILE%\.codeartsdoer\cli-data`，OpenCode 保持自己的默认数据目录。迁移数据库前必须停止两端进程并备份，禁止手工删除列或伪造 migration 记录。
+
 在CodeArts Agent IDE中可以：
 
 - 导入本地文件夹；

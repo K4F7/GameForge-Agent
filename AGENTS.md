@@ -8,6 +8,7 @@
 
 - 当前研究环境已经安装 CodeArts Agent 客户端；后续实验应优先使用该真实客户端完成任务认领、MCP 调用和结果验收，不再把“尚未安装”作为默认前提。
 - 当前观察表明 CodeArts Agent 是基于 OpenCode 修改的客户端。涉及配置目录、会话格式、工具协议或其他实现细节时，可以把 OpenCode 作为代码阅读与兼容性研究线索，但不得仅凭上游行为推断 CodeArts 行为；最终结论仍须以当前安装版本的实际运行证据或华为云官方文档为准。
+- CodeArts 与独立 OpenCode CLI 必须使用不同的数据目录。仓库内实验优先通过 `bun run codearts` / `bun run opencode` 启动；不得让不同迁移版本共同写 `%USERPROFILE%\.local\share\opencode\opencode.db`。认证文件、数据库及其备份都属于用户私有状态，不纳入仓库。
 - “已安装”不等于“端到端已验证”。只有真实 CodeArts 会话完成 Task 认领、确定性 MCP 工具调用、RunEvent 发布与 Workbench/浏览器验收后，才能记录为 CodeArts 集成通过。
 
 ## 工作方式

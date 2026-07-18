@@ -12,4 +12,5 @@ output/
 *.log
 apps/desktop/src-tauri/target/
 .codeartsdoer/skills/ProjectSkillStatus.txt
+.opencode/AGENTS.md
 .DS_Store
