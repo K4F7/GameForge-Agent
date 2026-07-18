@@ -130,17 +130,17 @@ export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 export const defaultProviderConfig = providerConfigSchema.parse({
   schemaVersion: "1.0",
   providers: [
-    { id: "bailian", capabilities: ["llm"] },
+    { id: "codearts", capabilities: ["llm"] },
     { id: "volcengine-ark", capabilities: ["image"] },
     { id: "volcengine-speech", capabilities: ["tts"] },
     { id: "freesound", capabilities: ["sound-search"] },
     { id: "minimax", capabilities: ["audio-generation"] },
   ],
   llm: {
-    planner: { provider: "bailian", model: "qwen3.7-plus" },
-    spec: { provider: "bailian", model: "qwen3.6-flash" },
-    coder: { provider: "bailian", model: "qwen3-coder-plus" },
-    reviewer: { provider: "bailian", model: "qwen3.7-plus" },
+    planner: { provider: "codearts", model: "huaweicloud-maas/deepseek-v3.2" },
+    spec: { provider: "codearts", model: "huaweicloud-maas/Glm-5-internal" },
+    coder: { provider: "codearts", model: "huaweicloud-maas/deepseek-v3.2" },
+    reviewer: { provider: "codearts", model: "huaweicloud-maas/GLM-5.1" },
   },
   image: {
     provider: "volcengine-ark",

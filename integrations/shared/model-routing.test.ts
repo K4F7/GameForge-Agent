@@ -26,19 +26,27 @@ describe("committed model routing example", () => {
       ...policy.agent.story.primary,
       model: "huaweicloud-maas/GLM-5-INTERNAL",
     }])).toMatchObject({ status: "unavailable" });
-    const hy3 = policy.agent.coding.fallbacks.at(-1);
-    if (hy3 === undefined) throw new Error("Expected a committed Hy3 coding fallback.");
-    expect(hy3).toMatchObject({ provider: "tencent", model: "opencode/hy3-free" });
-    expect(resolveAgentModelRoute(policy.agent.coding, [hy3])).toMatchObject({
+    const codingFallback = policy.agent.coding.fallbacks.at(-1);
+    if (codingFallback === undefined) throw new Error("Expected a committed CodeArts coding fallback.");
+    expect(codingFallback).toMatchObject({
+      provider: "zhipu",
+      model: "huaweicloud-maas/GLM-4.7-SFT-Harmony",
+    });
+    expect(resolveAgentModelRoute(policy.agent.coding, [codingFallback])).toMatchObject({
       status: "selected",
       source: "task-route-fallback",
-      target: { provider: "tencent", model: "opencode/hy3-free" },
+      target: { provider: "zhipu", model: "huaweicloud-maas/GLM-4.7-SFT-Harmony" },
     });
+    const agentTargets = Object.values(policy.agent).flatMap((route) =>
+      route === undefined ? [] : [route.primary, ...route.fallbacks]
+    );
+    expect(new Set(agentTargets.map(({ provider }) => provider))).toEqual(new Set(["deepseek", "zhipu"]));
     expect(policy.tools.sound.primary).toMatchObject({ provider: "freesound", mode: "retrieval" });
     expect(policy.tools.music).toMatchObject({
-      availability: "enabled",
+      availability: "planned",
       primary: { provider: "minimax", model: "music-2.6" },
     });
+    expect(Object.values(policy.tools).every(({ availability }) => availability === "planned")).toBe(true);
     expect(text).not.toMatch(/api[_-]?key|access[_-]?key|secret|token/i);
   });
 });

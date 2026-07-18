@@ -6,12 +6,12 @@ import {
 } from "./providers.js";
 
 describe("providerConfigSchema", () => {
-  it("ships with a valid domestic-model-first default configuration", () => {
+  it("ships with CodeArts built-in LLM defaults and conditional media routes", () => {
     const result = validateProviderConfig(defaultProviderConfig);
 
     expect(result.llm.coder).toEqual({
-      provider: "bailian",
-      model: "qwen3-coder-plus",
+      provider: "codearts",
+      model: "huaweicloud-maas/deepseek-v3.2",
     });
     expect(result.image.provider).toBe("volcengine-ark");
     expect(result.tts.provider).toBe("volcengine-speech");
@@ -49,7 +49,7 @@ describe("providerConfigSchema", () => {
     undeclared.llm.coder.provider = "missing-provider";
 
     const wrongCapability = structuredClone(defaultProviderConfig);
-    wrongCapability.image.provider = "bailian";
+    wrongCapability.image.provider = "codearts";
 
     expect(providerConfigSchema.safeParse(undeclared).success).toBe(false);
     expect(providerConfigSchema.safeParse(wrongCapability).success).toBe(false);
