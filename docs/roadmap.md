@@ -8,7 +8,7 @@
 
 - [x] 为生成请求、计划和 Manifest 增加显式 `web` / `douyin-mini-game` target；旧请求默认 `web`，未实现平台 target 会明确失败；
 - [x] 完成 Phaser 4 抖音小游戏无 DOM 兼容性 spike；动态导入与初始化触发广泛浏览器依赖，按 ADR 停止 shim 路线；
-- [ ] 以 LayaAir 3.2 `bytedancegame` 为首选后端，用同一 GameSpec 与 Cocos Creator 3.8 LTS 对照工具链、包体、真机和 CodeArts 修复成本；
+- [ ] 以 LayaAir 3.4.0 `bytedancegame` 为首选后端，用同一 GameSpec 与 Cocos Creator 3.8 LTS 对照工具链、包体、真机和 CodeArts 修复成本；
 - [ ] 生成 `game.js`、`game.json`、`project.config.json` 与平台适配入口；
 - [ ] 增加主包 4MB、整体 20MB、文件类型、远程脚本、HTTPS 域名与 capability 静态校验；
 - [ ] 在抖音小游戏开发者工具完成导入、预览和上传前检查；
