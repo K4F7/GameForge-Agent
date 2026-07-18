@@ -46,6 +46,8 @@ Windows 实验需要记录系统版本、代理环境变量以及旧版 `codeart
 - shim 设置 `KERNEL_DATA_DIR=%USERPROFILE%\.codeartsdoer\cli-data`、`KERNEL_CONFIG_DIR=%USERPROFILE%\.codeartsdoer`、`OPENCODE_CONFIG=%USERPROFILE%\.codeartsdoer\codearts_cli.json`、`OPENCODE_MODE=tui` 和 `SCENARIO=codeartsdoer`。
 - 安装包的 `package.json` 依赖 `@opencode-ai/plugin` 26.6.2；`codearts_cli.json` 使用 `https://opencode.ai/config.json` Schema。
 - CLI 暴露 `run`、`serve`、`mcp`、`agent`、`models`、session/export 等与 OpenCode 同族的命令。
+- 独立 OpenCode 1.18.3 使用官方 `run --format json --model` 路径和隔离 XDG data，实际列出并调用 `opencode/hy3-free`；短探针成功后，同一抖音小游戏基准以 `agentId: "opencode"` 完成 6 个连续 RunEvent 与 16 次零错误 GameForge MCP 调用。
+- 同任务 CodeArts/OpenCode record 具有相同 definition fingerprint，均含 passed gameplay/build proof；机械报告判定工作流可比较。记录见 `experiments/2026-07-18-codearts-opencode-douyin-comparison/`。
 
 这些本机文件与环境变量是直接实现指纹，比 UI 相似性更强；但仓库仍将“基于 OpenCode 修改”标为用户观察与本机证据支持的结论，而不是华为云官方声明。探测没有读取 auth、permission 内容、Token 或私人会话。
 
@@ -54,4 +56,5 @@ Windows 实验需要记录系统版本、代理环境变量以及旧版 `codeart
 - 保持官方 stdio MCP 配置；CodeArts 启动 Node MCP，Bun 继续负责依赖、workspace、检查、测试和构建。
 - 项目规则继续放在根 `AGENTS.md`，CodeArts 专用 Skills/Agents 放在 `.codeartsdoer/`。
 - 第二轮 TUI 优先复用 GameForge 自己的 Relay/RunEvent 协议，不依赖 OpenCode 私有 Session API，避免绑定未证实的内部实现。
+- OpenCode 对照实验继续使用公开 CLI、项目配置、XDG data 和标准 MCP；提交记录不读取或导出 OpenCode 私有 Session/认证正文。
 - 如果后续找到 CodeArts 本地 Server/API，只作为可选适配器，不改变“CodeArts 主智能体、MCP 确定性”的架构边界。

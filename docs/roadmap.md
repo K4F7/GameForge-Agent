@@ -38,6 +38,7 @@
 - [x] 无百炼账号时由 CodeArts 按 Skill 手工构造同 locale 规格并发布 `spec.ready`；
 - [x] CodeArts 生成项目、运行构建与浏览器验收、发布 `preview.ready`/`verification.ready` 并完成 Run；
 - [x] 由真实非交互 CodeArts 完成抖音小游戏规格、受管生成、双终态玩法验收、LayaAir 3.4.0 静态构建和 Run 完成；
+- [x] 由独立 OpenCode 1.18.3 + 腾讯 Hy3 完成同一抖音任务，并生成同 fingerprint、双端 16 次 MCP 调用且零错误的机械对比报告；
 - [x] 保存脱敏实验记录：客户端版本、耗时、RunEvent 序列、人工干预、Task/Run ID、截图与失败边界。该历史执行没有完整 MCP 工具调用序列，基准记录按 `null`/`unknown` 保留，不从事件数反推；
 
 通过标准：Relay 中 Task 为 completed，真实 CodeArts Run 发布规格、预览与验证事件，生成项目可构建且 Chrome 证据通过，记录中不存在密钥或账号隐私。该标准已于 2026-07-18 首次通过；本次没有媒体资产，因此没有 `asset.ready`，Workbench 资产面板应保持空状态而不是伪造结果。
@@ -51,6 +52,8 @@
 重新打开环境后，用户级 AK/SK 已能只读注入 CodeArts 子进程；`codearts models` 实际返回 DeepSeek V3.2、GLM-4.7 ArkTS、GLM-5 和 GLM-5.1。修复 OpenCode-compatible 配置的非标准 `cwd` 与空 Relay token 后，非交互 GLM-5.1 Agent 在 39.3 秒内真实完成 `create_game_task → claim_game_task → replay_game_run`，三次 MCP Audit 均成功。详见 `experiments/2026-07-18-codearts-headless-task-create/`。
 
 同日，非交互 DeepSeek V3.2 Agent 又在约 342.1 秒内完成一个中文抖音街机收集小游戏的 Task 创建、认领、规格、项目生成、玩法双终态验收、LayaAir 3.4.0 构建和 Run 完成。Relay 保存 6 个连续事件，MCP Audit 保存 16 次成功调用；严格基准 record 不含 Prompt、日志、模板哈希或本机路径。详见 `experiments/2026-07-18-codearts-douyin-full/`。该项关闭“真实 CodeArts 无 GUI 本地小游戏生产”缺口，但 DevTool、真机和平台上传仍保持未完成。
+
+同一规范化任务随后由 OpenCode 1.18.3 的 `opencode/hy3-free` 在 92.181 秒墙钟内完成，Task 如实由 `opencode` 认领，6 个事件与 16 次 MCP 调用均零错误。Benchmark 只依据相同 definition fingerprint 和两端 passed gameplay/build proof 判定可比，不把单次耗时推广为模型排行榜。详见 `experiments/2026-07-18-codearts-opencode-douyin-comparison/`。
 
 生成游戏性能基线已加入版本化预算：首屏只加载状态壳，Phaser 与玩法代码异步获取。预算同时记录总量，因此拆分不能掩盖依赖增长；结果见 `experiments/2026-07-18-bundle-split/`。
 

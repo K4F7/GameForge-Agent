@@ -101,6 +101,8 @@ Tauri 2 桌面 spike 位于 `apps/desktop`，只封装现有 Workbench，不新�
 
 客户端基准使用规范化任务定义的 SHA-256，而不是要求 CodeArts 与 OpenCode 复用同一个 Task ID。运行 `bun run benchmark -- report definition.json codearts.record.json opencode.record.json --out report.md` 可校验记录并生成对比；只有两端都完成时才允许比较工作流质量。
 
+2026-07-18 已用 CodeArts 26.6.2 DeepSeek V3.2 与 OpenCode 1.18.3 腾讯 Hy3 完成同一抖音小游戏定义：两端均为 6 个连续事件、16 次零错误 MCP 调用和 passed gameplay/build proof，机械报告判定可比较。该单次结果不构成通用模型排行，详见 `experiments/2026-07-18-codearts-opencode-douyin-comparison/`。
+
 运行 `bun run benchmark -- capture definition.json metadata.json --task-id TASK_ID [--mcp-audit AUDIT.json] --out record.json` 可从 Relay 分页捕获 Task 与完整保留期 RunEvent，校验连续 sequence、Task/Run 终态和定义 Prompt/语言，再生成同一严格 record。浏览器完成证据来自 `verification.ready`；小游戏定义必须显式给出平台与运行时类型，并同时具备相互匹配的 `gameplay.verified`、`build.ready`、能力快照和规格事件。`metadata.json` 必须显式提供客户端版本、人工干预与失败分类；未提供 audit 时工具摘要也由人工如实填写，绝不从事件数猜测。配置 `GAMEFORGE_MCP_AUDIT_DIR` 后，生产 MCP 每次启动生成唯一、有界的 0600 JSON，只记录工具名/顺序/时间/耗时/状态；CodeArts 认领 Task 后通过条件工具 `bind_mcp_audit_context` 一次性绑定 Task/Run，相同绑定幂等、不同绑定拒绝。显式导入 audit 后，capture 必须与 Relay 交叉核对绑定，再机械计算工具摘要并写入 Task/Run、session ID 与 SHA-256。两种证据都不包含 Prompt、参数、返回值、日志正文、URL、模板哈希或 TTS job handle。输出文件必须不存在，防止覆盖既有证据。
 
 ## 集成边界
@@ -134,7 +136,7 @@ Provider HTTP 适配器统一使用有界超时和结构化错误。百炼、Fre
 
 当前国产 SOTA、Artificial Analysis/LMArena/OpenCompass、SWE-bench/Terminal-Bench、视觉/生图/TTS 榜单和 oh-my-opencode 改名状态的交叉评估见 [2026-07 模型评估](docs/model-evaluation-2026-07.md)。榜单只作为先验；宿主实际模型列表与 GameForge 同 Task 证据优先。
 
-[`config/model-routing.example.json`](config/model-routing.example.json) 是无密钥的国产模型角色/类别路由建议，并由 `modelRoutingPolicySchema` 与集成测试验证。MCP 启动时严格加载该策略并条件注册只读的 `get_agent_model_route`：CodeArts 把宿主真实 `models` 结果作为可用 target 传入，工具只按显式覆盖、primary、fallback 顺序返回选择与来源，不调用模型或实现 Agent 循环；没有匹配项时返回 `unavailable`，不得静默冒充。动态启动器会写入跨平台绝对策略路径，独立配置可用 `GAMEFORGE_MODEL_ROUTING_POLICY` 覆盖。当前 CodeArts 账号真实列出的模型按工种分配：DeepSeek V3.2 负责玩法代码，GLM-5 负责剧情对白，GLM-5.1 负责独立复核；Seedream 负责美术，豆包 TTS 负责配音，Freesound 负责常见音效检索，MiniMax Music 2.6 负责纯音乐配乐。Kimi K3 只用于宿主确实提供时的长上下文、视觉和跨宿主评估。配置中的期望模型不能替代宿主 `models` 输出，实验必须记录实际生效模型。
+[`config/model-routing.example.json`](config/model-routing.example.json) 是无密钥的国产模型角色/类别路由建议，并由 `modelRoutingPolicySchema` 与集成测试验证。MCP 启动时严格加载该策略并条件注册只读的 `get_agent_model_route`：调用方把宿主真实 `models` 结果映射为国产 Provider + 精确 host target，工具只按显式覆盖、primary、fallback 顺序返回选择与来源，不调用模型或实现 Agent 循环；没有匹配项时返回 `unavailable`，不得静默冒充。动态启动器会写入跨平台绝对策略路径，独立配置可用 `GAMEFORGE_MODEL_ROUTING_POLICY` 覆盖。当前 CodeArts 账号真实列出的模型仍优先：DeepSeek V3.2 负责玩法代码，GLM-5 负责剧情对白，GLM-5.1 负责独立复核；OpenCode 实际列出并完成工具探针的腾讯 Hy3 target `opencode/hy3-free` 只作为编排、编码和快速任务的末位跨宿主 fallback。Seedream 负责美术，豆包 TTS 负责配音，Freesound 负责常见音效检索，MiniMax Music 2.6 负责纯音乐配乐。Kimi K3 只用于宿主确实提供时的长上下文、视觉和跨宿主评估。配置中的期望模型不能替代宿主 `models` 输出，实验必须记录实际生效模型。
 
 启用许可证过滤的音效搜索工具时，在启动MCP服务的进程环境中设置：
 

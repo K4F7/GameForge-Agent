@@ -1,0 +1,22 @@
+{
+  "client": {
+    "name": "opencode",
+    "version": "1.18.3",
+    "model": "opencode/hy3-free",
+    "provider": "opencode"
+  },
+  "tools": {
+    "count": null,
+    "names": [],
+    "errors": null
+  },
+  "humanInterventions": [
+    "Selected Hy3 after an isolated MiMo probe returned an upstream provider error.",
+    "Added an exact Tencent Hy3 cross-host route and clarified the GameSpec object input contract after a discovery Run.",
+    "Allowed eight local GameForge tools and denied built-in mutation tools in the ignored non-interactive experiment config."
+  ],
+  "failure": "none",
+  "evidence": [
+    "experiments/2026-07-18-codearts-opencode-douyin-comparison/result.md"
+  ]
+}

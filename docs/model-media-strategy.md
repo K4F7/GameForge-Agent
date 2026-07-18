@@ -47,6 +47,7 @@ GameSpec 草拟的严格 JSON Schema 现在还要求 `gameplay`：目标数、�
 - `planner`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/deepseek-v3.2`，用于玩法拆解、架构设计、关卡规划和工具编排。
 - `spec`：`qwen3.6-flash`，用于从自然语言提取GameSpec、资产清单和任务分类；输出必须再次经过Zod校验。
 - `coder`：当前 CodeArts 使用 `huaweicloud-maas/deepseek-v3.2`；宿主支持外部 Coding Plan 时再比较 `qwen3-coder-plus` 与 K3。
+- `cross-host coding`：CodeArts 内置 DeepSeek/GLM 仍在前；OpenCode 1.18.3 实际列出的腾讯 Hy3 target `opencode/hy3-free` 只作为编排、编码和快速任务的末位 fallback。路由中的 Provider 记录为 `tencent`，model 保留宿主精确 target，不把 OpenCode 网关名冒充模型厂商。
 - `story`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/Glm-5-internal`（显示名 GLM-5），专门生成剧情结构、角色卡、对白和本地化草案；GLM-5.1 复核。模型 ID 大小写和 `-internal` 后缀必须与宿主输出完全一致。跨宿主再比较 MiniMax M2.7 与 Kimi K3，但不得静默替换实际生效模型。
 - `reviewer`：当前 CodeArts 优先 GLM-5.1，并与生成步骤使用不同提示词；构建、测试和静态检查仍是最终证据。
 - `vision`：跨宿主优先评估 Kimi K3，备选 GLM-4.6V/Seed1.5-VL；当前 CodeArts 列表没有已确认的视觉模型时，不把截图审查记为已完成。
@@ -54,6 +55,8 @@ GameSpec 草拟的严格 JSON Schema 现在还要求 `gameplay`：目标数、�
 Qwen官方资料确认Qwen3系列具备代码、工具调用、思考/非思考模式以及长上下文能力；Qwen3-Coder面向Agent式编码和工具调用。阿里云函数调用文档列出了Qwen3-Coder、Qwen-Plus和Qwen-Flash系列。具体快照版本会变化，因此仓库只提供经过验证的默认值，不将模型ID散落在业务代码中。
 
 Kimi K3 作为跨宿主长上下文与视觉评估方案。它不会替换 MCP 中已实现的 Qwen GameSpec、Seedream、豆包 TTS 或 Freesound 适配器；宿主未提供 K3 时不把它放入可执行 fallback，也不能静默把其他模型记成 K3。
+
+腾讯官方于 2026-07-06 发布 Hy3，明确其面向代码生成、Agent 和游戏生产，并将逐步接入 OpenCode。2026-07-18 本机 `opencode models --verbose` 返回精确免费 target `opencode/hy3-free`，无工具探针成功且成本字段为 0；MiMo V2.5 免费 target 同日由上游返回 HTTP 400，未进入生产 Run。Hy3 的策略条目只证明本次宿主可见与探针可用，不能替代官方 API SLA 或付费账号验收。[腾讯官方发布说明](https://www.tencent.com/zh-cn/tencent-hunyuan-officially-releases-hy3-advancing-agent-capabilities-and-deeper-product-integration/)（访问日期：2026-07-18）
 
 CodeArts 普通 CLI 通过 `codearts models [provider]` 列出当前账号可用模型，并用 `provider/model` 选择；截至访问日，公开 CLI 帮助没有个人用户任意配置 Base URL 或 BYOK Provider 的入口。CodeArts 企业版官方“配置模型”支持管理员接入第三方大语言模型，但只接受 OpenAI 规范的 `/chat/completions` 接口。管理员完成接入且模型真实出现在宿主列表后，GameForge 才能把它加入 Agent fallback。MCP 可以封装外部模型的一次确定性调用，但这不会改变 CodeArts 主 Agent 使用的模型。
 
@@ -73,7 +76,7 @@ oh-my-opencode/后续更名项目 oh-my-openagent 的官方配置把 agent role 
 4. 运行记录必须写实际生效模型，而不是配置中希望使用但宿主未提供的模型；
 5. 快速任务不滥用最昂贵的长上下文模型，视觉任务不交给无视觉能力的模型。
 
-可提交示例位于 `config/model-routing.example.json`，由 `modelRoutingPolicySchema` 和集成测试验证。当前可执行 Agent 路由只包含本次 `codearts models` 已确认的模型；未确认的视觉路由保持缺省。Schema 以受支持国产 Provider 与模型家族 ID 的匹配规则约束推理与生成模型，并保持 Freesound 的所有 fallback 都是许可证检索；家族规则不是当前账号模型 allowlist。`officialApiRequired` 表示只允许仓库已登记的官方适配器，但不能证明账号授权或实时可用性；示例不替代宿主当前 `models` 输出。
+可提交示例位于 `config/model-routing.example.json`，由 `modelRoutingPolicySchema` 和集成测试验证。当前可执行 Agent 路由只包含本次 `codearts models` 或 `opencode models` 已确认且完成最小探针的精确 target；未确认的视觉路由保持缺省。Schema 以受支持国产 Provider 与模型家族 ID 的匹配规则约束推理与生成模型，并保持 Freesound 的所有 fallback 都是许可证检索；家族规则不是当前账号模型 allowlist，也不会在 `tencent/Hy3` 与 `opencode/hy3-free` 之间做模糊别名匹配。`officialApiRequired` 表示只允许仓库已登记的官方适配器，但不能证明账号授权或实时可用性；示例不替代宿主当前 `models` 输出。
 
 ### 配置原则
 
