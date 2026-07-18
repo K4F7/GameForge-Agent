@@ -261,4 +261,26 @@ describe("run event contracts", () => {
       },
     }).success).toBe(true);
   });
+
+  it("keeps Laya logic proof distinct from browser and platform evidence", () => {
+    const event = {
+      type: "gameplay.verified",
+      runId: "run-1",
+      sequence: 5,
+      emittedAt,
+      projectId: "wechat-arcade",
+      target: "wechat-mini-game",
+      genre: "arcade",
+      passed: true,
+      scenarios: [
+        { name: "genre-win", outcome: "won", actions: 2 },
+        { name: "timeout-loss", outcome: "lost", actions: 1 },
+      ],
+      durationMs: 50,
+      templateSha256: "a".repeat(64),
+    } as const;
+    expect(runEventSchema.safeParse(event).success).toBe(true);
+    expect(runEventSchema.safeParse({ ...event, evidencePath: ".gameforge/verification/fake.png" }).success).toBe(false);
+    expect(runEventSchema.safeParse({ ...event, target: "web" }).success).toBe(false);
+  });
 });

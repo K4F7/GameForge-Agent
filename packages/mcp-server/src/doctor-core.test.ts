@@ -49,7 +49,7 @@ describe("GameForge doctor core", () => {
         sound: { ready: true },
         music: { ready: true },
       },
-      engineering: { assetStore: true, generator: true, douyinBuild: true, wechatBuild: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+      engineering: { assetStore: true, generator: true, douyinBuild: true, wechatBuild: true, gameplayVerifier: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
     })).toEqual([
       "build_douyin_mini_game",
       "build_wechat_mini_game",
@@ -72,6 +72,7 @@ describe("GameForge doctor core", () => {
       "stop_game_preview",
       "stop_game_run",
       "verify_game_project",
+      "verify_minigame_gameplay",
     ]);
   });
 });

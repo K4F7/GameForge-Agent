@@ -168,6 +168,35 @@ describe("GameForge MCP server", () => {
     }
   });
 
+  it("registers managed Laya logic verification without browser evidence", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer({
+      layaGameplayVerifier: {
+        async verify(projectId) {
+          return {
+            projectId, target: "douyin-mini-game", genre: "puzzle", passed: true,
+            scenarios: [
+              { name: "genre-win", outcome: "won", actions: 2 },
+              { name: "timeout-loss", outcome: "lost", actions: 1 },
+            ],
+            durationMs: 20, templateSha256: "b".repeat(64),
+          };
+        },
+      },
+    });
+    const client = new Client({ name: "gameforge-laya-logic-test", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("verify_minigame_gameplay");
+      const result = await client.callTool({ name: "verify_minigame_gameplay", arguments: { projectId: "safe-game" } });
+      expect(result.isError).not.toBe(true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("registers and invokes all deterministic validation tools", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer();

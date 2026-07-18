@@ -24,7 +24,7 @@ import { z } from "zod";
 import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
 import { douyinRuntimeSource } from "./douyin-template.js";
 
-const GENERATOR_VERSION = "0.13.0";
+export const GAMEFORGE_GENERATOR_VERSION = "0.13.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 
 type GeneratedFile = { path: string; content: string; bytes: number; sha256: string };
@@ -87,7 +87,7 @@ export class GameProjectGenerator {
     const input = projectGenerationRequestSchema.parse(request);
     const generated = createGeneratedFiles(input.projectId, input.spec, input.target);
     const plan = generatedProjectPlanSchema.parse({
-      generatorVersion: GENERATOR_VERSION,
+      generatorVersion: GAMEFORGE_GENERATOR_VERSION,
       projectId: input.projectId,
       target: input.target,
       specSha256: generated.specSha256,
@@ -441,7 +441,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePla
   }));
   const manifest = file(".gameforge/manifest.json", `${JSON.stringify({
     schemaVersion: "1.0",
-    generatorVersion: GENERATOR_VERSION,
+    generatorVersion: GAMEFORGE_GENERATOR_VERSION,
     projectId,
     target,
     specSha256,

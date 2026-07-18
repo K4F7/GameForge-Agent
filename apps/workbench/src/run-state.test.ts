@@ -73,7 +73,7 @@ describe("runReducer", () => {
         sound: { provider: "freesound" as const, ready: true },
         music: { provider: "minimax" as const, ready: true },
       },
-      engineering: { assetStore: true, generator: true, douyinBuild: true, wechatBuild: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+      engineering: { assetStore: true, generator: true, douyinBuild: true, wechatBuild: true, gameplayVerifier: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
     };
     const state = runReducer(
       runReducer(createInitialRunState(), { type: "run.started", runId: "run-1", sequence: 1 }),
@@ -324,6 +324,21 @@ describe("runReducer", () => {
         stdoutTruncated: false,
         stderrTruncated: false,
       },
+      {
+        type: "gameplay.verified",
+        runId: "run-1",
+        sequence: 5,
+        projectId: "safety-sprint",
+        target: "douyin-mini-game",
+        genre: "arcade",
+        passed: true,
+        scenarios: [
+          { name: "genre-win", outcome: "won", actions: 2 },
+          { name: "timeout-loss", outcome: "lost", actions: 1 },
+        ],
+        durationMs: 42,
+        templateSha256: "a".repeat(64),
+      },
     ];
     const state = events.reduce(runReducer, createInitialRunState());
     expect(state.spec).toEqual(spec);
@@ -334,6 +349,11 @@ describe("runReducer", () => {
       fileCount: 16,
       assetCount: 1,
       deviceOrientation: "portrait",
+    });
+    expect(state.gameplayVerification).toMatchObject({
+      target: "douyin-mini-game",
+      genre: "arcade",
+      scenarios: [{ outcome: "won" }, { outcome: "lost" }],
     });
   });
 });

@@ -33,6 +33,7 @@ Relay 启用 Bearer 时，在 TUI 进程环境设置至少 32 字符的 `GAMEFOR
 - GameSpec 标题与 locale；
 - 资产数量与预览 URL；
 - 抖音或微信 LayaAir 构建 target、版本、方向、文件/包体和媒体 Manifest revision；
+- 小游戏固定模板的胜利/失败双终态逻辑证据，并明确标记 `[no-render]`；
 - 浏览器 verification 的胜负、分数和生命；
 - 阶段状态与最近 8 条日志。
 

@@ -73,6 +73,12 @@ const miniGameBuildCapabilitiesSchema = z.union([
   wechatPlatformPolicySchema.shape.capabilities,
 ]);
 
+const gameplayScenarioSchema = z.strictObject({
+  name: z.enum(["genre-win", "timeout-loss"]),
+  outcome: z.enum(["won", "lost"]),
+  actions: z.number().int().positive().max(100),
+});
+
 const eventBaseShape = {
   runId: runIdSchema,
   sequence: z.number().int().positive(),
@@ -146,6 +152,20 @@ export const runEventSchema = z.discriminatedUnion("type", [
     diagnostics: verificationDiagnosticCountsSchema,
     actionsExecuted: z.number().int().min(0).max(100),
     durationMs: z.number().int().nonnegative().max(300_000),
+  }),
+  z.strictObject({
+    ...eventBaseShape,
+    type: z.literal("gameplay.verified"),
+    projectId: projectIdSchema,
+    target: z.enum(["douyin-mini-game", "wechat-mini-game"]),
+    genre: gameSpecSchema.shape.genre,
+    passed: z.literal(true),
+    scenarios: z.tuple([
+      gameplayScenarioSchema.extend({ name: z.literal("genre-win"), outcome: z.literal("won") }),
+      gameplayScenarioSchema.extend({ name: z.literal("timeout-loss"), outcome: z.literal("lost") }),
+    ]),
+    durationMs: z.number().int().nonnegative().max(30_000),
+    templateSha256: z.string().regex(/^[a-f0-9]{64}$/),
   }),
   z.strictObject({
     ...eventBaseShape,

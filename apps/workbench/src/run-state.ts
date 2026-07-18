@@ -53,6 +53,15 @@ export type VerificationState = {
   durationMs: number;
 };
 
+export type GameplayVerificationState = {
+  projectId: string;
+  target: "douyin-mini-game" | "wechat-mini-game";
+  genre: GameSpec["genre"];
+  scenarios: ReadonlyArray<{ name: "genre-win" | "timeout-loss"; outcome: "won" | "lost"; actions: number }>;
+  durationMs: number;
+  templateSha256: string;
+};
+
 export type BuildState = {
   projectId: string;
   target: "douyin-mini-game" | "wechat-mini-game";
@@ -82,6 +91,7 @@ export type RunState = {
   assets: ReadonlyArray<RuntimeAssetEntry>;
   voiceJobs: ReadonlyArray<VoiceJobState>;
   verification: VerificationState | null;
+  gameplayVerification: GameplayVerificationState | null;
   build: BuildState | null;
   capabilities: GameforgeCapabilitySnapshot | null;
 };
@@ -115,6 +125,7 @@ export function createInitialRunState(): RunState {
     assets: [],
     voiceJobs: [],
     verification: null,
+    gameplayVerification: null,
     build: null,
     capabilities: null,
   };
@@ -217,6 +228,18 @@ export function runReducer(state: RunState, event: RunStateAction): RunState {
           durationMs: event.durationMs,
         },
       };
+    case "gameplay.verified":
+      return {
+        ...eventState,
+        gameplayVerification: {
+          projectId: event.projectId,
+          target: event.target,
+          genre: event.genre,
+          scenarios: event.scenarios,
+          durationMs: event.durationMs,
+          templateSha256: event.templateSha256,
+        },
+      };
     case "voice.job.updated":
       return {
         ...eventState,
@@ -292,7 +315,7 @@ export function createDemoEvents(runId: string): ReadonlyArray<RunEvent> {
           sound: { provider: "freesound", ready: false },
           music: { provider: "minimax", ready: false },
         },
-        engineering: { assetStore: false, generator: true, douyinBuild: false, wechatBuild: false, verifier: true, preview: true, runRelay: false, taskInbox: false },
+        engineering: { assetStore: false, generator: true, douyinBuild: false, wechatBuild: false, gameplayVerifier: false, verifier: true, preview: true, runRelay: false, taskInbox: false },
       },
     },
     {

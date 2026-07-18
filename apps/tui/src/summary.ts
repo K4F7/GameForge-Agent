@@ -20,6 +20,13 @@ export type RunSummary = {
     deviceOrientation: "portrait" | "landscape";
   };
   verification?: { passed: boolean; outcome: "running" | "won" | "lost"; score: number; lives: number };
+  gameplayVerification?: {
+    target: "douyin-mini-game" | "wechat-mini-game";
+    genre: string;
+    winActions: number;
+    lossActions: number;
+    durationMs: number;
+  };
   phases: Partial<Record<string, string>>;
   logs: string[];
 };
@@ -73,6 +80,15 @@ export function summarizeRun(events: readonly WireRunEvent[]): RunSummary | null
           lives: event.lives,
         };
         break;
+      case "gameplay.verified":
+        summary.gameplayVerification = {
+          target: event.target,
+          genre: event.genre,
+          winActions: event.scenarios[0].actions,
+          lossActions: event.scenarios[1].actions,
+          durationMs: event.durationMs,
+        };
+        break;
       case "log.appended": summary.logs = [...summary.logs, `[${event.level}] ${event.message}`].slice(-8); break;
     }
   }
@@ -97,6 +113,13 @@ export function formatSummary(summary: RunSummary): string {
       `${summary.build.target === "wechat-mini-game" ? "WeChat" : "Douyin"} build: LayaAir ${summary.build.cliVersion} ${summary.build.deviceOrientation} ` +
       `files=${summary.build.fileCount} main=${formatMiB(summary.build.mainPackageBytes)} ` +
       `total=${formatMiB(summary.build.totalBytes)} assets=${summary.build.assetCount}@r${summary.build.assetManifestRevision}`,
+    );
+  }
+  if (summary.gameplayVerification !== undefined) {
+    lines.push(
+      `Logic proof: ${summary.gameplayVerification.target} ${summary.gameplayVerification.genre} ` +
+      `won(${summary.gameplayVerification.winActions}) lost(${summary.gameplayVerification.lossActions}) ` +
+      `${summary.gameplayVerification.durationMs}ms [no-render]`,
     );
   }
   const phases = Object.entries(summary.phases);

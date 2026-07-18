@@ -33,18 +33,28 @@ describe("terminal run summary", () => {
         stdoutTruncated: false, stderrTruncated: false,
       },
       {
-        type: "verification.ready", runId: "run-1", sequence: 5, emittedAt, projectId: "safety-sprint",
+        type: "gameplay.verified", runId: "run-1", sequence: 5, emittedAt, projectId: "safety-sprint",
+        target: "douyin-mini-game", genre: "arcade", passed: true,
+        scenarios: [
+          { name: "genre-win", outcome: "won", actions: 2 },
+          { name: "timeout-loss", outcome: "lost", actions: 1 },
+        ],
+        durationMs: 42, templateSha256: "a".repeat(64),
+      },
+      {
+        type: "verification.ready", runId: "run-1", sequence: 6, emittedAt, projectId: "safety-sprint",
         passed: true, outcome: "won", score: 2, lives: 3, remainingSeconds: 50,
         evidencePath: ".gameforge/verification/proof.png", canvas: { width: 960, height: 540 },
         diagnostics: { consoleErrors: 0, pageErrors: 0, failedRequests: 0 }, actionsExecuted: 7, durationMs: 1000,
       },
-      { type: "run.completed", runId: "run-1", sequence: 6, emittedAt },
+      { type: "run.completed", runId: "run-1", sequence: 7, emittedAt },
     ];
     const summary = summarizeRun(events);
     expect(summary).toMatchObject({ status: "succeeded", locale: "en-US", title: "Safety Sprint", assets: 1 });
     expect(summary?.build).toMatchObject({ cliVersion: "3.4.0", fileCount: 16, assetCount: 1 });
     expect(formatSummary(summary!)).toContain("Douyin build: LayaAir 3.4.0 portrait files=16");
     expect(formatSummary(summary!)).toContain("Verification: passed won score=2 lives=3");
+    expect(formatSummary(summary!)).toContain("Logic proof: douyin-mini-game arcade won(2) lost(1) 42ms [no-render]");
     const wechat = summarizeRun(events.map((event) => event.type === "build.ready"
       ? { ...event, target: "wechat-mini-game" as const }
       : event));

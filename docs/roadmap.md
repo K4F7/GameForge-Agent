@@ -11,6 +11,7 @@
 - [x] 使用 LayaAir CLI 3.4.0 内置 2D 空项目完成首个 `bytedancegame` 可玩原型：移动、收集、计时、胜负，主包约 2.34 MiB；
 - [x] 将已验证的 Laya 3.4.0 项目结构提炼为确定性 `douyin-mini-game` GameSpec 生成后端；0.12.0 已开放 arcade/platformer/puzzle/shooter/strategy 五种机制并逐个通过官方 CLI 构建；
 - [x] 增加受限 headless Laya 逻辑宿主，直接执行同一生成 `Main.ts`，以可控输入和时钟覆盖五种 genre 的移动、碰撞、伤害与胜负遥测；该证据不替代 DevTool/真机；
+- [x] 将 headless Laya 宿主提升为 `verify_minigame_gameplay` 生产 MCP 能力：只接受受管固定模板哈希，对抖音/微信五 genre 分别发布无视觉字段的 `gameplay.verified` 双终态证据，Workbench/TUI 明确标记 no-render；
 - [x] 增加有界 `build_douyin_mini_game` MCP 工具与 `douyinBuild` capability；真实 Node stdio MCP 已调用官方 LayaAir 3.4.0 并通过校验；
 - [ ] 与 Cocos Creator 3.8 LTS 对照 CodeArts 修复成本；
 - [x] 通过官方 LayaAir 3.4.0 构建生成 `game.js`、`game.json`、`project.config.json` 与平台适配入口；

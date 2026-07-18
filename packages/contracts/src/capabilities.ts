@@ -18,6 +18,7 @@ export const gameforgeCapabilitySnapshotSchema = z.strictObject({
     generator: z.boolean(),
     douyinBuild: z.boolean().default(false),
     wechatBuild: z.boolean().default(false),
+    gameplayVerifier: z.boolean().default(false),
     verifier: z.boolean(),
     preview: z.boolean(),
     runRelay: z.boolean(),

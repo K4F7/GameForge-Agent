@@ -12,11 +12,11 @@
   },
   "dependencies": {
     "@gameforge/contracts": "0.1.0",
+    "esbuild": "0.25.12",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "22.20.1",
-    "esbuild": "0.25.12",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
   }

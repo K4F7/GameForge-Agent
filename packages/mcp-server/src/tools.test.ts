@@ -25,6 +25,7 @@ import {
   searchSoundAssetTool,
   buildDouyinMiniGameTool,
   buildWechatMiniGameTool,
+  verifyMiniGameGameplayTool,
   validateAssetManifestTool,
   validateGameSpecTool,
   validateProviderConfigTool,
@@ -95,6 +96,26 @@ describe("validation tool handlers", () => {
     const parsed = readJsonResult(result) as { outputPath?: string; buildEvent?: Record<string, unknown> };
     expect(parsed).not.toHaveProperty("outputPath");
     expect(parsed.buildEvent).toMatchObject({ type: "build.ready", target: "wechat-mini-game" });
+  });
+
+  it("returns an explicitly non-visual mini-game gameplay event", async () => {
+    const result = await verifyMiniGameGameplayTool({
+      async verify(projectId) {
+        return {
+          projectId, target: "wechat-mini-game", genre: "arcade", passed: true,
+          scenarios: [
+            { name: "genre-win", outcome: "won", actions: 2 },
+            { name: "timeout-loss", outcome: "lost", actions: 1 },
+          ],
+          durationMs: 45,
+          templateSha256: "a".repeat(64),
+        };
+      },
+    }, "safe-game");
+    const parsed = readJsonResult(result) as { report?: Record<string, unknown>; gameplayEvent?: Record<string, unknown> };
+    expect(parsed.gameplayEvent).toMatchObject({ type: "gameplay.verified", target: "wechat-mini-game" });
+    expect(parsed.gameplayEvent).not.toHaveProperty("evidencePath");
+    expect(parsed.gameplayEvent).not.toHaveProperty("canvas");
   });
 
   it("returns validated game specifications", () => {

@@ -43,6 +43,7 @@ import type {
 } from "@gameforge/contracts";
 import type { ZodType } from "zod";
 import type { DouyinMiniGameBuildResult, WechatMiniGameBuildResult } from "@gameforge/minigame-validator";
+import type { LayaGameplayVerificationReport } from "@gameforge/generator";
 
 function validationResult(
   schema: ZodType,
@@ -104,6 +105,35 @@ export type DouyinProjectBuilder = {
 export type WechatProjectBuilder = {
   build(projectId: string): Promise<WechatMiniGameBuildResult>;
 };
+
+export type LayaGameplayVerifier = {
+  verify(projectId: string): Promise<LayaGameplayVerificationReport>;
+};
+
+export async function verifyMiniGameGameplayTool(
+  verifier: LayaGameplayVerifier,
+  projectId: string,
+): Promise<CallToolResult> {
+  try {
+    const report = await verifier.verify(projectId);
+    const gameplayEvent: Omit<Extract<RunEvent, { type: "gameplay.verified" }>, "runId" | "sequence" | "emittedAt"> = {
+      type: "gameplay.verified",
+      projectId: report.projectId,
+      target: report.target,
+      genre: report.genre,
+      passed: true,
+      scenarios: [report.scenarios[0], report.scenarios[1]],
+      durationMs: report.durationMs,
+      templateSha256: report.templateSha256,
+    };
+    return { content: [{ type: "text", text: JSON.stringify({ report, gameplayEvent }, null, 2) }] };
+  } catch {
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify({ code: "minigame_gameplay_verification_failed", message: "Mini-game gameplay logic verification failed." }) }],
+    };
+  }
+}
 
 export async function buildDouyinMiniGameTool(
   builder: DouyinProjectBuilder,

@@ -631,6 +631,24 @@ export function App(): React.JSX.Element {
             </section>
           )}
 
+          {runState.gameplayVerification !== null && (
+            <section className="verification-card passed" aria-label="小游戏逻辑验收报告">
+              <header><span>LOGIC PROOF</span><strong>双终态通过</strong></header>
+              <div className="verification-outcome">
+                <b>{runState.gameplayVerification.genre.toUpperCase()}</b>
+                <span>{runState.gameplayVerification.target === "wechat-mini-game" ? "微信" : "抖音"}</span>
+              </div>
+              <dl>
+                <div><dt>胜利路径</dt><dd>{runState.gameplayVerification.scenarios[0]?.actions ?? 0} 动作</dd></div>
+                <div><dt>失败路径</dt><dd>{runState.gameplayVerification.scenarios[1]?.actions ?? 0} 动作</dd></div>
+                <div><dt>耗时</dt><dd>{runState.gameplayVerification.durationMs} ms</dd></div>
+                <div><dt>证据</dt><dd>VM 逻辑</dd></div>
+              </dl>
+              <code title={runState.gameplayVerification.projectId}>{runState.gameplayVerification.projectId}</code>
+              <small>不含渲染、截图、DevTool 或真机证据</small>
+            </section>
+          )}
+
           <ol className="timeline-list">
             {runState.phases.map((phase, index) => (
               <li className={phase.status} key={phase.id}>

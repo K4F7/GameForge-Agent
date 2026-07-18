@@ -21,6 +21,8 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
 
 平台规则：V1 未指定平台时仍默认 `douyin-mini-game`；用户明确要求微信小游戏时必须使用 `wechat-mini-game`，明确要求浏览器参考版时才使用 `web`。抖音与微信均复用五种 LayaAir 玩法源工程；完成媒体落盘后按 target 分别调用一次 `build_douyin_mini_game`（`bytedancegame`）或 `build_wechat_mini_game`（`wxgame`），并发布工具原样返回的无路径 `buildEvent`。两种工具都只做本地构建和静态校验，不登录、预览、上传或发布；DevTool 与真机证据必须另行记录。
 
+小游戏逻辑验收：若 `verify_minigame_gameplay` 已注册，在当前 target 源工程生成且受管文件无修改后调用一次，将返回的 `gameplayEvent` 补齐 Run envelope 并发布为连续 `gameplay.verified`。该工具只执行与 Manifest 哈希一致的固定 Laya 模板，在可控时钟/输入中分别证明 genre 胜利和超时失败；模板或 GameSpec 哈希不一致必须停止并由 CodeArts审阅，不能绕过。该事件不含 Canvas、截图或证据路径，Workbench/TUI 必须显示“无渲染逻辑证据”，不得替代平台 build、DevTool 或真机验收。
+
 资产事务恢复同时覆盖首次创建与替换；不得把 create 中断留下的哈希匹配孤儿当作可忽略文件，也不得绕过 `recover_project_assets` 手工删除。
 
 1. 使用已认领 Task 的 `prompt` 和 `language`（或当前直接用户需求与明确语言）。若 `draft_game_spec` 已注册，优先把两者原样传入，转换为一次结构化 GameSpec 草案；Task 为 `zh-CN` 时 GameSpec `locale` 必须是 `zh-CN`，Task 为 `en-US` 时必须是 `en-US`。随后始终调用 `validate_game_spec`。若工具未注册，CodeArts 自行整理 GameSpec 并显式设置同一 `locale`；校验失败时由 CodeArts 修改输入后再次调用。验证成功后，将返回的规格原样发布为下一条连续的 `spec.ready` RunEvent，供 Workbench 展示；`draft_game_spec` 只发起一次百炼 Qwen 请求，不负责规划、重试或修复。

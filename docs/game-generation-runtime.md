@@ -45,6 +45,8 @@ Laya 源工程固定输出 `<projectId>.laya`、启动场景及 UUID meta、Buil
 
 静态 API 与 URL 检查是词法门禁，不证明动态别名、反射或字符串拼接后的行为安全；CodeArts 不得据此自动开启商业 capability。Builder 与 validator 也不是针对同机恶意并发进程的沙箱：CLI、项目根和输出目录必须位于当前用户控制的受信任本地目录，验证期间不得由其他进程替换。平台账号、动态行为和运行时权限仍须在开发者工具与真机验收。
 
+`verify_minigame_gameplay` 补足小游戏源码的自动玩法证据。它先验证项目 target、托管 Manifest、GameSpec 条目，以及 `src/Main.ts` 的字节数与 SHA-256；只有运行时代码与生成器当前固定模板完全一致才在无 `process`、文件系统和网络全局的 VM 中执行。每次调用以真实 GameSpec 建立两个隔离场景：genre-specific 胜利路径和超时失败路径，返回独立 `gameplay.verified`。该事件刻意没有 Canvas、截图、浏览器诊断或 DevTool 字段，只能证明固定模板的逻辑与 telemetry，不证明渲染、音频解码、平台适配器、生命周期或真机输入。
+
 GameSpec 可选 `gameplay` 对象提供四个有界核心参数：`collectibleCount` 1–10、`hazardCount` 0–6、`startingLives` 1–9、`movementSpeed` 100–360 px/s。旧规格缺少该对象时保持各 genre 的 0.2.x 默认值；百炼严格 JSON Schema 要求新草案显式给出四项。生成运行时用它们控制实际出生数量、生命和连续移动速度，platformer 与 arena 均消费同一规格，不只是 Workbench 展示字段。
 
 ### 安全策略
@@ -123,7 +125,8 @@ URL 契约只允许 HTTPS，或主机严格为 `localhost`、`127.0.0.1`、`[::1
 - `capabilities.ready`：携带本次 MCP 实际注册能力的无密钥快照；Provider `ready` 只有在其完整调用链可用时为 true；
 - `spec.ready`：携带完整 GameSpec，并再次经过 `gameSpecSchema`；
 - `asset.ready`：携带项目 ID、正整数 manifest revision 和一个完整 `runtimeAssetEntrySchema` 条目。
-- `build.ready`：携带通过校验的抖音产物摘要，包括 LayaAir 版本、文件/包体/分包、方向、平台能力、域名和媒体 Manifest revision；禁止绝对输出路径与原始日志。
+- `build.ready`：携带通过校验的抖音或微信产物摘要，包括 target、LayaAir 版本、文件/包体/分包、方向、平台能力、域名和媒体 Manifest revision；禁止绝对输出路径与原始日志。
+- `gameplay.verified`：携带固定 Laya 模板的 genre 胜利/超时失败逻辑证据、动作数、耗时与模板哈希；刻意禁止视觉字段，不替代 DevTool/真机。
 - `voice.job.updated`：携带项目 ID、asset ID、签名异步作业 handle 与 processing/succeeded/failed；用于 CodeArts 中断恢复，不写入普通日志。
 - `verification.ready`：携带一次浏览器验收的有界摘要和项目内 PNG 路径；用于会话恢复和 Workbench 验收卡，不携带绝对路径或诊断全文。
 
@@ -211,7 +214,7 @@ Workbench 页面加载时使用时间与浏览器 UUID 熵生成符合 `runIdSch
 
 ## 运行时资产闭环
 
-`@gameforge/asset-store` 只接受已由生成器创建的项目，核验完整 `.gameforge/manifest.json`、项目 ID、target、真实目录、媒体魔数、大小、SHA-256、角色与 MIME 的对应关系。Manifest 的逻辑路径统一为 `assets/...`；Web 物理写入 `public/assets/`，抖音 Laya 源工程物理写入 `assets/resources/assets/`，官方构建后成为 `resources/assets/`。清单使用同一套互斥锁、CAS 和事务恢复；重复 asset ID、重复运行时角色、符号链接与路径越界都会被拒绝。两种 target 的受管更新都会保留已演进的运行时 Manifest。
+`@gameforge/asset-store` 只接受已由生成器创建的项目，核验完整 `.gameforge/manifest.json`、项目 ID、target、真实目录、媒体魔数、大小、SHA-256、角色与 MIME 的对应关系。Manifest 的逻辑路径统一为 `assets/...`；Web 物理写入 `public/assets/`，抖音与微信 Laya 源工程物理写入 `assets/resources/assets/`，官方构建后成为 `resources/assets/`。清单使用同一套互斥锁、CAS 和事务恢复；重复 asset ID、重复运行时角色、符号链接与路径越界都会被拒绝。三个 target 的受管更新都会保留已演进的运行时 Manifest。
 
 `.gameforge/assets.lock` 使用 `open("wx")` 原子创建并写入 version、随机 token、PID、hostname 与毫秒时间戳，文件 mode 为 0600（Windows 按平台语义处理）。正常释放前同时核对已打开句柄的 device/inode 和路径 metadata token，路径被替换时不会无条件 unlink。发生 `EEXIST` 时先取得独立 recovery guard；只有主锁 metadata 完整、同一 hostname、年龄至少 10 分钟且 `process.kill(pid, 0)` 明确报告 PID 不存在时才回收。PID 存活/权限未知、时钟异常、近期锁、异地主机、符号链接、空文件和旧格式都保持锁定。recovery guard 自身使用同一 metadata 和保守 stale 规则，避免恢复进程崩溃后永久阻塞。
 
@@ -219,7 +222,7 @@ Workbench 页面加载时使用时间与浏览器 UUID 熵生成符合 `runIdSch
 
 CodeArts 重启后的 Manifest 恢复读取同样逐文件流式重算 SHA-256，并同时比对 Manifest entry 与 provenance 中的哈希；因此即使文件被替换为相同字节数，`get_project_assets` 也会拒绝恢复，而不会补发错误的 `asset.ready`。
 
-Web 生成模板启动时读取 `public/assets/manifest.json`，抖音模板读取发布后的 `resources/assets/manifest.json`：存在 `player`、`collectible`、`hazard`、`background` 时加载图片；存在 `collect-sound` 和 `hit-sound` 时播放音频。两端运行时只接受契约内角色、同类型 MIME、`assets/` 内规范相对路径和唯一角色；损坏、重复或类型不匹配的条目被忽略。角色图片无论源分辨率如何，都会归一化：player/hazard 32×32、collectible 24×24，背景按 960×540 场景缩放。清单缺失、为空或单项加载失败时继续使用程序化纹理与静音回退，因此媒体 Provider 不会成为玩法可运行性的硬依赖。
+Web 生成模板启动时读取 `public/assets/manifest.json`，抖音与微信模板读取发布后的 `resources/assets/manifest.json`：存在 `player`、`collectible`、`hazard`、`background` 时加载图片；存在 `collect-sound` 和 `hit-sound` 时播放音频。三端运行时只接受契约内角色、同类型 MIME、`assets/` 内规范相对路径和唯一角色；损坏、重复或类型不匹配的条目被忽略。角色图片无论源分辨率如何，都会归一化：player/hazard 32×32、collectible 24×24，背景按 960×540 场景缩放。清单缺失、为空或单项加载失败时继续使用程序化纹理与静音回退，因此媒体 Provider 不会成为玩法可运行性的硬依赖。
 
 存在 `voice` 角色时，两端模板会在玩家第一次点击或按键后播放配音；存在 `bgm` 时，同一次用户手势开始循环播放。Web 端音量固定为 0.35；Laya 端交给小游戏音频通道默认音量，后续 DevTool/真机验收再校准。Freesound 导入工具会把明确选择为 `bgm` 的预览记录为 `kind: "music"`，其他音效仍记录为 `kind: "sound"`，从而满足 Asset Store 的角色—来源一致性校验。解码失败时保持静音并继续游戏。
 

@@ -11,7 +11,7 @@ import {
 } from "@gameforge/providers";
 import { ProjectAssetStore } from "@gameforge/asset-store";
 import { GamePreviewManager, GameVerifier } from "@gameforge/game-verifier";
-import { GameProjectGenerator } from "@gameforge/generator";
+import { GameProjectGenerator, ManagedLayaGameplayVerifier } from "@gameforge/generator";
 import { DouyinMiniGameBuilder, WechatMiniGameBuilder } from "@gameforge/minigame-validator";
 import { RunRelayClient } from "@gameforge/run-relay/client";
 import { createServer } from "./server.js";
@@ -142,6 +142,7 @@ const server = createServer({
     ? {}
     : {
         projectGenerator: new GameProjectGenerator({ outputRoot: projectOutputRoot }),
+        layaGameplayVerifier: new ManagedLayaGameplayVerifier({ projectsRoot: projectOutputRoot }),
         ...(layaAirCliPath === undefined || layaAirCliPath.length === 0
           ? {}
           : {

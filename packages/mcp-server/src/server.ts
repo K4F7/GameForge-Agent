@@ -70,6 +70,7 @@ import {
   getProjectAssetsTool,
   buildDouyinMiniGameTool,
   buildWechatMiniGameTool,
+  verifyMiniGameGameplayTool,
   recoverProjectAssetsTool,
   type GameSpecDraftProvider,
   type ProjectGenerator,
@@ -82,6 +83,7 @@ import {
   type ProjectPreviewManager,
   type DouyinProjectBuilder,
   type WechatProjectBuilder,
+  type LayaGameplayVerifier,
 } from "./tools.js";
 import type { ToolAuditContextBinder, ToolAuditRecorder } from "./tool-audit.js";
 
@@ -97,6 +99,7 @@ export type CreateServerOptions = {
   projectGenerator?: ProjectGenerator;
   douyinProjectBuilder?: DouyinProjectBuilder;
   wechatProjectBuilder?: WechatProjectBuilder;
+  layaGameplayVerifier?: LayaGameplayVerifier;
   runRelayClient?: RunRelayToolClient;
   taskRelayClient?: TaskRelayToolClient;
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
@@ -141,6 +144,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       generator: options.projectGenerator?.recover !== undefined,
       douyinBuild: options.douyinProjectBuilder !== undefined,
       wechatBuild: options.wechatProjectBuilder !== undefined,
+      gameplayVerifier: options.layaGameplayVerifier !== undefined,
       verifier: options.projectVerifier !== undefined,
       preview: options.projectPreviewManager !== undefined,
       runRelay: options.runRelayClient !== undefined,
@@ -306,6 +310,18 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         inputSchema: { projectId: projectIdSchema },
       },
       async ({ projectId }) => buildWechatMiniGameTool(options.wechatProjectBuilder as WechatProjectBuilder, projectId),
+    );
+  }
+
+  if (options.layaGameplayVerifier !== undefined) {
+    registerTool(
+      "verify_minigame_gameplay",
+      {
+        title: "Verify managed mini-game gameplay logic",
+        description: "Run the exact managed Laya template in a bounded deterministic host and prove one genre win plus timeout loss. This is logic evidence only; it does not render, screenshot, open DevTools, or replace device validation.",
+        inputSchema: { projectId: projectIdSchema },
+      },
+      async ({ projectId }) => verifyMiniGameGameplayTool(options.layaGameplayVerifier as LayaGameplayVerifier, projectId),
     );
   }
 

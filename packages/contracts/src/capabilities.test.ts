@@ -11,13 +11,14 @@ describe("gameforgeCapabilitySnapshotSchema", () => {
         sound: { provider: "freesound", ready: true },
         music: { provider: "minimax", ready: false },
       },
-      engineering: { assetStore: true, generator: true, douyinBuild: true, wechatBuild: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+      engineering: { assetStore: true, generator: true, douyinBuild: true, wechatBuild: true, gameplayVerifier: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
     } as const;
     expect(gameforgeCapabilitySnapshotSchema.parse(snapshot)).toEqual(snapshot);
-    const { douyinBuild: _douyinBuild, wechatBuild: _wechatBuild, ...legacyEngineering } = snapshot.engineering;
+    const { douyinBuild: _douyinBuild, wechatBuild: _wechatBuild, gameplayVerifier: _gameplayVerifier, ...legacyEngineering } = snapshot.engineering;
     const legacy = { ...snapshot, engineering: legacyEngineering };
     expect(gameforgeCapabilitySnapshotSchema.parse(legacy).engineering.douyinBuild).toBe(false);
     expect(gameforgeCapabilitySnapshotSchema.parse(legacy).engineering.wechatBuild).toBe(false);
+    expect(gameforgeCapabilitySnapshotSchema.parse(legacy).engineering.gameplayVerifier).toBe(false);
     expect(gameforgeCapabilitySnapshotSchema.safeParse({ ...snapshot, apiKey: "secret" }).success).toBe(false);
   });
 });
