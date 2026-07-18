@@ -112,7 +112,7 @@ GameForge 核心不实现为 OpenCode Plugin。核心由客户端无关的 contr
 - Workbench/TUI：状态界面；
 - OpenCode Plugin：可选的可用性检测、会话提示、状态工具和通知。
 
-可提交的 [`opencode.json.example`](opencode.json.example) 不包含绝对路径或密钥。复制为本地配置前设置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 和 `GAMEFORGE_RUN_RELAY_URL`；权限默认让校验/查询类工具直接执行，让项目生成、资产导入、预览启停和 Run 终态操作请求确认。跨平台动态启动器见 `integrations/`。
+可提交的 [`opencode.json.example`](opencode.json.example) 不包含绝对路径或密钥。复制为本地配置前设置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 和 `GAMEFORGE_RUN_RELAY_URL`，并从仓库根启动客户端；权限默认让校验/查询类工具直接执行，让项目生成、资产导入、预览启停和 Run 终态操作请求确认。跨平台动态启动器会固定正确工作目录，见 `integrations/`。
 
 Workbench 的 iframe、CSP、预览 origin allowlist 与未来桌面壳最小权限见 [Workbench 安全边界](docs/workbench-security.md)。远程预览必须在 `VITE_GAME_PREVIEW_ORIGINS` 中显式列出；任何 Provider 密钥都不得放入浏览器可见的 `VITE_*` 环境变量。
 
@@ -214,7 +214,7 @@ GAMEFORGE_TTS_AUDIO_HOSTS=<控制台/真实 query 响应确认的音频 CDN 主�
 
 不要猜测 `GAMEFORGE_TTS_AUDIO_HOSTS`；以当前账号真实返回的 `audio_url` 主机为准，只填写主机名。配置完整后注册 `submit_voice_job`、`query_voice_job` 和 `materialize_voice_job`。作业句柄经过 HMAC 签名并绑定项目；MCP 不会自动轮询，完成音频只允许从服务端白名单中的 HTTPS 主机下载。
 
-工作台连接本地任务/RunEvent中继时设置`VITE_AGENT_BASE_URL=http://127.0.0.1:8787/`。配置后“提交给 CodeArts”会把当前 Prompt 写入受限任务收件箱，并原子创建对应 Run；MCP 同时注册 `list_game_tasks`、`get_game_task`、`claim_game_task`，供 CodeArts 读取和幂等认领。CodeArts 发布 `spec.ready`、`asset.ready`、`build.ready`、`gameplay.verified`、`preview.ready` 后，Workbench 分别展示真实 GameSpec、已落盘资产、目标平台产物摘要、无渲染逻辑证据及当前游戏预览；场景结构和地图视图由已验证 GameSpec 与资产清单确定性派生，明确标注真实绑定、程序化回退和“模板示意”边界。未收到事件时显示等待状态，不使用硬编码生产结果。Relay 不调用模型，也不自动执行任务。完整接口、安全边界和验证步骤见[确定性游戏生成与运行事件服务](docs/game-generation-runtime.md)。
+工作台连接本地任务/RunEvent中继时设置`VITE_AGENT_BASE_URL=http://127.0.0.1:8787/`。配置后“提交给 CodeArts”会把当前 Prompt 写入受限任务收件箱，并原子创建对应 Run；纯 CLI/TUI 也可经 `ask` 调用 MCP `create_game_task` 完成同一件事，不再依赖 GUI。MCP 同时注册 `create_game_task`、`list_game_tasks`、`get_game_task`、`claim_game_task`，供 CodeArts 幂等创建、读取和认领。CodeArts 发布 `spec.ready`、`asset.ready`、`build.ready`、`gameplay.verified`、`preview.ready` 后，Workbench 分别展示真实 GameSpec、已落盘资产、目标平台产物摘要、无渲染逻辑证据及当前游戏预览；场景结构和地图视图由已验证 GameSpec 与资产清单确定性派生，明确标注真实绑定、程序化回退和“模板示意”边界。未收到事件时显示等待状态，不使用硬编码生产结果。Relay 不调用模型，也不自动执行任务。完整接口、安全边界和验证步骤见[确定性游戏生成与运行事件服务](docs/game-generation-runtime.md)。
 
 Workbench 的 SSE 出错或出现 sequence 缺口时会关闭旧连接，从最后连续游标执行 Schema 回放，再重建 stream；自动恢复采用 0.5/1/2/4/8 秒有限退避，409/410 游标冲突直接停止。耗尽后界面显示“恢复连接”，由用户从同一游标显式重试。该循环只恢复确定性 RunEvent，不调用模型或 MCP 工具。
 

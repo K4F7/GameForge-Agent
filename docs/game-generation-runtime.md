@@ -1,6 +1,6 @@
 # 确定性游戏生成与运行事件服务
 
-更新日期：2026-07-16
+更新日期：2026-07-18
 官方资料访问日期：2026-07-16
 
 ## 目标与边界
@@ -10,7 +10,7 @@ GameForge把“理解需求”和“生成工程”分开：
 1. CodeArts负责理解自然语言、形成GameSpec、选择工具和决定是否修复。
 2. `generate_game_project`只把通过Schema的GameSpec填入固定版本模板；它不调用模型、不接受任意代码，也不进行Agent循环。
 3. Run Relay只保存任务、回放和推送RunEvent；它不执行任务、不调用Provider，也不替代CodeArts。
-4. 工作台把 Prompt 提交到任务收件箱并观察对应 Run；CodeArts 通过 MCP 读取/认领任务，完成后以 `preview.ready` 让工作台切换到本次运行的托管项目。
+4. CodeArts 可通过 MCP 原子创建、读取和认领 Task；Workbench 也可替用户提交 Prompt。两者写入同一 Task Inbox，Workbench/TUI 只观察 RunEvent，不参与 Agent 规划。
 
 ## 项目生成器
 
@@ -171,14 +171,15 @@ Workbench 不依赖原生 `EventSource` 用旧 URL 盲目重连。SSE `error` �
 
 配置 `GAMEFORGE_RUN_RELAY_URL` 后，MCP 除 Run 生命周期工具外还注册：
 
+- `create_game_task`：以显式 run ID、Prompt、language 和可选 projectId 原子创建 queued Task 与唯一 `run.started`；相同请求幂等，冲突复用被拒绝；
 - `replay_game_run`：从显式 `after` 游标读取一次经过 Schema 验证的事件页，单页由 Relay 限制为最多 1000 项；不轮询、不自动翻页；
 - `list_game_tasks`：读取一次有界任务快照，不轮询；
 - `get_game_task`：按 Task ID 读取权威 Prompt 与 Run ID；
 - `claim_game_task`：以 CodeArts agent ID 原子认领，冲突时返回稳定错误码。
 
-这些工具只做状态协调。CodeArts 认领 Workbench Task 后先从 `after: 0` 回放，以恢复已存在的结构化产物和权威 sequence；若恰好返回 1000 项，由 CodeArts 决定是否用最后 sequence 读取下一页。游标冲突时同样只读取一次当前页，再决定如何继续。工具不等待新事件、不自动重试。何时读取、选择哪个任务、如何生成与修复仍由 CodeArts 决定。
+这些工具只做状态协调。`create_game_task` 复用 Relay 的严格请求 Schema 与单次 HTTP 创建，不生成 Prompt、不选择项目、不自动重试；它的 MCP annotations 标记 `readOnlyHint: false`、`destructiveHint: false`、`idempotentHint: true`、`openWorldHint: false`。这些字段只是客户端提示，不能替代 `ask` 权限。CodeArts 认领 Task 后先从 `after: 0` 回放，以恢复已存在的结构化产物和权威 sequence；若恰好返回 1000 项，由 CodeArts 决定是否用最后 sequence 读取下一页。游标冲突时同样只读取一次当前页，再决定如何继续。工具不等待新事件、不自动重试。何时创建、读取、选择哪个任务、如何生成与修复仍由 CodeArts 决定。
 
-CodeArts 新会话调用一次不带 status 的 `list_game_tasks`，优先恢复 `status: claimed` 且 `claimedBy: codearts` 的相关 Task，再选择 queued Task；同一 agent 的 `claim_game_task` 是幂等操作。恢复后根据回放中的结构化阶段与产物事件跳过已完成步骤，不重复生成项目、媒体或预览。真实集成测试使用两个独立 MCP Client 会话证明 claimed Task、已完成阶段、游标和最终 completed 状态可续接；Relay 进程重启恢复由持久化实验独立证明。
+CodeArts 新会话调用一次不带 status 的 `list_game_tasks`，优先恢复 `status: claimed` 且 `claimedBy: codearts` 的相关 Task，再选择与当前需求明确匹配的 queued Task；不得认领无关任务。当前用户明确开始新需求且没有匹配 Task 时，可经 `ask` 调用一次 `create_game_task`，并保存完整请求以供同参数幂等重试。成功后直接认领返回的 Task，不再调用 `create_game_run`。同一 agent 的 `claim_game_task` 是幂等操作。恢复后根据回放中的结构化阶段与产物事件跳过已完成步骤，不重复生成项目、媒体或预览。真实集成测试使用两个独立 MCP Client 会话证明 claimed Task、已完成阶段、游标和最终 completed 状态可续接；另一个真实 MCP→HTTP Relay 测试证明无 GUI 创建、同参数重试和冲突拒绝；Relay 进程重启恢复由持久化实验独立证明。
 
 工作台连接方式：
 
@@ -190,7 +191,7 @@ VITE_AGENT_BASE_URL=http://127.0.0.1:8787/
 
 ## 语言链路与生成运行时
 
-1. Workbench 在提交前选择 `zh-CN` 或 `en-US`，并把 language 与 Prompt 一起写入 Task；
+1. Workbench 或 CodeArts `create_game_task` 入口选择 `zh-CN` 或 `en-US`，并把 language 与 Prompt 一起写入 Task；
 2. CodeArts 认领 Task 后必须调用 `draft_game_spec({ prompt: task.prompt, language: task.language })`；
 3. 百炼严格 JSON Schema 要求输出 `GameSpec.locale`，Provider 会拒绝与请求 language 不一致的结果；
 4. `generate_game_project` 将 locale 写入 `game-spec.json`，同时生成匹配的静态 `<html lang>` 与无障碍标签；
@@ -207,7 +208,8 @@ Workbench 页面加载时使用时间与浏览器 UUID 熵生成符合 `runIdSch
 - 生成器单元测试覆盖确定性、dry-run 零写入、原子新建、拒绝覆盖、文本/源码隔离、五种 genre，以及受管 update 的资产/未知文件保留、修改冲突、plan CAS 和 stale owner lock。
 - 实际生成独立样例后，已对生成目录运行严格TypeScript检查和Vite生产构建。
 - Relay测试覆盖创建、追加、客户端 Schema 回放、连续回放、SSE、CORS拒绝、游标冲突、终态原子性和订阅通知。
-- Task 测试覆盖 Prompt/状态契约、原子创建 Task+Run、列表、读取、单 agent 幂等认领、认领冲突、未认领完成拒绝和终态同步。
+- Task 测试覆盖 Prompt/状态契约、原子创建 Task+Run、列表、读取、单 agent 幂等认领、认领冲突、未认领完成拒绝和终态同步；MCP 集成测试还覆盖无 GUI 创建、相同请求幂等重试、唯一 `run.started` 和 `task_run_conflict`。
+- 真实 CodeArts 26.6.2 非交互 Agent 使用内置 GLM-5.1 调用 `create_game_task`、`claim_game_task`、`replay_game_run` 各一次；MCP Audit 与 Relay 权威状态一致，记录见 `experiments/2026-07-18-codearts-headless-task-create/`。
 - 工作台客户端与状态测试覆盖提交 Prompt 创建 Task、创建/回放 Run、SSE重复事件忽略、缺口自动回放、有限退避、过期游标快速失败、不安全远程URL拒绝，以及按运行切换/清空 GameSpec、资产和预览。
 - 预览管理器测试覆盖托管项目校验、会话复用、并发启动合并、幂等停止和不安全 URL 清理；MCP 测试覆盖条件注册与启停调用。
 - 本地工作流集成测试使用真实 HTTP Relay、MCP Client、磁盘生成器、生产 Asset Store 和受控 Vite，覆盖 Task 创建/认领、Run 回放、`spec.ready`、dry-run/apply、图片/音效/配音的魔数、哈希、角色、许可与 Manifest 落盘、三个连续 `asset.ready`、预览 HTTP 200、`preview.ready`、Run 完成与 Task 终态同步。媒体 Provider 使用明确标注的确定性测试替身；TTS 仍分为 submit/query/materialize 且不轮询。该测试不替代真实 CodeArts 或 Seedream、Freesound、火山语音账号验收。

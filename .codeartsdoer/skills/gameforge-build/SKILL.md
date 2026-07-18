@@ -5,7 +5,7 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
 
 # GameForge Build
 
-当用户要求制作、修改或验证浏览器小游戏时使用本技能。CodeArts 始终负责理解、规划、代码修改和修复判断；MCP 工具只执行一次确定性操作。
+当用户要求制作、修改或验证抖音、微信或浏览器小游戏时使用本技能。CodeArts 始终负责理解、规划、代码修改和修复判断；MCP 工具只执行一次确定性操作。
 
 ## 前置检查
 
@@ -13,7 +13,9 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
    同时读取 `config/model-routing.example.json` 作为模型角色/类别的默认路由建议。先以宿主实际 `models`/capability 输出确认可用性；未列出的模型不得声称已使用。若 `get_agent_model_route` 已注册，把本次工种和宿主真实列出的国产 target 传入一次，以工具返回的 `selected` 结果选择模型；`unavailable` 或 `planned` 必须显式报告，不能静默伪装成 primary。Agent 路由仍由 CodeArts 负责，该工具只解析策略，不调用模型或运行 Agent 循环。用户显式覆盖优先，并在实验记录中写返回的 source 与实际生效模型。
 2. 列出 MCP 当前实际注册的工具；未注册的媒体工具视为未配置，不猜测密钥。调用一次 `get_gameforge_capabilities` 获取不含密钥的实际适配器快照，工具列表只用于确认可调用性，snapshot 才是 Provider 选择的权威来源。
 3. 明确验收条件：可构建、可运行、核心玩法可完成、失败条件有效、素材来源可审计。Run 建立或恢复后，若回放中尚无 `capabilities.ready`，将 capability snapshot 原样发布为下一条连续事件；只使用其中 `ready: true` 的可选 Provider。
-4. 若 `list_game_tasks` 已注册，调用一次 `{ limit: 20 }` 的无状态过滤快照。优先选择当前用户明确指定的 Task；否则优先恢复 `status: "claimed"` 且 `claimedBy: "codearts"` 的相关任务，再选择 `queued` 任务。存在多个无法从当前 Run ID、Prompt 或用户上下文消歧的候选时请求用户选择，不猜测。无论恢复还是首次处理，都以 `agentId: "codearts"` 调用 `claim_game_task`；同一 agent 重复认领是幂等操作。将返回的 `prompt` 和 `runId` 作为权威输入。Workbench 创建 Task 时已经原子创建 Run，因此不得再次调用 `create_game_run`。随后调用一次 `replay_game_run`（`after: 0`）恢复该 Run 的权威事件与最后 sequence；若返回正好 1000 项，按最后 sequence 再读取下一页，直到不足 1000 项，禁止轮询等待新事件。恢复任务时根据已有 `phase.completed`、`spec.ready`、`asset.ready` 和 `preview.ready` 跳过已完成的有副作用步骤，从下一未完成阶段继续。若项目已生成且 `get_project_assets` 已注册，调用一次读取权威 Manifest；若它明确报告未完成的资产事务，且 `recover_project_assets` 已注册，经用户/客户端 `ask` 确认后调用一次，再重新读取 Manifest。恢复工具只在写锁内按严格日志完成清理或回滚，不调用 Provider；未知日志、第三种 Manifest 状态或哈希冲突必须停止并请求人工检查。将 Manifest 中尚无对应 `asset.ready` 的 entry 以当前 `revision` 逐条补发为连续事件，再决定是否调用媒体 Provider。这样可恢复“文件已落盘、事件未发布”与“替换切换中断”，不得因 Relay 缺事件就重复下载或生成已有 asset ID/role。若没有收件箱任务，则创建唯一实验编号和 run ID，调用 `create_game_run` 并保存 sequence 游标。禁止在 Skill 或 MCP 内循环轮询任务。
+4. 若 `list_game_tasks` 已注册，调用一次 `{ limit: 20 }` 的无状态过滤快照。优先选择当前用户明确指定的 Task；否则优先恢复 `status: "claimed"` 且 `claimedBy: "codearts"` 的相关任务，再选择与当前用户需求明确匹配的 `queued` 任务。不得为了省事认领无关 queued Task；存在多个无法从当前 Run ID、Prompt 或用户上下文消歧的候选时请求用户选择，不猜测。
+   当前用户明确要求开始一个新任务且没有匹配 Task 时，若 `create_game_task` 已注册，经用户/客户端 `ask` 确认后生成一个新的唯一 run ID，并以用户原始 Prompt、明确的 `zh-CN`/`en-US` language 和可选 `projectId` 调用一次。保存完整请求；响应丢失时只允许用完全相同的 run ID、Prompt、language 和 projectId 重试，`task_run_conflict` 必须停止并报告，不能自动更换 ID 掩盖冲突。该工具原子创建 queued Task 与唯一 `run.started`，因此成功后不得再调用 `create_game_run`。
+   无论 Task 来自 Workbench、TUI、`create_game_task` 还是恢复，都以 `agentId: "codearts"` 调用 `claim_game_task`；同一 agent 重复认领是幂等操作。将返回的 `taskId`、`prompt`、`language`、`runId` 和可选 `projectId` 作为权威输入。随后调用一次 `replay_game_run`（`after: 0`）恢复该 Run 的权威事件与最后 sequence；若返回正好 1000 项，按最后 sequence 再读取下一页，直到不足 1000 项，禁止轮询等待新事件。恢复任务时根据已有 `phase.completed`、`spec.ready`、`asset.ready` 和 `preview.ready` 跳过已完成的有副作用步骤，从下一未完成阶段继续。若项目已生成且 `get_project_assets` 已注册，调用一次读取权威 Manifest；若它明确报告未完成的资产事务，且 `recover_project_assets` 已注册，经用户/客户端 `ask` 确认后调用一次，再重新读取 Manifest。恢复工具只在写锁内按严格日志完成清理或回滚，不调用 Provider；未知日志、第三种 Manifest 状态或哈希冲突必须停止并请求人工检查。将 Manifest 中尚无对应 `asset.ready` 的 entry 以当前 `revision` 逐条补发为连续事件，再决定是否调用媒体 Provider。这样可恢复“文件已落盘、事件未发布”与“替换切换中断”，不得因 Relay 缺事件就重复下载或生成已有 asset ID/role。若 Task Inbox 或 `create_game_task` 未注册，才创建唯一实验编号和 run ID，调用 `create_game_run` 并保存 sequence 游标；这条兼容路径没有 Task ID，必须在实验记录中明确。禁止在 Skill 或 MCP 内循环轮询任务。
 
 5. 认领 Task 后，将返回的 `taskId`、`prompt` 和 `runId` 作为权威输入。若 `bind_mcp_audit_context` 已注册，经客户端 `ask` 确认后立即以该 `taskId`/`runId` 调用一次，再开始回放和生产步骤；相同绑定可幂等恢复，绑定失败或报告其他 Task/Run 时停止并请求人工检查，不能换审计文件伪造归属。未注册该工具时继续正常流程，但基准记录的工具历史必须保持 unknown。
 

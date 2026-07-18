@@ -18,6 +18,10 @@ bun run opencode
 
 使用 `bun run codearts -- --dry-run` 或 `bun run opencode -- --dry-run` 会生成忽略目录中的临时配置并打印本地运行计划，但不启动客户端。计划不含凭据，不过会显示客户端、仓库、输出目录和临时配置的绝对路径，因此不应直接粘贴到公开日志。
 
+启动器自身把客户端工作目录固定到仓库根，因此生成的 OpenCode-compatible 本地 MCP 配置只使用官方列出的 `type`、`command`、`environment`、`enabled` 和 `timeout` 字段，不写非标准 `cwd`。直接复制 `opencode.json.example` 时也必须从仓库根启动客户端，或把 `command` 改为本机私有的绝对入口；不要把该绝对路径提交。
+
+动态配置只在 `GAMEFORGE_RUN_RELAY_TOKEN` 完全未设置时省略认证引用。显式空白、换行或超出 32–512 字符范围会在客户端启动前失败，不能静默降级为无认证。
+
 可选环境变量：
 
 - `GAMEFORGE_PROJECT_OUTPUT_ROOT`：绝对输出目录；

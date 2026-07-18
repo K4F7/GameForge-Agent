@@ -34,17 +34,20 @@
 - [x] 按 `docs/codearts-quickstart.md` 通过隔离配置启动 `gameforge` stdio MCP；
 - [x] 从本地 Task Inbox 提交一个 `en-US` Task；
 - [x] 由 CodeArts 实际列出、认领并回放该 Task；
+- [x] 新增 `create_game_task`，并由真实 CodeArts 26.6.2 非交互 Agent 在无 Workbench 的情况下原子创建、认领和回放 Task；
 - [x] 无百炼账号时由 CodeArts 按 Skill 手工构造同 locale 规格并发布 `spec.ready`；
 - [x] CodeArts 生成项目、运行构建与浏览器验收、发布 `preview.ready`/`verification.ready` 并完成 Run；
 - [x] 保存脱敏实验记录：客户端版本、耗时、RunEvent 序列、人工干预、Task/Run ID、截图与失败边界。该历史执行没有完整 MCP 工具调用序列，基准记录按 `null`/`unknown` 保留，不从事件数反推；
 
 通过标准：Relay 中 Task 为 completed，真实 CodeArts Run 发布规格、预览与验证事件，生成项目可构建且 Chrome 证据通过，记录中不存在密钥或账号隐私。该标准已于 2026-07-18 首次通过；本次没有媒体资产，因此没有 `asset.ready`，Workbench 资产面板应保持空状态而不是伪造结果。
 
-2026-07-18 的安全探测确认 `codearts --version` 为 26.6.2，`run`、`mcp`、`agent`、`models` 和 `serve` 等命令可发现；但 `codearts mcp list/add` 在当前 shell 中因未设置 CLI AK/SK 而拒绝执行，现有后台进程也没有可连接的窗口或本地监听端口。详见 `experiments/2026-07-18-codearts-client-probe/`。
+2026-07-18 的初始安全探测确认 `codearts --version` 为 26.6.2，`run`、`mcp`、`agent`、`models` 和 `serve` 等命令可发现；当时 shell 尚未继承用户级 CLI AK/SK，因此 `mcp list/add` 被拒绝。该历史边界见 `experiments/2026-07-18-codearts-client-probe/`。
 
 真实执行改用 OAuth TUI，并通过临时 `OPENCODE_CONFIG` 隔离加载本地 MCP，不修改用户全局配置。结果见 `experiments/2026-07-18-codearts-real-e2e/`。
 
 同日升级后再次执行 `codearts --version` 仍得到 26.6.2；真实非交互 `codearts run --format json` 虽以进程退出码 0 结束，但 stdout 明确报告缺少 `CODEARTS_CLI_AK`/`CODEARTS_CLI_SK`，没有复用 OAuth TUI 会话，也没有认领 Task 或调用 MCP。该负向边界按真实结果记录于 `experiments/2026-07-18-codearts-noninteractive-recheck/`，不得把进程退出码 0 误记为 Agent 执行成功。
+
+重新打开环境后，用户级 AK/SK 已能只读注入 CodeArts 子进程；`codearts models` 实际返回 DeepSeek V3.2、GLM-4.7 ArkTS、GLM-5 和 GLM-5.1。修复 OpenCode-compatible 配置的非标准 `cwd` 与空 Relay token 后，非交互 GLM-5.1 Agent 在 39.3 秒内真实完成 `create_game_task → claim_game_task → replay_game_run`，三次 MCP Audit 均成功。详见 `experiments/2026-07-18-codearts-headless-task-create/`。
 
 生成游戏性能基线已加入版本化预算：首屏只加载状态壳，Phaser 与玩法代码异步获取。预算同时记录总量，因此拆分不能掩盖依赖增长；结果见 `experiments/2026-07-18-bundle-split/`。
 

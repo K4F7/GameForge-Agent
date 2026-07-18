@@ -34,6 +34,8 @@ OpenCode 会把 MCP 工具暴露为带服务器前缀的名称，例如 `gamefor
 
 OpenCode 权限按最后匹配规则覆盖前项，因此 `opencode.json.example` 先声明通配 `ask`，再用更具体规则放行查询类工具。涉及云请求的 `search_*`/`draft_*` 即使只返回数据也建议保持 `ask`，因为可能消耗配额或产生外部调用。
 
+`create_game_task` 会新增本地 Task/Run，因此仍属于 `ask`。它通过 MCP annotations 声明非破坏性、相同参数幂等和封闭域交互，只帮助支持 annotations 的客户端展示风险；这些提示不是权限授予，也不能覆盖宿主配置或用户确认。
+
 ## CodeArts 自动文件策略
 
 - `.codeartsdoer/AGENTS.md`：纳入版本管理，但只保存稳定、脱敏、跨机器的工程上下文；根 `AGENTS.md` 仍是权威规则。

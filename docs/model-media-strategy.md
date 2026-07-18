@@ -20,7 +20,7 @@
 | 需求理解、玩法设计、任务规划 | CodeArts 当前账号 | `huaweicloud-maas/deepseek-v3.2` | GLM-5.1；跨宿主评估 Kimi K3 | 采用实际可选模型；不得把未列出的 K3 写成 CodeArts 已可用 |
 | GameSpec结构化生成、分类和摘要 | 阿里云百炼 | `qwen3.6-flash` | Qwen本地小模型 | 采用，必须通过Schema二次校验 |
 | TypeScript、Phaser和Three.js代码生成与修复 | CodeArts 当前账号 | `huaweicloud-maas/deepseek-v3.2` | GLM-4.7 ArkTS；跨宿主 Qwen Coder/Kimi K3 | 采用实际账号模型，外部编码模型需独立基准 |
-| 剧情、世界观、对白与本地化 | CodeArts 当前账号 | `huaweicloud-maas/GLM-5` | GLM-5.1；跨宿主 MiniMax M2.7/Kimi K3 | 采用独立 story 路由；输出仍需剧情 Schema 与内容审核 |
+| 剧情、世界观、对白与本地化 | CodeArts 当前账号 | `huaweicloud-maas/Glm-5-internal`（显示名 GLM-5） | GLM-5.1；跨宿主 MiniMax M2.7/Kimi K3 | 采用宿主实际精确 ID 的独立 story 路由；输出仍需剧情 Schema 与内容审核 |
 | 长上下文仓库审查、截图复核 | Moonshot/Kimi | `kimi-k3` | GLM-4.6V、Seed1.5-VL | 跨宿主评估；当前 CodeArts 模型列表没有 K3 |
 | 角色立绘、场景、概念图和图像编辑 | 火山方舟 | Seedream系列 | 即梦图片生成4.0 | 采用Seedream；实际模型ID从配置读取 |
 | NPC对白、旁白和语音提示 | 火山引擎豆包语音 | 大模型语音合成 | CosyVoice本地部署、腾讯云对话式TTS | 采用 |
@@ -47,7 +47,7 @@ GameSpec 草拟的严格 JSON Schema 现在还要求 `gameplay`：目标数、�
 - `planner`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/deepseek-v3.2`，用于玩法拆解、架构设计、关卡规划和工具编排。
 - `spec`：`qwen3.6-flash`，用于从自然语言提取GameSpec、资产清单和任务分类；输出必须再次经过Zod校验。
 - `coder`：当前 CodeArts 使用 `huaweicloud-maas/deepseek-v3.2`；宿主支持外部 Coding Plan 时再比较 `qwen3-coder-plus` 与 K3。
-- `story`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/GLM-5`，专门生成剧情结构、角色卡、对白和本地化草案；GLM-5.1 复核。跨宿主再比较 MiniMax M2.7 与 Kimi K3，但不得静默替换实际生效模型。
+- `story`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/Glm-5-internal`（显示名 GLM-5），专门生成剧情结构、角色卡、对白和本地化草案；GLM-5.1 复核。模型 ID 大小写和 `-internal` 后缀必须与宿主输出完全一致。跨宿主再比较 MiniMax M2.7 与 Kimi K3，但不得静默替换实际生效模型。
 - `reviewer`：当前 CodeArts 优先 GLM-5.1，并与生成步骤使用不同提示词；构建、测试和静态检查仍是最终证据。
 - `vision`：跨宿主优先评估 Kimi K3，备选 GLM-4.6V/Seed1.5-VL；当前 CodeArts 列表没有已确认的视觉模型时，不把截图审查记为已完成。
 
@@ -234,7 +234,7 @@ type AssetProvenance = {
 
 ## 未解决问题
 
-1. CodeArts运行环境能够选择哪些国产底层模型，需要在实际账号中确认；仓库无法强制修改托管产品的底层模型。
+1. 当前账号已确认四个国产 target；其他账号、版本升级或模型下线后仍需重新执行宿主 `models`，仓库无法强制修改托管产品的实际可用列表。
 2. Seedream当前账号可用模型ID、单价、并发限制和Alpha输出能力需要控制台实验。
 3. 豆包可用音色、资源包价格和声音复刻授权流程需要账号侧确认。
 4. Freesound在目标网络环境中的可访问性、CC0命中率及项目API使用协议需要实测或确认。
