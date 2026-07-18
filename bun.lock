@@ -168,6 +168,7 @@
         "@gameforge/contracts": "*",
         "@gameforge/game-verifier": "0.1.0",
         "@gameforge/generator": "0.1.0",
+        "@gameforge/minigame-validator": "0.1.0",
         "@gameforge/providers": "0.1.0",
         "@gameforge/run-relay": "0.1.0",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -183,7 +184,11 @@
     "packages/minigame-validator": {
       "name": "@gameforge/minigame-validator",
       "version": "0.1.0",
+      "bin": {
+        "gameforge-minigame-validate": "dist/cli.js",
+      },
       "dependencies": {
+        "@gameforge/contracts": "0.1.0",
         "zod": "4.4.3",
       },
       "devDependencies": {

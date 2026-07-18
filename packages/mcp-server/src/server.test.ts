@@ -58,6 +58,44 @@ describe("GameForge MCP server", () => {
     }
   });
 
+  it("registers the bounded Douyin build only when a builder is configured", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer({
+      douyinProjectBuilder: {
+        async build(projectId) {
+          return {
+            projectId,
+            cliVersion: "3.4.0",
+            outputPath: "D:/managed/safe-game/release/bytedancegame",
+            validation: {
+              platform: "douyin-mini-game",
+              passed: true,
+              fileCount: 12,
+              totalBytes: 1_000_000,
+              mainPackageBytes: 1_000_000,
+              subpackages: [],
+              deviceOrientation: "portrait",
+            },
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          };
+        },
+      },
+    });
+    const client = new Client({ name: "gameforge-douyin-builder-test", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("build_douyin_mini_game");
+      const result = await client.callTool({ name: "build_douyin_mini_game", arguments: { projectId: "safe-game" } });
+      expect(result.isError).not.toBe(true);
+      expect(result.content).toEqual(expect.arrayContaining([expect.objectContaining({ type: "text" })]));
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("registers and invokes all deterministic validation tools", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer();

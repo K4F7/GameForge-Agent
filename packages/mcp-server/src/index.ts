@@ -11,6 +11,7 @@ import {
 import { ProjectAssetStore } from "@gameforge/asset-store";
 import { GamePreviewManager, GameVerifier } from "@gameforge/game-verifier";
 import { GameProjectGenerator } from "@gameforge/generator";
+import { DouyinMiniGameBuilder } from "@gameforge/minigame-validator";
 import { RunRelayClient } from "@gameforge/run-relay/client";
 import { createServer } from "./server.js";
 import { McpToolAuditRecorder } from "./tool-audit.js";
@@ -20,6 +21,7 @@ const bailianSpecModel = process.env.GAMEFORGE_SPEC_MODEL?.trim();
 const freesoundApiKey = process.env.FREESOUND_API_KEY?.trim();
 const freesoundApiUsage = process.env.FREESOUND_API_USAGE?.trim();
 const projectOutputRoot = process.env.GAMEFORGE_PROJECT_OUTPUT_ROOT?.trim();
+const layaAirCliPath = process.env.GAMEFORGE_LAYAIR_CLI?.trim();
 const runRelayUrl = process.env.GAMEFORGE_RUN_RELAY_URL?.trim();
 const runRelayToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
 const toolAuditFile = process.env.GAMEFORGE_MCP_AUDIT_FILE?.trim();
@@ -111,6 +113,9 @@ const server = createServer({
     ? {}
     : {
         projectGenerator: new GameProjectGenerator({ outputRoot: projectOutputRoot }),
+        ...(layaAirCliPath === undefined || layaAirCliPath.length === 0
+          ? {}
+          : { douyinProjectBuilder: new DouyinMiniGameBuilder({ projectsRoot: projectOutputRoot, cliPath: layaAirCliPath }) }),
         projectPreviewManager: previewManager as GamePreviewManager,
         projectVerifier: new GameVerifier({
           projectsRoot: projectOutputRoot,

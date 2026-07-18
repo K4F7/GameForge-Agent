@@ -39,6 +39,7 @@ import type {
   GameforgeCapabilitySnapshot,
 } from "@gameforge/contracts";
 import type { ZodType } from "zod";
+import type { DouyinMiniGameBuildResult } from "@gameforge/minigame-validator";
 
 function validationResult(
   schema: ZodType,
@@ -91,6 +92,25 @@ export function validateAssetManifestTool(manifest: unknown): CallToolResult {
 
 export function getGameforgeCapabilitiesTool(snapshot: GameforgeCapabilitySnapshot): CallToolResult {
   return { content: [{ type: "text", text: JSON.stringify(snapshot, null, 2) }] };
+}
+
+export type DouyinProjectBuilder = {
+  build(projectId: string): Promise<DouyinMiniGameBuildResult>;
+};
+
+export async function buildDouyinMiniGameTool(
+  builder: DouyinProjectBuilder,
+  projectId: string,
+): Promise<CallToolResult> {
+  try {
+    const result = await builder.build(projectId);
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  } catch {
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify({ code: "douyin_build_failed", message: "Douyin mini-game build failed." }) }],
+    };
+  }
 }
 
 export async function searchSoundAssetTool(

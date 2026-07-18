@@ -59,6 +59,7 @@ import {
   verifyGameProjectTool,
   getGameforgeCapabilitiesTool,
   getProjectAssetsTool,
+  buildDouyinMiniGameTool,
   recoverProjectAssetsTool,
   type GameSpecDraftProvider,
   type ProjectGenerator,
@@ -69,6 +70,7 @@ import {
   type TaskRelayToolClient,
   type ProjectVerifier,
   type ProjectPreviewManager,
+  type DouyinProjectBuilder,
 } from "./tools.js";
 import type { ToolAuditContextBinder, ToolAuditRecorder } from "./tool-audit.js";
 
@@ -81,6 +83,7 @@ export type CreateServerOptions = {
   projectVerifier?: ProjectVerifier;
   projectPreviewManager?: ProjectPreviewManager;
   projectGenerator?: ProjectGenerator;
+  douyinProjectBuilder?: DouyinProjectBuilder;
   runRelayClient?: RunRelayToolClient;
   taskRelayClient?: TaskRelayToolClient;
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
@@ -121,6 +124,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     engineering: {
       assetStore: options.assetStore?.read !== undefined && options.assetStore.recover !== undefined,
       generator: options.projectGenerator?.recover !== undefined,
+      douyinBuild: options.douyinProjectBuilder !== undefined,
       verifier: options.projectVerifier !== undefined,
       preview: options.projectPreviewManager !== undefined,
       runRelay: options.runRelayClient !== undefined,
@@ -230,12 +234,24 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     registerTool(
       "generate_game_project",
       {
-        title: "Generate a deterministic Phaser project",
+        title: "Generate a deterministic managed game project",
         description:
-          "Create or safely update a fixed, versioned Phaser template from a validated GameSpec. Defaults to create dry-run. Update apply requires the current plan hash returned by update dry-run and refuses modified managed files.",
+          "Create or safely update a fixed, versioned Web Phaser or Douyin LayaAir source project from a validated GameSpec. Defaults to create dry-run. Update apply requires the current plan hash returned by update dry-run and refuses modified managed files or target changes.",
         inputSchema: projectGenerationRequestSchema.shape,
       },
       async (request) => generateGameProjectTool(projectGenerator, request),
+    );
+  }
+
+  if (options.douyinProjectBuilder !== undefined) {
+    registerTool(
+      "build_douyin_mini_game",
+      {
+        title: "Build and validate a managed Douyin mini-game",
+        description: "Run the fixed LayaAir bytedancegame build once for a managed project, then apply deterministic offline artifact validation. This never logs in, previews, uploads, audits, or publishes.",
+        inputSchema: { projectId: projectIdSchema },
+      },
+      async ({ projectId }) => buildDouyinMiniGameTool(options.douyinProjectBuilder as DouyinProjectBuilder, projectId),
     );
   }
 

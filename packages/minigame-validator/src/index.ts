@@ -78,6 +78,8 @@ export async function validateDouyinMiniGameProject(projectRoot: string): Promis
   };
 }
 
+export { DouyinMiniGameBuilder, type DouyinMiniGameBuildResult } from "./builder.js";
+
 async function readRequiredFile(root: string, relativePath: string, maximumBytes: number): Promise<{ text: string }> {
   const filePath = path.join(root, relativePath);
   const info = await lstat(filePath).catch(() => undefined);

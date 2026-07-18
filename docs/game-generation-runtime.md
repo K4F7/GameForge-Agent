@@ -37,7 +37,7 @@ GameForge把“理解需求”和“生成工程”分开：
 
 这是供CodeArts继续修改的稳定可玩基线，不声称仅凭GameSpec中几句自然语言就能无损表达任意玩法。
 
-抖音源工程固定输出 `<projectId>.laya`、启动场景及 UUID meta、Build/Player Settings、`src/Main.ts` 和 `assets/resources/game-spec.json`。运行时异步读取 JSON GameSpec，消费标题、目标、收集物/危险物数量、生命和移动速度；用户文本不插入可执行源码。生成器只负责确定性源文件，不内嵌或下载 LayaAir CLI。CodeArts 在 apply 后调用本机固定版本 `layaair build bytedancegame`，产物再经过 mini-game validator；平台 CLI 缺失时 capability 必须报告未完成。
+抖音源工程固定输出 `<projectId>.laya`、启动场景及 UUID meta、Build/Player Settings、`src/Main.ts` 和 `assets/resources/game-spec.json`。运行时异步读取 JSON GameSpec，消费标题、目标、收集物/危险物数量、生命和移动速度；用户文本不插入可执行源码。生成器只负责确定性源文件，不内嵌或下载 LayaAir CLI。配置 `GAMEFORGE_LAYAIR_CLI` 后，`build_douyin_mini_game` 对托管 target 执行固定 3.4.0 `bytedancegame` 构建并调用 mini-game validator。Builder 使用绝对 CLI、受限子进程环境、120 秒超时、64 KiB/stdout/stderr 上限、项目构建锁和产物 realpath/符号链接检查；它不返回原始日志，也不登录、预览、上传、提审或发布。
 
 抖音小游戏静态发布检查由 `@gameforge/minigame-validator` 提供。对已有平台工程执行 `bun run minigame:validate -- <绝对工程路径>`，会验证 `game.js`、`game.json`、`project.config.json`、方向与超时字段、符号链接边界、分包根唯一性、4 MiB 主包和 20 MiB 总目录限制，并拒绝入口直接依赖 `document.*`/`window.*`。它不运行抖音 Runtime，也不能替代开发者工具与真机验收。
 

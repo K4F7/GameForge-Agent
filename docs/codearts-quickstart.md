@@ -94,6 +94,7 @@ bun run dev:local
       ],
       "env": {
         "GAMEFORGE_PROJECT_OUTPUT_ROOT": "D:\\GameForgeGenerated",
+        "GAMEFORGE_LAYAIR_CLI": "C:\\Users\\you\\.layaair\\layaair.cmd",
         "GAMEFORGE_RUN_RELAY_URL": "http://127.0.0.1:8787/",
         "GAMEFORGE_MCP_AUDIT_DIR": "D:\\GameForgeAudit"
       }
@@ -101,6 +102,8 @@ bun run dev:local
   }
 }
 ```
+
+`GAMEFORGE_LAYAIR_CLI` 必须是固定 LayaAir 3.4.0 CLI 的绝对普通文件路径。与项目输出根同时配置后，MCP 注册 `build_douyin_mini_game`，只对托管 Manifest 中 target 为 `douyin-mini-game` 的项目执行一次固定 `bytedancegame` 构建并离线校验；不接受任意命令/参数，不登录、预览、上传、提审或发布。CLI 缺失、版本不符、并发锁、超时、非零退出、路径/符号链接异常或包体校验失败都返回稳定错误。
 
 这里使用 Node 承载正式 MCP 和 Playwright Core；依赖安装、workspace 命令、检查和构建仍统一由 Bun 完成。官方配置要求 `command` 必填，`args` 和 `env` 可选，且所有环境变量值必须是字符串。保存后在“已安装”页签重启 `gameforge` MCP；官方文档明确指出修改环境变量后需要重启才能立即生效。
 

@@ -12,6 +12,7 @@
     "test": "vitest run src"
   },
   "dependencies": {
+    "@gameforge/contracts": "0.1.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
