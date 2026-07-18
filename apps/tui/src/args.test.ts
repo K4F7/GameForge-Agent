@@ -14,6 +14,8 @@ describe("TUI arguments", () => {
       .toMatchObject({ command: "list", status: "queued", limit: 5 });
     expect(parseArgs(["run", "run-1", "--after", "4"]))
       .toMatchObject({ command: "run", runId: "run-1", after: 4 });
+    expect(parseArgs(["follow", "task-1", "--after", "2"]))
+      .toMatchObject({ command: "follow", taskId: "task-1", after: 2 });
   });
 
   it("rejects unknown and malformed input", () => {
@@ -21,6 +23,7 @@ describe("TUI arguments", () => {
     expect(() => parseArgs(["submit", "--run-id", "run-1"])).toThrow("requires");
     expect(() => parseArgs(["list", "--limit", "0"])).toThrow("between");
     expect(() => parseArgs(["watch", "run-1", "--after", "-1"])).toThrow("integer");
+    expect(() => parseArgs(["follow"])).toThrow("requires a task ID");
     expect(() => parseArgs(["submit", "--project-id"])).toThrow("Missing value");
   });
 });

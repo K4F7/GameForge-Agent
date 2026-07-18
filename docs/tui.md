@@ -11,6 +11,7 @@ bun run tui -- list
 bun run tui -- submit --run-id my-run --prompt "Create a complete browser safety game." --language en-US
 bun run tui -- submit --run-id improve-run --project-id existing-game --prompt "Add a second level and keep existing assets."
 bun run tui -- task task-00000000-0000-0000-0000-000000000000
+bun run tui -- follow task-00000000-0000-0000-0000-000000000000
 bun run tui -- run my-run
 bun run tui -- watch my-run
 bun run tui -- stop my-run
@@ -23,6 +24,8 @@ Relay 启用 Bearer 时，在 TUI 进程环境设置至少 32 字符的 `GAMEFOR
 交互式 `watch` 中使用 `↑`/`↓` 或 `k`/`j` 逐行滚动，`PageUp`/`PageDown` 翻动五行，`q` 或 `Ctrl-C` 退出。终端 resize 会按新的行列数重绘；退出时恢复 raw mode。重定向或 `--json` 模式不启用 ANSI、快捷键或滚动裁剪。
 
 ## 输出模式
+
+`follow TASK_ID` 会先读取 Task 得到其 Run ID，再自动进入与 `watch` 相同的历史回放和 SSE 恢复流程；它不认领或修改 Task。普通输出先显示 Task/Run 关联；`--json` 先输出一条 `task.snapshot`，随后输出逐行 RunEvent。
 
 普通模式输出适合人阅读的任务表或 Run 摘要。`watch` 在 TTY 中刷新同一屏，显示：
 

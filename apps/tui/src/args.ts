@@ -1,5 +1,5 @@
 export type CliOptions = {
-  command: "help" | "submit" | "list" | "task" | "run" | "stop" | "watch";
+  command: "help" | "submit" | "list" | "task" | "run" | "stop" | "watch" | "follow";
   baseUrl: string;
   json: boolean;
   language: "zh-CN" | "en-US";
@@ -12,7 +12,7 @@ export type CliOptions = {
   after: number;
 };
 
-const commands = new Set(["submit", "list", "task", "run", "stop", "watch"]);
+const commands = new Set(["submit", "list", "task", "run", "stop", "watch", "follow"]);
 const statuses = new Set(["queued", "claimed", "completed", "failed", "stopped"]);
 
 export function parseArgs(argv: readonly string[]): CliOptions {
@@ -63,10 +63,10 @@ export function parseArgs(argv: readonly string[]): CliOptions {
     if (options.runId === undefined || options.prompt === undefined || options.prompt.trim().length === 0) {
       throw new Error("submit requires --run-id and --prompt.");
     }
-  } else if (options.command === "task") {
+  } else if (options.command === "task" || options.command === "follow") {
     const positionalTaskId = positionals[0];
     if (options.taskId === undefined && positionalTaskId !== undefined) options.taskId = positionalTaskId;
-    if (options.taskId === undefined) throw new Error("task requires a task ID.");
+    if (options.taskId === undefined) throw new Error(`${options.command} requires a task ID.`);
   } else if (["run", "stop", "watch"].includes(options.command)) {
     const positionalRunId = positionals[0];
     if (options.runId === undefined && positionalRunId !== undefined) options.runId = positionalRunId;

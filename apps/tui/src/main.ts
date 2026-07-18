@@ -13,6 +13,7 @@ Usage:
   bun run tui -- submit --run-id ID --prompt TEXT [--project-id PROJECT_ID] [--language zh-CN|en-US]
   bun run tui -- list [--status STATUS] [--limit N]
   bun run tui -- task TASK_ID
+  bun run tui -- follow TASK_ID [--after N]
   bun run tui -- run RUN_ID [--after N]
   bun run tui -- stop RUN_ID
   bun run tui -- watch RUN_ID [--after N]
@@ -56,6 +57,15 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     case "task": {
       const task = await client.getTask(options.taskId!);
       output(task, `${task.status} ${task.taskId}\nRun ${task.runId} (${task.language})\n${task.prompt}`);
+      return;
+    }
+    case "follow": {
+      const task = await client.getTask(options.taskId!);
+      output({ type: "task.snapshot", task }, `Following ${task.taskId}\nRun ${task.runId} (${task.status})`);
+      await runCli([
+        "watch", task.runId, "--base-url", options.baseUrl, "--after", String(options.after),
+        ...(options.json ? ["--json"] : []),
+      ]);
       return;
     }
     case "run": {
