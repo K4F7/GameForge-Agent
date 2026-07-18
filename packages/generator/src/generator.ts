@@ -7,6 +7,7 @@ import {
   projectGenerationResultSchema,
   projectIdSchema,
   type GameSpec,
+  type GamePlatformTarget,
   type GeneratedProjectPlan,
   type ProjectGenerationRequest,
   type ProjectGenerationResult,
@@ -19,8 +20,9 @@ import { hostname as systemHostname } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
+import { douyinRuntimeSource } from "./douyin-template.js";
 
-const GENERATOR_VERSION = "0.8.0";
+const GENERATOR_VERSION = "0.9.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 
 type GeneratedFile = { path: string; content: string; bytes: number; sha256: string };
@@ -93,7 +95,7 @@ export class GameProjectGenerator {
     });
 
     if (input.operation === "update") {
-      const inspection = await this.#inspectUpdate(input.projectId, generated.files);
+      const inspection = await this.#inspectUpdate(input.projectId, input.target, generated.files);
       if (input.mode === "dry-run") {
         return projectGenerationResultSchema.parse({ mode: "dry-run", operation: "update", plan, update: inspection.summary });
       }
@@ -102,6 +104,7 @@ export class GameProjectGenerator {
       }
       const applied = await this.#applyUpdate(
         input.projectId,
+        input.target,
         generated.files,
         input.expectedPlanSha256,
       );
@@ -178,7 +181,7 @@ export class GameProjectGenerator {
     }
   }
 
-  async #inspectUpdate(projectId: string, files: ReadonlyArray<GeneratedFile>): Promise<UpdateInspection> {
+  async #inspectUpdate(projectId: string, platformTarget: GamePlatformTarget, files: ReadonlyArray<GeneratedFile>): Promise<UpdateInspection> {
     const root = await verifiedRoot(this.#outputRoot);
     const target = safeChild(root, projectId);
     const targetInfo = await lstat(target).catch(() => undefined);
@@ -192,6 +195,9 @@ export class GameProjectGenerator {
     const manifestText = await readManagedText(realTarget, ".gameforge/manifest.json");
     const manifest = managedGeneratedProjectManifestSchema.parse(JSON.parse(manifestText) as unknown);
     if (manifest.projectId !== projectId) throw new Error("Generated project manifest ID does not match.");
+    if (manifest.target !== platformTarget) {
+      throw new Error(`Generated project target cannot change during update: ${manifest.target} -> ${platformTarget}.`);
+    }
     const desired = new Map(files.filter((file) => file.path !== ".gameforge/manifest.json").map((file) => [file.path, file]));
     const current = new Map(manifest.files.map((file) => [file.path, file]));
     const updatedPaths: string[] = [];
@@ -236,14 +242,15 @@ export class GameProjectGenerator {
 
   async #applyUpdate(
     projectId: string,
+    platformTarget: GamePlatformTarget,
     files: ReadonlyArray<GeneratedFile>,
     expectedPlanSha256: string,
   ): Promise<{ outputPath: string; update: ProjectUpdateSummary }> {
-    const initial = await this.#inspectUpdate(projectId, files);
+    const initial = await this.#inspectUpdate(projectId, platformTarget, files);
     const lockPath = safeRelativeFile(initial.target, ".gameforge/update.lock");
     const lock = await acquireUpdateLock(lockPath);
     try {
-      const inspection = await this.#inspectUpdate(projectId, files);
+      const inspection = await this.#inspectUpdate(projectId, platformTarget, files);
       if (inspection.manifest.planSha256 !== expectedPlanSha256) {
         throw new Error(`Generated project plan conflict: expected ${expectedPlanSha256}, found ${inspection.manifest.planSha256}.`);
       }
@@ -376,11 +383,11 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: "web" |
   specSha256: string;
   planSha256: string;
 } {
-  if (target !== "web") {
-    throw new Error("douyin-mini-game target is declared but requires the platform compatibility generator before apply or dry-run.");
-  }
   const specContent = `${JSON.stringify(spec, null, 2)}\n`;
-  const baseFiles = [
+  if (target === "douyin-mini-game" && spec.genre !== "arcade") {
+    throw new Error("douyin-mini-game 0.9.0 currently supports only the verified arcade template.");
+  }
+  const baseFiles = (target === "web" ? [
     file(".npmrc", "registry=https://registry.npmjs.org/\n"),
     file("game-spec.json", specContent),
     file("index.html", createIndexHtml(spec.locale)),
@@ -419,7 +426,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: "web" |
       include: ["src", "vite.config.ts", "game-spec.json"],
     }, null, 2)}\n`),
     file("vite.config.ts", 'import { defineConfig } from "vite";\n\nexport default defineConfig({ base: "./", build: { manifest: true } });\n'),
-  ].sort((left, right) => left.path.localeCompare(right.path));
+  ] : createDouyinSourceFiles(projectId, specContent)).sort((left, right) => left.path.localeCompare(right.path));
 
   const specSha256 = sha256(specContent);
   const planSha256 = sha256(JSON.stringify({
@@ -449,6 +456,53 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: "web" |
     throw new Error("Generated project exceeds the maximum template size.");
   }
   return { files, specSha256, planSha256 };
+}
+
+function createDouyinSourceFiles(projectId: string, specContent: string): GeneratedFile[] {
+  const sceneUuid = "11111111-1111-4111-8111-111111111111";
+  const runtimeUuid = "22222222-2222-4222-8222-222222222222";
+  return [
+    file(`${projectId}.laya`, '{\n  "version": "3.4.0"\n}\n'),
+    file("game-spec.json", specContent),
+    file("assets/resources/game-spec.json", specContent),
+    file("assets/Scene.ls", `${JSON.stringify({
+      "_$ver": 1,
+      "_$id": "gameforge-scene",
+      "_$type": "Scene",
+      "_$runtime": `res://${runtimeUuid}`,
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      name: "GameForgeScene",
+    }, null, 2)}\n`),
+    file("assets/Scene.ls.meta", `${JSON.stringify({ uuid: sceneUuid }, null, 2)}\n`),
+    file("settings/BuildSettings.json", `${JSON.stringify({
+      name: `GameForge-${projectId}`,
+      startupScene: `res://${sceneUuid}`,
+    }, null, 2)}\n`),
+    file("settings/PlayerSettings.json", `${JSON.stringify({
+      modules: { "laya.ui": false, "laya.d3": false },
+      addons: {},
+    }, null, 2)}\n`),
+    file("src/Main.ts", douyinRuntimeSource),
+    file("src/Main.ts.meta", `${JSON.stringify({ uuid: runtimeUuid }, null, 2)}\n`),
+    file("tsconfig.json", `${JSON.stringify({
+      compilerOptions: {
+        module: "es6",
+        target: "es6",
+        strict: true,
+        strictNullChecks: false,
+        noEmitHelpers: true,
+        sourceMap: false,
+        experimentalDecorators: true,
+        skipLibCheck: true,
+        moduleResolution: "node",
+        allowSyntheticDefaultImports: true,
+      },
+      include: ["./assets", "./src"],
+    }, null, 2)}\n`),
+  ];
 }
 
 function file(filePath: string, content: string): GeneratedFile {

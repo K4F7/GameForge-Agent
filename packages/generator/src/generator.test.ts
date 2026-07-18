@@ -68,10 +68,39 @@ describe("GameProjectGenerator", () => {
     expect(manifest.files).toHaveLength(result.plan.files.length - 1);
   });
 
-  it("refuses to pretend the declared Douyin target is implemented", async () => {
+  it("creates a deterministic minimal LayaAir source project for the Douyin arcade target", async () => {
+    const { generator, root } = await createGenerator();
+    const first = await generator.execute({ projectId: "douyin-spike", spec, target: "douyin-mini-game" });
+    const second = await generator.execute({ projectId: "douyin-spike", spec, target: "douyin-mini-game" });
+    expect(first).toEqual(second);
+    expect(first.plan.target).toBe("douyin-mini-game");
+    expect(first.plan.files.map((entry) => entry.path)).toEqual(expect.arrayContaining([
+      "douyin-spike.laya", "assets/Scene.ls", "assets/resources/game-spec.json", "src/Main.ts",
+    ]));
+    expect(first.plan.files.map((entry) => entry.path)).not.toContain("index.html");
+    const applied = await generator.execute({ projectId: "douyin-spike", spec, target: "douyin-mini-game", mode: "apply" });
+    expect(applied.outputPath).toBe(path.join(root, "douyin-spike"));
+    expect(JSON.parse(await readFile(path.join(root, "douyin-spike", "assets", "resources", "game-spec.json"), "utf8")))
+      .toEqual(spec);
+    expect(await readFile(path.join(root, "douyin-spike", "src", "Main.ts"), "utf8"))
+      .toContain('Laya.loader.load("resources/game-spec.json"');
+    expect(await readFile(path.join(root, "douyin-spike", "src", "Main.ts"), "utf8"))
+      .toContain("this.invulnerableUntilMs = now + 1000");
+  });
+
+  it("rejects unverified Douyin genres instead of silently using the arcade runtime", async () => {
     const { generator } = await createGenerator();
-    await expect(generator.execute({ projectId: "douyin-spike", spec, target: "douyin-mini-game" }))
-      .rejects.toThrow("platform compatibility generator");
+    await expect(generator.execute({
+      projectId: "douyin-platformer", target: "douyin-mini-game", spec: { ...spec, genre: "platformer" as const },
+    })).rejects.toThrow("supports only the verified arcade template");
+  });
+
+  it("rejects changing a managed project's platform target during update", async () => {
+    const { generator } = await createGenerator();
+    await generator.execute({ projectId: "target-locked", spec, mode: "apply" });
+    await expect(generator.execute({
+      projectId: "target-locked", spec, target: "douyin-mini-game", operation: "update",
+    })).rejects.toThrow("target cannot change");
   });
 
   it("never overwrites an existing project", async () => {

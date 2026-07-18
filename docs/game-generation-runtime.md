@@ -14,7 +14,7 @@ GameForge把“理解需求”和“生成工程”分开：
 
 ## 项目生成器
 
-`@gameforge/generator` 0.8.0 在生成请求、计划和托管 Manifest 中记录显式 target。旧请求默认 `web`，继续生成独立的 Phaser 4 + Vite + TypeScript 项目；`douyin-mini-game` 已进入严格契约，但在兼容生成器完成前会明确拒绝 dry-run/apply，不能把浏览器文件伪装成平台产物。固定 Web 输出包括：
+`@gameforge/generator` 0.9.0 在生成请求、计划和托管 Manifest 中记录显式 target。旧请求默认 `web`，继续生成独立的 Phaser 4 + Vite + TypeScript 项目；`douyin-mini-game` 生成固定 LayaAir 3.4.0 TypeScript 源工程，当前只开放真实构建验证过的 `arcade` 模板。跨 target update 与未验证 genre 都会明确失败。固定 Web 输出包括：
 
 - `game-spec.json`
 - `src/main.ts`
@@ -36,6 +36,8 @@ GameForge把“理解需求”和“生成工程”分开：
 | `strategy` | 较慢的指令式移动、状态切换、时间与风险权衡 |
 
 这是供CodeArts继续修改的稳定可玩基线，不声称仅凭GameSpec中几句自然语言就能无损表达任意玩法。
+
+抖音源工程固定输出 `<projectId>.laya`、启动场景及 UUID meta、Build/Player Settings、`src/Main.ts` 和 `assets/resources/game-spec.json`。运行时异步读取 JSON GameSpec，消费标题、目标、收集物/危险物数量、生命和移动速度；用户文本不插入可执行源码。生成器只负责确定性源文件，不内嵌或下载 LayaAir CLI。CodeArts 在 apply 后调用本机固定版本 `layaair build bytedancegame`，产物再经过 mini-game validator；平台 CLI 缺失时 capability 必须报告未完成。
 
 抖音小游戏静态发布检查由 `@gameforge/minigame-validator` 提供。对已有平台工程执行 `bun run minigame:validate -- <绝对工程路径>`，会验证 `game.js`、`game.json`、`project.config.json`、方向与超时字段、符号链接边界、分包根唯一性、4 MiB 主包和 20 MiB 总目录限制，并拒绝入口直接依赖 `document.*`/`window.*`。它不运行抖音 Runtime，也不能替代开发者工具与真机验收。
 
