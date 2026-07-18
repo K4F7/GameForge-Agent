@@ -16,6 +16,7 @@
 - [ ] 与 Cocos Creator 3.8 LTS 对照 CodeArts 修复成本；
 - [x] 通过官方 LayaAir 3.4.0 构建生成 `game.js`、`game.json`、`project.config.json` 与平台适配入口；
 - [x] 增加主包 4MB、整体 20MB、文件类型、远程脚本、HTTPS 域名与 capability 静态校验；生成器 0.12.0 默认声明离线且关闭登录、分享、广告和支付；
+- [x] 增加纯 CLI `minigame:handoff`：validator 前后双快照、逐文件 SHA-256、聚合摘要和无路径 JSON；`build.ready`/TUI 显式标记远程操作禁止与 DevTool 未验收；
 - [x] 将 Seedream 图片、Freesound 音效和火山 TTS/BGM 的统一 Asset Store 桥接到 Laya `resources/assets/`；官方构建后逐项复核 Manifest、字节数和 SHA-256；
 - [x] 增加 `tt-minigame-ide-cli` 2.1.1 官方 `bin/tmg.js --version` 诊断与条件 MCP capability；明确拒绝小程序 `tma`，不开放登录、打开、项目 version、配置、预览或上传命令；
 - [ ] 在抖音小游戏开发者工具完成原型本地导入、编译器与模拟器检查；不执行平台 preview 或上传；
@@ -74,7 +75,7 @@
 - [x] 显示阶段进度、最近日志、GameSpec locale、资产与验证摘要；
 - [x] 支持从游标回放后连接 SSE，显式报告序列缺口和 Relay 断线；
 - [x] 支持按 Task ID 自动解析 Run 并跟随至终态，无需用户猜测 Run ID；
-- [x] Workbench 与 TUI 消费持久化 `build.ready`，按 target 显示抖音/微信 CLI、包体、方向、能力和媒体 revision，不泄露绝对输出路径；
+- [x] Workbench 与 TUI 消费持久化 `build.ready`，按 target 显示抖音/微信 CLI、包体、方向、能力和媒体 revision；TUI 额外显示产物聚合 SHA-256、远程操作与 DevTool 状态，不泄露绝对输出路径；
 - [x] 保持 URL 只允许 HTTPS 或 loopback HTTP，禁止凭据、query 和 fragment；
 - [x] 增加 Windows/macOS/Linux CI，以及交互 TTY 的退出键、resize 重绘和 raw mode 清理测试。
 

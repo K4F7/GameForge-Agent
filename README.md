@@ -86,6 +86,14 @@ bun run tui -- list
 
 `bun run doctor:douyin` 只检查抖音小游戏本地 CLI 策略。默认无需安装平台 CLI；显式配置 `GAMEFORGE_DOUYIN_MINIGAME_CLI` 为官方包内的绝对 `bin/tmg.js` 后，只以当前 Node 执行固定的 `bin/tmg.js --version` 并要求 `tt-minigame-ide-cli` 2.1.1。这里不能使用 `tmg version`，后者会查询项目线上版本。诊断拒绝小程序 `tma`，也不暴露登录、打开、配置、项目 version、`build-npm`、`preview` 或 `upload`。当前项目策略禁止平台 preview、上传、提审和发布。
 
+已构建的小游戏产物可用纯 CLI 生成机器可读交付证据：
+
+```text
+bun run --silent minigame:handoff -- --project-id <project-id> --target douyin-mini-game <release/bytedancegame 的绝对路径>
+```
+
+命令对同一目录执行“逐文件哈希快照 → 完整 validator → 第二次哈希快照”，前后聚合 SHA-256 必须一致。stdout 只包含 JSON：逐文件相对路径、字节数、SHA-256、总量和聚合摘要；不包含输入绝对路径、日志或环境变量。结果固定标记 `remoteOperations: "forbidden"` 与 `devToolVerification: "not-run"`，因此可证明 CLI 本地产物未漂移，但不会冒充 Lite/DevTool 模拟器或真机验收。
+
 `bun run doctor:browser` 构建 Verifier 后使用正式 Node 运行时启动一次隔离的无页面 Chrome 会话并立即关闭，验证 `channel: chrome` 或 `GAMEFORGE_CHROME_EXECUTABLE`。Playwright 系统 Chrome 验收不支持由 Bun 进程直接承载；该路径会立即报错，避免已知的长时间悬挂。Bun 仍负责依赖、构建、测试和命令编排。
 
 `bun run workbench:smoke` 在系统分配且始终保持绑定的随机 loopback 端口启动真实 Relay、生产 Workbench 静态服务与受控预览页，再用系统 Chrome 从表单提交一个 Task。确定性 fixture 认领该 Task 并发布合法的规格、资产、七阶段完成、预览、浏览器验收、日志和终态事件；命令验证 UI、iframe、100% 阶段进度、Relay sequence 1–14 连续性与三类浏览器诊断，截图和脱敏 JSON 写入忽略的 `output/playwright/`。它验证 Workbench/Relay 浏览器链路，不冒充 CodeArts 或国产 Provider 账号验收。
@@ -98,7 +106,7 @@ bun run tui -- list
 
 示例游戏和生成模板先输出轻量加载壳，再异步加载 Phaser 游戏块；这会显著缩小首屏入口并改善首次绘制与长期缓存，但不会虚报 Phaser 总下载量减少。`bun run bundle:check` 根据 Vite manifest 分别约束初始、异步和总 raw/gzip 体积，预算超出时返回非零退出码。
 
-第二轮 Bun TUI MVP 位于 `apps/tui`，复用严格 Schema 的 Run Relay Client，不包含 Agent 循环。它支持提交/列出/查看 Task、回放/停止 Run，以及通过 `follow TASK_ID` 自动解析 Run ID 后实时观察连续 RunEvent；断线后从最后连续游标执行有限退避回放，终态自动退出。`--json` 在无 TTY 环境只向 stdout 逐行输出可机器处理的 JSON，恢复进度写入 stderr。完整命令见 [TUI 使用说明](docs/tui.md)。
+第二轮 Bun TUI MVP 位于 `apps/tui`，复用严格 Schema 的 Run Relay Client，不包含 Agent 循环。它支持提交/列出/查看 Task、回放/停止 Run，以及通过 `follow TASK_ID` 自动解析 Run ID 后实时观察连续 RunEvent；断线后从最后连续游标执行有限退避回放，终态自动退出。小游戏 `build.ready` 含交付聚合 SHA-256、远程操作禁止和 DevTool 未验收状态，TUI 会原样显示。`--json` 在无 TTY 环境只向 stdout 逐行输出可机器处理的 JSON，恢复进度写入 stderr。完整命令见 [TUI 使用说明](docs/tui.md)。
 
 Tauri 2 桌面 spike 位于 `apps/desktop`，只封装现有 Workbench，不新增 Agent 循环、自定义 Rust command 或 Tauri plugin。`bun run doctor:desktop` 静态校验零权限 capability、CSP、loopback 开发地址和 Workbench 构建；Tauri Schema、Cargo 和图标由真实 `desktop:build` 验证。Windows 本机构建需进入 MSVC 开发环境后运行该命令。当前只验证了不打安装包的 Windows 可执行文件，签名、自动更新和 macOS/Linux 仍不在已验收范围。完整说明见 [桌面壳说明](docs/desktop.md)。
 
@@ -172,7 +180,7 @@ GAMEFORGE_CHROME_EXECUTABLE=C:\Program Files\Google\Chrome\Application\chrome.ex
 
 Asset Store 的互斥锁包含 0600 owner metadata。MCP 崩溃遗留的锁只有在 metadata 完整、hostname 与当前机器一致、PID 明确不存在且创建时间超过 10 分钟时才自动恢复；活进程、近期锁、异地主机、空锁或旧格式一律保守拒绝。不要用脚本无条件删除 `.gameforge/assets.lock`。
 
-浏览器验收工具只处理生成器托管的 Web 项目，动作脚本最多 100 步；运行时阻断外部网络，捕获控制台错误、页面异常和失败请求，并等待 telemetry 与非空白 Canvas 首帧后再读取 `window.__GAMEFORGE_TEST__` 和截图。证据写入项目的 `.gameforge/verification/`，摘要发布为 `verification.ready`。小游戏使用独立 `verify_minigame_gameplay` 发布 no-render `gameplay.verified`；抖音/微信官方 CLI 构建与静态校验通过后另发布无主机路径的 `build.ready`。三类证据不可互相冒充。绝对路径、原始构建日志与诊断全文不进入浏览器事件流。CodeArts 可将 `start_game_preview` 返回的 URL 原样发布为 `preview.ready` RunEvent；Workbench 收到后自动切换预览。事件 URL 只接受 HTTPS 或 loopback HTTP，iframe 使用受限 sandbox。
+浏览器验收工具只处理生成器托管的 Web 项目，动作脚本最多 100 步；运行时阻断外部网络，捕获控制台错误、页面异常和失败请求，并等待 telemetry 与非空白 Canvas 首帧后再读取 `window.__GAMEFORGE_TEST__` 和截图。证据写入项目的 `.gameforge/verification/`，摘要发布为 `verification.ready`。小游戏使用独立 `verify_minigame_gameplay` 发布 no-render `gameplay.verified`；抖音/微信官方 CLI 构建与静态校验通过后另发布无主机路径的 `build.ready`，其中交付摘要来自两次一致的逐文件哈希快照。三类证据不可互相冒充，`devToolVerification: "not-run"` 也不得改写为已验收。绝对路径、完整文件清单、原始构建日志与诊断全文不进入 RunEvent；完整无路径清单只存在于 build MCP 响应或 `minigame:handoff` stdout。CodeArts 可将 `start_game_preview` 返回的 URL 原样发布为 `preview.ready` RunEvent；Workbench 收到后自动切换预览。事件 URL 只接受 HTTPS 或 loopback HTTP，iframe 使用受限 sandbox。
 
 启用 Run Relay 生命周期工具：
 

@@ -41,7 +41,7 @@ GameForge把“理解需求”和“生成工程”分开：
 
 Laya 源工程固定输出 `<projectId>.laya`、启动场景及 UUID meta、Build/Player Settings、`src/Main.ts`、`assets/resources/game-spec.json`、严格的 target-specific `assets/resources/gameforge-platform.json`，以及初始 `assets/resources/assets/manifest.json`。运行时异步读取 JSON GameSpec 和媒体 Manifest，消费标题、目标、玩法参数及图片/音频角色；用户文本不插入可执行源码。平台策略默认 `network/login/share/ads/payments=false`、无远程域名且禁止远程脚本；后续启用能力必须同时修改声明并通过 `tt.*` 或 `wx.*` 静态用法核验。生成器只负责确定性源文件，不内嵌或下载 LayaAir CLI。配置 `GAMEFORGE_LAYAIR_CLI` 后，`build_douyin_mini_game` 固定执行 `bytedancegame`，`build_wechat_mini_game` 固定执行 `wxgame`，随后调用对应 validator。官方 dispatcher/wrapper 入口不会通过 shell 执行：Builder 核验固定 3.4.0 的 `versions.json`、`Resources/package.json` 与非符号链接 `Resources/cli-main.js`，再以当前 Node 直接运行主入口。子进程使用受限 PATH、不继承用户凭据，并具有 120 秒超时、64 KiB/stdout/stderr 上限、项目构建锁和产物 realpath/符号链接检查；官方 CLI 即使以 0 退出，只要完整 stdout 或 stderr 流出现 `Build end, result=Failed` 也会判定失败，检测不受保存日志截断影响。它不返回原始日志，也不登录、预览、上传、提审或发布。显式配置本机 CLI 仍代表信任该安装；同用户在核验与启动间替换文件的 TOCTOU，以及恶意 CLI 自行派生且拒绝退出的后代进程，不属于该本地构建器的沙箱保证。
 
-小游戏静态发布检查由 `@gameforge/minigame-validator` 提供。抖音产物执行 `bun run minigame:validate -- <绝对工程路径>`；微信产物执行 `bun run minigame:validate -- --target wechat-mini-game <绝对工程路径>`。两者都会验证 `game.js`、`game.json`、`project.config.json`、target-specific 平台策略、`resources/assets/manifest.json`、方向与超时字段、符号链接边界、允许的发布文件类型、分包根唯一性、4 MiB 主包和 20 MiB 总目录限制；每个发布媒体还必须存在于 `resources/<entry.path>`，并与 Manifest 的字节数和 SHA-256 一致。有界 builder 还把 Manifest projectId 与请求的受管项目绑定，拒绝跨项目替换。同时拒绝入口 DOM 依赖、远程 JavaScript、HTTP URL、IP/localhost/端口/未声明域名，以及应用代码中未声明的网络、登录、分享、广告和支付 API。只有 SHA-256 与真实 LayaAir 3.4.0 产物中已验证的抖音或微信平台适配器完全一致时，通用适配器里的平台 API 才不计为游戏主动 capability；同名文件被修改会保守失败。读取文本文件时复核 realpath、文件身份和大小。该检查是保守静态门禁，不做完整 JavaScript 数据流分析、不运行平台 Runtime，也不能替代开发者工具、后台合法域名配置、TLS 探测与真机验收。
+小游戏静态发布检查由 `@gameforge/minigame-validator` 提供。抖音产物执行 `bun run minigame:validate -- <绝对工程路径>`；微信产物执行 `bun run minigame:validate -- --target wechat-mini-game <绝对工程路径>`。两者都会验证 `game.js`、`game.json`、`project.config.json`、target-specific 平台策略、`resources/assets/manifest.json`、方向与超时字段、符号链接边界、允许的发布文件类型、分包根唯一性、4 MiB 主包和 20 MiB 总目录限制；每个发布媒体还必须存在于 `resources/<entry.path>`，并与 Manifest 的字节数和 SHA-256 一致。有界 builder 还把 Manifest projectId 与请求的受管项目绑定，拒绝跨项目替换。同时拒绝入口 DOM 依赖、远程 JavaScript、HTTP URL、IP/localhost/端口/未声明域名，以及应用代码中未声明的网络、登录、分享、广告和支付 API。只有 SHA-256 与真实 LayaAir 3.4.0 产物中已验证的抖音或微信平台适配器完全一致时，通用适配器里的平台 API 才不计为游戏主动 capability；同名文件被修改会保守失败。读取文本文件时复核 realpath、文件身份和大小。`minigame:handoff` 在 validator 前后分别以打开句柄、inode/device、大小、mtime/ctime、realpath 和 64 KiB 流式 SHA-256 固定目录快照；两次聚合摘要不一致就失败。该检查是保守静态门禁，不做完整 JavaScript 数据流分析、不运行平台 Runtime，也不能替代开发者工具、后台合法域名配置、TLS 探测与真机验收。
 
 静态 API 与 URL 检查是词法门禁，不证明动态别名、反射或字符串拼接后的行为安全；CodeArts 不得据此自动开启商业 capability。Builder 与 validator 也不是针对同机恶意并发进程的沙箱：CLI、项目根和输出目录必须位于当前用户控制的受信任本地目录，验证期间不得由其他进程替换。平台账号、动态行为和运行时权限仍须在开发者工具与真机验收。
 
@@ -125,12 +125,12 @@ URL 契约只允许 HTTPS，或主机严格为 `localhost`、`127.0.0.1`、`[::1
 - `capabilities.ready`：携带本次 MCP 实际注册能力的无密钥快照；Provider `ready` 只有在其完整调用链可用时为 true；
 - `spec.ready`：携带完整 GameSpec，并再次经过 `gameSpecSchema`；
 - `asset.ready`：携带项目 ID、正整数 manifest revision 和一个完整 `runtimeAssetEntrySchema` 条目。
-- `build.ready`：携带通过校验的抖音或微信产物摘要，包括 target、LayaAir 版本、文件/包体/分包、方向、平台能力、域名和媒体 Manifest revision；禁止绝对输出路径与原始日志。
+- `build.ready`：携带通过校验的抖音或微信产物摘要，包括 target、LayaAir 版本、文件/包体/分包、方向、平台能力、域名、媒体 Manifest revision、产物聚合 SHA-256、`remoteOperations: forbidden` 与 `devToolVerification: not-run`；禁止绝对输出路径、完整文件清单与原始日志。旧事件缺少后三项时按历史未知显示。
 - `gameplay.verified`：携带固定 Laya 模板的 genre 胜利/超时失败逻辑证据、动作数、耗时与模板哈希；刻意禁止视觉字段，不替代 DevTool/真机。
 - `voice.job.updated`：携带项目 ID、asset ID、签名异步作业 handle 与 processing/succeeded/failed；用于 CodeArts 中断恢复，不写入普通日志。
 - `verification.ready`：携带一次浏览器验收的有界摘要和项目内 PNG 路径；用于会话恢复和 Workbench 验收卡，不携带绝对路径或诊断全文。
 
-CodeArts 在 `validate_game_spec` 成功后发布 `spec.ready`；图片、音效或配音工具真正完成安全落盘后，原样使用返回的 `entry` 与 `manifestRevision` 发布 `asset.ready`。目标平台构建和 validator 都成功后，把对应 build 工具的无路径 `buildEvent` 补齐 Run envelope 后发布；MCP 对外响应不包含 builder 内部绝对 `outputPath`。候选搜索结果、纯日志、未写入文件的 Provider 响应或失败构建不能伪装成已就绪产物。
+CodeArts 在 `validate_game_spec` 成功后发布 `spec.ready`；图片、音效或配音工具真正完成安全落盘后，原样使用返回的 `entry` 与 `manifestRevision` 发布 `asset.ready`。目标平台构建、validator 与前后两次哈希快照都成功后，把对应 build 工具的无路径 `buildEvent` 补齐 Run envelope 后发布；MCP 对外响应不包含 builder 内部绝对 `outputPath`，但同次响应提供完整无路径 `handoff` 清单供 CLI 保存或管道消费。候选搜索结果、纯日志、未写入文件的 Provider 响应、失败构建或漂移快照不能伪装成已就绪产物。
 
 素材迭代复用同一 `asset.ready` 契约。CodeArts 先读取 `get_project_assets`，再以明确 assetId、`mode: "replace"` 和当前 `expectedRevision` 调用原媒体工具；Asset Store 在同一写锁内再次 CAS，旧文件哈希必须与 Manifest 一致。成功时完整 entry 替换、revision 增加；Workbench reducer 按 assetId 归并新 entry，用户刷新 preview iframe 后模板重新获取 Manifest。revision 冲突不会自动重放 Provider。
 

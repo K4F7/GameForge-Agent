@@ -1,7 +1,8 @@
 # 游戏Agent开源项目参考
 
-更新日期：2026-07-16
-官方仓库访问日期：2026-07-16
+更新日期：2026-07-19
+官方仓库最近逐项核验日期：2026-07-16
+本轮参考结论确认日期：2026-07-19
 
 ## 筛选原则
 
@@ -10,7 +11,24 @@
 - 许可证只说明代码使用边界，不自动覆盖模型权重、生成内容、示例素材和第三方资产。
 - 借鉴优先级依次是：接口与状态设计、测试方法、页面信息架构、独立组件；不整仓复制。
 
-## 第一优先级
+## 当前采用顺序（2026-07-19）
+
+本节是当前项目决策，覆盖下文早期调研形成的阅读顺序，但不抹去历史记录：
+
+1. [Agent Game Forge](https://github.com/0x0funky/agent-game-forge)：先研究 `contracts`、SSE、CLI adapter、React `SceneEditor`、`PlayPane` 与共享场景 JSON，用于收敛 GameForge 的客户端无关事件契约和编辑器投影。
+2. [Godogen](https://github.com/htdt/godogen)：研究通过 `AGENTS.md`、Skills、运行清单和引擎指南驱动外部主 Agent 的方式，保持 CodeArts-first 且不在 MCP 内复制 Agent 循环。
+3. [OpenGame](https://github.com/leigest519/OpenGame)：研究端到端无头生成、Template/Debug Skill、国产媒体 Provider 和浏览器验证闭环。
+4. [Agent Sprite Forge](https://github.com/0x0funky/agent-sprite-forge)：研究“模型创作 + 确定性脚本处理”的资产管线，包括切帧、去背、对齐、地图分层与 QA metadata；具体生图后端仍由 GameForge adapter 决定。
+5. [GameDevBench](https://github.com/waynchi/gamedevbench)：研究基准任务、截图/视频反馈和可复现实验记录，用于统一 CodeArts 与其他宿主的对照验收。
+
+补充参考不改变上述实现顺序：
+
+- [BloxBot](https://github.com/paralov/app-bloxbot-ai)：只参考 Tauri/React GUI、OpenCode sidecar 生命周期、会话和路径管理；GameForge 核心仍不得实现为 OpenCode Plugin。
+- [Phaser 官方 Skills](https://github.com/phaserjs/phaser/tree/master/skills)：作为 Phaser 生成规则的官方上游，优先于第三方模板中的经验性规则。
+
+这些仓库都只提供局部抓手。当前尚未发现同时覆盖 CodeArts、国产模型、确定性 MCP、Phaser/LayaAir、抖音小游戏、Relay、TUI/Workbench 和浏览器验收的开源项目；这一组合是 GameForge 的明确差异化。借鉴代码前仍须逐项核验当时版本、许可证、第三方素材和模型条款。
+
+## 已完成的详细调研
 
 ### OpenGame
 
@@ -83,7 +101,7 @@ GameForge前端最适合借鉴它的多入口设计：Agent工作台、游戏预
 
 GameForge可以采用相同思想：生成目录是可独立运行的游戏工程，Agent仓库只保留模板、工具、评测和实验记录。
 
-## 第二优先级
+## 其他候选
 
 | 项目 | 许可证 | 适合借鉴 | 注意事项 |
 |---|---|---|---|
@@ -131,11 +149,13 @@ GameForge可以采用相同思想：生成目录是可独立运行的游戏工�
 
 ## 建议阅读顺序
 
-1. 精读OpenGame的`agent-test/templates`、Game Skill、Provider配置和集成测试。
-2. 精读PromptCast的`src/game/ai`与`spellSchema.ts`，确定GameSpec到安全运行时对象的分层方式。
-3. 精读Agentshire的`town-frontend/src/editor`、`engine`、`data`和四个页面入口，确定GameForge控制台信息架构。
-4. 精读Godogen的`engines`、`runtime.md`与发布脚本，设计运行态视觉验收。
-5. 精读OpenHands Agent Canvas事件流与沙箱边界，设计长任务状态和人工接管。
+1. 精读 Agent Game Forge 的 contracts、SSE、CLI adapter、`SceneEditor`、`PlayPane` 和共享场景 JSON。
+2. 精读 Godogen 的 `AGENTS.md`、Skills、运行清单与引擎指南，明确宿主 Agent 和确定性工具的边界。
+3. 精读 OpenGame 的 Template/Debug Skill、Provider 配置和浏览器验证闭环。
+4. 精读 Agent Sprite Forge 的确定性资产后处理与 QA metadata。
+5. 精读 GameDevBench 的任务、截图/视频反馈和实验记录结构。
+
+PromptCast、Agentshire、OpenHands Agent Canvas 等既有材料继续作为特定问题的二级参考，不再决定主实现顺序。
 
 ## 不采用或谨慎采用
 
