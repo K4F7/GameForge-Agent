@@ -39,6 +39,8 @@
 
 抖音官方明确写明 Cocos、Laya、Egret 已完成适配并可直接导出抖音小游戏，也提供 Unity WebGL/Wasm、Godot专题和原生 JavaScript/单 Canvas 路线，但没有指定唯一推荐引擎。GameForge V1 选择当前官方下载页的 LayaAir 3.4.0 作为首选抖音生成后端：它使用 TypeScript，输出 `game.js`、`game.json`、`projectconfig.json`、`microgame-adapter.js`，并提供可脚本化的 `bytedancegame` 构建任务。Cocos Creator 3.8 LTS 作为成熟编辑器/Asset Bundle 分包备选；Unity WebGL 需要 C#/Unity/StarkSDK 和 Wasm 工具链，留给已有 Unity 项目而非 TS 第一版。LayaAir 3.x IDE 官方明确要求登录账号，且发布器不以 npm 包或 GitHub release 独立提供，因此安装和首次登录是本地工具链前置。
 
+本机随后安装并只读核验 Layabox 官方 `layaair-cli` 3.4.0。与完整 IDE 不同，CLI 直接提供 `create`、`build`、`validate`、`run`，内置 2D/3D 空项目，并在真实项目中列出 `bytedancegame`、`wxgame`、OPPO、vivo、支付宝、淘宝等构建目标。使用内置 2D 空项目挂载纯代码 `Laya.Scene` 后，`build bytedancegame` 成功输出官方适配库和根文件；GameForge 校验报告为 33 个文件、2,341,386 bytes、无分包、portrait。该结果证明本地构建链可用，不证明抖音 IDE 或真机运行。
+
 ## 官方资料
 
 - [抖音小游戏开发指南](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/dev-guide/bytedance-mini-game)
