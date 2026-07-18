@@ -41,6 +41,8 @@
 
 本机随后安装并只读核验 Layabox 官方 `layaair-cli` 3.4.0。与完整 IDE 不同，CLI 直接提供 `create`、`build`、`validate`、`run`，内置 2D/3D 空项目，并在真实项目中列出 `bytedancegame`、`wxgame`、OPPO、vivo、支付宝、淘宝等构建目标。使用内置 2D 空项目挂载纯代码 `Laya.Scene` 后，`build bytedancegame` 成功输出官方适配库和根文件；GameForge 校验报告为 33 个文件、2,341,386 bytes、无分包、portrait。该结果证明本地构建链可用，不证明抖音 IDE 或真机运行。
 
+抖音 CLI 需要区分：`tt-ide-cli` 暴露 `tma`，官方 Lite 文档只把它用于小程序；小游戏对应 `tt-minigame-ide-cli` 的 `tmg`。`tmg` 2.1.1 提供 login/open/preview/upload/build-npm，但没有独立的本地小游戏 build/validate；preview 明确先上传再扫码，并从 2.0.0 起默认收集行为数据，可用 `tmg set-config --allow-report-event no` 关闭。故本地门禁不安装或调用它，避免在未授权时登录/上传。官方新 `ttmg dev` 能启动编译和预检查，但仍要求 DevTool、Chrome、有效 AppID、登录与网络，不能替代平台工具。
+
 ## 官方资料
 
 - [抖音小游戏开发指南](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/dev-guide/bytedance-mini-game)
