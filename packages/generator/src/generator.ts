@@ -23,7 +23,7 @@ import { z } from "zod";
 import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
 import { douyinRuntimeSource } from "./douyin-template.js";
 
-const GENERATOR_VERSION = "0.11.0";
+const GENERATOR_VERSION = "0.12.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 
 type GeneratedFile = { path: string; content: string; bytes: number; sha256: string };
@@ -388,9 +388,6 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: "web" |
   planSha256: string;
 } {
   const specContent = `${JSON.stringify(spec, null, 2)}\n`;
-  if (target === "douyin-mini-game" && spec.genre !== "arcade") {
-    throw new Error("douyin-mini-game 0.11.0 currently supports only the verified arcade template.");
-  }
   const baseFiles = (target === "web" ? [
     file(".npmrc", "registry=https://registry.npmjs.org/\n"),
     file("game-spec.json", specContent),

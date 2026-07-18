@@ -9,11 +9,11 @@
 - [x] 为生成请求、计划和 Manifest 增加显式 `web` / `douyin-mini-game` target；旧请求默认 `web`，未实现平台 target 会明确失败；
 - [x] 完成 Phaser 4 抖音小游戏无 DOM 兼容性 spike；动态导入与初始化触发广泛浏览器依赖，按 ADR 停止 shim 路线；
 - [x] 使用 LayaAir CLI 3.4.0 内置 2D 空项目完成首个 `bytedancegame` 可玩原型：移动、收集、计时、胜负，主包约 2.34 MiB；
-- [x] 将已验证的最小 Laya 3.4.0 项目结构提炼为确定性 `douyin-mini-game` GameSpec 生成后端；当前只开放 arcade；
+- [x] 将已验证的 Laya 3.4.0 项目结构提炼为确定性 `douyin-mini-game` GameSpec 生成后端；0.12.0 已开放 arcade/platformer/puzzle/shooter/strategy 五种机制并逐个通过官方 CLI 构建；
 - [x] 增加有界 `build_douyin_mini_game` MCP 工具与 `douyinBuild` capability；真实 Node stdio MCP 已调用官方 LayaAir 3.4.0 并通过校验；
 - [ ] 与 Cocos Creator 3.8 LTS 对照 CodeArts 修复成本；
 - [x] 通过官方 LayaAir 3.4.0 构建生成 `game.js`、`game.json`、`project.config.json` 与平台适配入口；
-- [x] 增加主包 4MB、整体 20MB、文件类型、远程脚本、HTTPS 域名与 capability 静态校验；生成器 0.11.0 默认声明离线且关闭登录、分享、广告和支付；
+- [x] 增加主包 4MB、整体 20MB、文件类型、远程脚本、HTTPS 域名与 capability 静态校验；生成器 0.12.0 默认声明离线且关闭登录、分享、广告和支付；
 - [x] 将 Seedream 图片、Freesound 音效和火山 TTS/BGM 的统一 Asset Store 桥接到 Laya `resources/assets/`；官方构建后逐项复核 Manifest、字节数和 SHA-256；
 - [ ] 在抖音小游戏开发者工具完成原型导入、预览和上传前检查；
 - [ ] 在真实抖音客户端扫码运行并记录脱敏截图、日志、包体和人工干预；

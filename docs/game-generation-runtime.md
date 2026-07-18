@@ -14,7 +14,7 @@ GameForge把“理解需求”和“生成工程”分开：
 
 ## 项目生成器
 
-`@gameforge/generator` 0.11.0 在生成请求、计划和托管 Manifest 中记录显式 target。旧请求默认 `web`，继续生成独立的 Phaser 4 + Vite + TypeScript 项目；`douyin-mini-game` 生成固定 LayaAir 3.4.0 TypeScript 源工程，当前只开放真实构建验证过的 `arcade` 模板。跨 target update 与未验证 genre 都会明确失败。固定 Web 输出包括：
+`@gameforge/generator` 0.12.0 在生成请求、计划和托管 Manifest 中记录显式 target。旧请求默认 `web`，继续生成独立的 Phaser 4 + Vite + TypeScript 项目；`douyin-mini-game` 生成固定 LayaAir 3.4.0 TypeScript 源工程，并保持 GameSpec 的 arcade/platformer/puzzle/shooter/strategy genre。跨 target update 会明确失败。固定 Web 输出包括：
 
 - `game-spec.json`
 - `src/main.ts`
@@ -36,6 +36,8 @@ GameForge把“理解需求”和“生成工程”分开：
 | `strategy` | 较慢的指令式移动、状态切换、时间与风险权衡 |
 
 这是供CodeArts继续修改的稳定可玩基线，不声称仅凭GameSpec中几句自然语言就能无损表达任意玩法。
+
+抖音 Laya 后端采用同一五类语义但不引入额外物理模块：arcade 连续追踪移动；platformer 使用手写重力、地面/浮台落地和跳跃；puzzle 使用48px网格步进；shooter 使用有寿命的定向子弹并在清除危险物后获胜；strategy 以空格切换谨慎/突进速度，突进碰撞承受双倍伤害。五类均保留收集、生命、倒计时、触摸/键盘和素材回退。运行时把状态、genre、分数、生命、倒计时及实体坐标发布到无 DOM 的 `GameGlobal.__GAMEFORGE_TEST__`，供后续 DevTool 自动化读取；当前官方 CLI 构建证据不等同于真机玩法验收。
 
 抖音源工程固定输出 `<projectId>.laya`、启动场景及 UUID meta、Build/Player Settings、`src/Main.ts`、`assets/resources/game-spec.json`、严格的 `assets/resources/gameforge-platform.json`，以及初始 `assets/resources/assets/manifest.json`。运行时异步读取 JSON GameSpec 和媒体 Manifest，消费标题、目标、玩法参数及图片/音频角色；用户文本不插入可执行源码。平台策略默认 `network/login/share/ads/payments=false`、无远程域名且禁止远程脚本；后续启用能力必须同时修改声明并通过静态用法核验。生成器只负责确定性源文件，不内嵌或下载 LayaAir CLI。配置 `GAMEFORGE_LAYAIR_CLI` 后，`build_douyin_mini_game` 对托管 target 执行固定 3.4.0 `bytedancegame` 构建并调用 mini-game validator。Builder 使用绝对 CLI、受限子进程环境、120 秒超时、64 KiB/stdout/stderr 上限、项目构建锁和产物 realpath/符号链接检查；官方 CLI 即使以 0 退出，只要完整 stdout 或 stderr 流出现 `Build end, result=Failed` 也会判定失败，检测不受保存日志截断影响。它不返回原始日志，也不登录、预览、上传、提审或发布。
 

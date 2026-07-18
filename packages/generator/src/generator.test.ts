@@ -104,11 +104,29 @@ describe("GameProjectGenerator", () => {
     expect(runtime).toContain("Audio is optional; gameplay remains functional");
   });
 
-  it("rejects unverified Douyin genres instead of silently using the arcade runtime", async () => {
-    const { generator } = await createGenerator();
-    await expect(generator.execute({
-      projectId: "douyin-platformer", target: "douyin-mini-game", spec: { ...spec, genre: "platformer" as const },
-    })).rejects.toThrow("supports only the verified arcade template");
+  it("generates explicit playable Laya mechanisms for every supported Douyin genre", async () => {
+    const { generator, root } = await createGenerator();
+    const genres = ["arcade", "platformer", "puzzle", "shooter", "strategy"] as const;
+    for (const genre of genres) {
+      const projectId = `douyin-${genre}`;
+      await expect(generator.execute({
+        projectId, target: "douyin-mini-game", spec: { ...spec, genre }, mode: "apply",
+      })).resolves.toMatchObject({ plan: { target: "douyin-mini-game" } });
+      const stored = JSON.parse(await readFile(path.join(root, projectId, "assets", "resources", "game-spec.json"), "utf8")) as { genre: string };
+      expect(stored.genre).toBe(genre);
+    }
+    const runtime = await readFile(path.join(root, "douyin-platformer", "src", "Main.ts"), "utf8");
+    expect(runtime).toContain('this.genre === "platformer"');
+    expect(runtime).toContain("this.playerVelocityY = Math.min(720, this.playerVelocityY + 900 * deltaSeconds)");
+    expect(runtime).toContain('this.genre === "puzzle"');
+    expect(runtime).toContain("Math.round(this.player.x / step) * step");
+    expect(runtime).toContain('this.genre === "shooter"');
+    expect(runtime).toContain("private fireBullet(): void");
+    expect(runtime).toContain('this.genre === "strategy"');
+    expect(runtime).toContain("this.strategyAggressive ? 2 : 1");
+    expect(runtime).toContain('typeof GameGlobal !== "undefined"');
+    expect(runtime).toContain("telemetryHost.__GAMEFORGE_TEST__ = {");
+    expect(runtime).toContain('status: "running" | "won" | "lost"');
   });
 
   it("rejects changing a managed project's platform target during update", async () => {
