@@ -11,7 +11,6 @@
         "node",
         "packages/mcp-server/dist/index.js"
       ],
-      "cwd": ".",
       "environment": {
         "GAMEFORGE_PROJECT_OUTPUT_ROOT": "{env:GAMEFORGE_PROJECT_OUTPUT_ROOT}",
         "GAMEFORGE_RUN_RELAY_URL": "{env:GAMEFORGE_RUN_RELAY_URL}",

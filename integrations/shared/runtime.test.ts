@@ -23,10 +23,11 @@ describe("integration runtime", () => {
     const root = await findRepoRoot(import.meta.dirname);
     const text = await readFile(path.join(root, "opencode.json.example"), "utf8");
     const config = JSON.parse(text) as {
-      mcp: { gameforge: { command: string[]; environment: Record<string, string> } };
+      mcp: { gameforge: { command: string[]; environment: Record<string, string>; cwd?: unknown } };
       permission: Record<string, string>;
     };
     expect(config.mcp.gameforge.command).toEqual(["node", "packages/mcp-server/dist/index.js"]);
+    expect(config.mcp.gameforge.cwd).toBeUndefined();
     expect(text).not.toMatch(/[A-Z]:\\/);
     expect(config.mcp.gameforge.environment.GAMEFORGE_RUN_RELAY_TOKEN)
       .toBe("{env:GAMEFORGE_RUN_RELAY_TOKEN}");
@@ -44,16 +45,36 @@ describe("integration runtime", () => {
 
   it("generates a per-client ignored MCP audit directory", async () => {
     const runtime = await resolveRuntime(import.meta.dirname, "codearts");
-    await writeRuntimeConfig(runtime);
-    const config = JSON.parse(await readFile(runtime.configPath, "utf8")) as {
-      mcp: { gameforge: { environment: Record<string, string> } };
-    };
-    expect(path.isAbsolute(runtime.auditDirectory)).toBe(true);
-    expect(runtime.auditDirectory).toContain(path.join("integrations", "codearts", "mcp-audit"));
-    expect(config.mcp.gameforge.environment.GAMEFORGE_MCP_AUDIT_DIR).toBe(runtime.auditDirectory);
-    const policyPath = config.mcp.gameforge.environment.GAMEFORGE_MODEL_ROUTING_POLICY;
-    if (policyPath === undefined) throw new Error("Expected generated model routing policy path.");
-    expect(path.isAbsolute(policyPath)).toBe(true);
-    await expect(access(policyPath)).resolves.toBeUndefined();
+    const previousToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
+    try {
+      delete process.env.GAMEFORGE_RUN_RELAY_TOKEN;
+      await writeRuntimeConfig(runtime);
+      const config = JSON.parse(await readFile(runtime.configPath, "utf8")) as {
+        mcp: { gameforge: { environment: Record<string, string>; cwd?: unknown } };
+      };
+      expect(path.isAbsolute(runtime.auditDirectory)).toBe(true);
+      expect(runtime.auditDirectory).toContain(path.join("integrations", "codearts", "mcp-audit"));
+      expect(config.mcp.gameforge.cwd).toBeUndefined();
+      expect(config.mcp.gameforge.environment.GAMEFORGE_RUN_RELAY_TOKEN).toBeUndefined();
+      expect(config.mcp.gameforge.environment.GAMEFORGE_MCP_AUDIT_DIR).toBe(runtime.auditDirectory);
+      const policyPath = config.mcp.gameforge.environment.GAMEFORGE_MODEL_ROUTING_POLICY;
+      if (policyPath === undefined) throw new Error("Expected generated model routing policy path.");
+      expect(path.isAbsolute(policyPath)).toBe(true);
+      await expect(access(policyPath)).resolves.toBeUndefined();
+
+      process.env.GAMEFORGE_RUN_RELAY_TOKEN = "   ";
+      await expect(writeRuntimeConfig(runtime)).rejects.toThrow("must be unset or contain between 32 and 512");
+
+      process.env.GAMEFORGE_RUN_RELAY_TOKEN = "r".repeat(32);
+      await writeRuntimeConfig(runtime);
+      const authenticatedConfig = JSON.parse(await readFile(runtime.configPath, "utf8")) as {
+        mcp: { gameforge: { environment: Record<string, string> } };
+      };
+      expect(authenticatedConfig.mcp.gameforge.environment.GAMEFORGE_RUN_RELAY_TOKEN)
+        .toBe("{env:GAMEFORGE_RUN_RELAY_TOKEN}");
+    } finally {
+      if (previousToken === undefined) delete process.env.GAMEFORGE_RUN_RELAY_TOKEN;
+      else process.env.GAMEFORGE_RUN_RELAY_TOKEN = previousToken;
+    }
   });
 });

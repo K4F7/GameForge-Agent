@@ -44,6 +44,13 @@ export async function resolveRuntime(startDirectory: string, integration: "codea
 }
 
 export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<void> {
+  const relayToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
+  if (relayToken !== undefined) {
+    const normalized = relayToken.trim();
+    if (normalized.length < 32 || normalized.length > 512 || /[\r\n]/.test(relayToken)) {
+      throw new Error("GAMEFORGE_RUN_RELAY_TOKEN must be unset or contain between 32 and 512 characters without newlines.");
+    }
+  }
   const config = {
     $schema: "https://opencode.ai/config.json",
     lsp: false,
@@ -52,11 +59,12 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
       gameforge: {
         type: "local",
         command: ["node", "packages/mcp-server/dist/index.js"],
-        cwd: runtime.repoRoot,
         environment: {
           GAMEFORGE_PROJECT_OUTPUT_ROOT: runtime.outputRoot,
           GAMEFORGE_RUN_RELAY_URL: runtime.relayUrl,
-          GAMEFORGE_RUN_RELAY_TOKEN: "{env:GAMEFORGE_RUN_RELAY_TOKEN}",
+          ...(relayToken === undefined
+            ? {}
+            : { GAMEFORGE_RUN_RELAY_TOKEN: "{env:GAMEFORGE_RUN_RELAY_TOKEN}" }),
           GAMEFORGE_MCP_AUDIT_DIR: runtime.auditDirectory,
           GAMEFORGE_MODEL_ROUTING_POLICY: path.join(runtime.repoRoot, "config", "model-routing.example.json"),
         },

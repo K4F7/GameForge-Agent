@@ -17,6 +17,8 @@ describe("RunRelayClient", () => {
     expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${token}`);
     expect(() => new RunRelayClient({ baseUrl: "http://127.0.0.1:8787/", authToken: "short" }))
       .toThrow("between 32 and 512");
+    expect(() => new RunRelayClient({ baseUrl: "http://127.0.0.1:8787/", authToken: "   " }))
+      .toThrow("between 32 and 512");
   });
 
   it("lists, reads, and claims validated game tasks", async () => {
