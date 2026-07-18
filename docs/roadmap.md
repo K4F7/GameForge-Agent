@@ -2,6 +2,18 @@
 
 更新日期：2026-07-18
 
+## 当前产品优先级：抖音小游戏 V1
+
+第一版首要发布目标已从泛浏览器游戏收窄为抖音小游戏；微信小游戏是第二导出目标。浏览器 Phaser 项目继续承担快速预览和 Chrome 回归，但不能作为小游戏平台验收。决策与官方约束见 [ADR-0002](./decisions/0002-domestic-mini-game-v1.md)。
+
+- [ ] 为生成请求、计划和 Manifest 增加显式 `web` / `douyin-mini-game` target；
+- [ ] 完成 Phaser 4 抖音小游戏单 Canvas/无 DOM 兼容性 spike，并按退出条件决定是否保留；
+- [ ] 生成 `game.js`、`game.json`、`project.config.json` 与平台适配入口；
+- [ ] 增加主包 4MB、整体 20MB、文件类型、远程脚本、HTTPS 域名与 capability 静态校验；
+- [ ] 在抖音小游戏开发者工具完成导入、预览和上传前检查；
+- [ ] 在真实抖音客户端扫码运行并记录脱敏截图、日志、包体和人工干预；
+- [ ] 抖音闭环稳定后实现微信小游戏 target；快手暂不进入 V1 发布门禁。
+
 ## 第一轮：真实 CodeArts 闭环
 
 目标是让 CodeArts Agent 而不是测试客户端完成一次 Workbench Task。
@@ -40,6 +52,7 @@
 - [x] 支持 `--base-url`、新建/提交 Task、查看 Task/Run、停止 Run；
 - [x] 显示阶段进度、最近日志、GameSpec locale、资产与验证摘要；
 - [x] 支持从游标回放后连接 SSE，显式报告序列缺口和 Relay 断线；
+- [x] 支持按 Task ID 自动解析 Run 并跟随至终态，无需用户猜测 Run ID；
 - [x] 保持 URL 只允许 HTTPS 或 loopback HTTP，禁止凭据、query 和 fragment；
 - [x] 增加 Windows/macOS/Linux CI，以及交互 TTY 的退出键、resize 重绘和 raw mode 清理测试。
 
