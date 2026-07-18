@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,8 +18,9 @@ async function fakeCli(
     bin: { tmg: "bin/tmg.js" },
   },
 ): Promise<string> {
-  const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-tmg-"));
-  temporaryRoots.push(root);
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "gameforge-tmg-"));
+  temporaryRoots.push(temporaryRoot);
+  const root = await realpath(temporaryRoot);
   const bin = path.join(root, "bin");
   await mkdir(bin);
   await writeFile(path.join(root, "package.json"), `${JSON.stringify(manifest)}\n`, "utf8");
