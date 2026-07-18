@@ -75,6 +75,10 @@ export async function captureBenchmarkEvidence(input: {
   }
   const task = await input.relay.getTask(input.taskId);
   if (task.taskId !== input.taskId) throw new Error("Relay returned a different Task ID.");
+  if (mcpAudit !== undefined &&
+      (mcpAudit.context?.taskId !== task.taskId || mcpAudit.context.runId !== task.runId)) {
+    throw new Error("MCP tool audit is not bound to the requested Task and Run.");
+  }
   if (task.prompt !== definition.prompt || task.language !== definition.language) {
     throw new Error("Task prompt or language does not match the benchmark definition.");
   }
@@ -110,6 +114,8 @@ export async function captureBenchmarkEvidence(input: {
       toolAudit: {
         sessionId: mcpAudit.sessionId,
         sha256: createHash("sha256").update(JSON.stringify(mcpAudit)).digest("hex"),
+        taskId: mcpAudit.context!.taskId,
+        runId: mcpAudit.context!.runId,
       },
     }),
     ...(verificationEvent === undefined ? {} : {

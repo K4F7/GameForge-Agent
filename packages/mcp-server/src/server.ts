@@ -70,7 +70,7 @@ import {
   type ProjectVerifier,
   type ProjectPreviewManager,
 } from "./tools.js";
-import type { ToolAuditRecorder } from "./tool-audit.js";
+import type { ToolAuditContextBinder, ToolAuditRecorder } from "./tool-audit.js";
 
 export type CreateServerOptions = {
   gameSpecDraftProvider?: GameSpecDraftProvider;
@@ -84,7 +84,7 @@ export type CreateServerOptions = {
   runRelayClient?: RunRelayToolClient;
   taskRelayClient?: TaskRelayToolClient;
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
-  toolAudit?: ToolAuditRecorder;
+  toolAudit?: ToolAuditRecorder & Partial<ToolAuditContextBinder>;
 };
 
 export function createServer(options: CreateServerOptions = {}): McpServer {
@@ -137,6 +137,28 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     },
     async () => getGameforgeCapabilitiesTool(capabilitySnapshot),
   );
+
+  if (options.toolAudit?.bindContext !== undefined) {
+    registerTool(
+      "bind_mcp_audit_context",
+      {
+        title: "Bind this MCP audit session to one Task and Run",
+        description: "Persist one immutable Task/Run association in the active secret-free MCP audit session.",
+        inputSchema: { taskId: gameTaskIdSchema, runId: runIdSchema },
+      },
+      async ({ taskId, runId }) => {
+        try {
+          const context = await options.toolAudit!.bindContext!(taskId, runId);
+          return { content: [{ type: "text", text: JSON.stringify(context, null, 2) }] };
+        } catch {
+          return {
+            isError: true,
+            content: [{ type: "text", text: "MCP audit context binding failed." }],
+          };
+        }
+      },
+    );
+  }
 
   if (options.assetStore?.read !== undefined) {
     const reader = { read: options.assetStore.read.bind(options.assetStore) };

@@ -111,7 +111,7 @@ bun run dev:local
 1. 打开 `http://127.0.0.1:4173/`，提交一个 Prompt，记录 Task ID 与 Run ID；新项目将“继续项目”留空，迭代已有项目时显式填写其 `projectId`；
    页面刷新或切换任务后，可点击“刷新历史”读取最近 20 个 Task，再选择“载入历史”从 sequence 0 回放；该操作只读取 Relay，不认领或修改 Task。
 2. 在 CodeArts 中确认可见 `list_game_tasks`、`claim_game_task` 和 `replay_game_run`；
-3. 调用一次不带 status 的 `list_game_tasks`；若存在 `claimedBy: "codearts"` 的相关 Task，优先幂等恢复，否则认领刚创建的 queued Task；认领结果中的可选 `projectId` 决定 update/create，禁止从 Prompt 或目录猜测；
+3. 调用一次不带 status 的 `list_game_tasks`；若存在 `claimedBy: "codearts"` 的相关 Task，优先幂等恢复，否则认领刚创建的 queued Task；认领结果中的可选 `projectId` 决定 update/create，禁止从 Prompt 或目录猜测；若已注册 `bind_mcp_audit_context`，经 `ask` 后以认领返回的 Task/Run ID 绑定一次审计，相同绑定可幂等恢复；
 4. 按 `gameforge-build` Skill 完成规格、生成、验收和 `preview.ready`；
 5. 确认 Workbench 显示真实规格、素材和本次生成项目，而不是演示数据。
 
@@ -154,7 +154,7 @@ Task 到达终态后，先准备严格 `definition.json` 与人工核验的 `met
 bun run benchmark -- capture definition.json metadata.json --task-id <Task-ID> --mcp-audit <会话审计.json> --out codearts.record.json
 ```
 
-命令从配置的 `GAMEFORGE_RUN_RELAY_URL`（默认 loopback 8787）分页读取完整保留期事件，校验定义、sequence 和终态。客户端版本、模型和人工干预只能写入 metadata；缺失工具历史时必须使用 `count: null`/`errors: null`，不得从 RunEvent 数量推断。选择正确 MCP 会话 audit 后，工具总数、唯一名称与错误数由严格调用记录机械计算；截断文件会被拒绝，record 同时保存 session ID 与内容 SHA-256。输出采用 allowlist 摘要，不包含 Task Prompt、调用参数/结果、日志正文、素材提示、URL、绝对路径或 TTS job handle，并拒绝覆盖已有 record。
+命令从配置的 `GAMEFORGE_RUN_RELAY_URL`（默认 loopback 8787）分页读取完整保留期事件，校验定义、sequence 和终态。客户端版本、模型和人工干预只能写入 metadata；缺失工具历史时必须使用 `count: null`/`errors: null`，不得从 RunEvent 数量推断。选择已由 `bind_mcp_audit_context` 绑定的 MCP 会话 audit 后，capture 会将其 Task/Run 与 Relay 权威 Task 交叉核验，再机械计算工具总数、唯一名称与错误数；未绑定、错绑定或截断文件都会被拒绝，record 同时保存绑定 ID、session ID 与内容 SHA-256。输出采用 allowlist 摘要，不包含 Task Prompt、调用参数/结果、日志正文、素材提示、URL、绝对路径或 TTS job handle，并拒绝覆盖已有 record。
 
 ## 官方文档
 

@@ -102,6 +102,21 @@ describe("benchmark evidence capture", () => {
       relay: relayFixture(completeEvents()),
       mcpAudit: auditFixture(),
     })).rejects.toThrow("requires unknown tools");
+    const { context: _context, ...unboundAudit } = auditFixture();
+    await expect(captureBenchmarkEvidence({
+      definition,
+      metadata,
+      taskId: "task-00000000-0000-0000-0000-000000000000",
+      relay: relayFixture(completeEvents()),
+      mcpAudit: unboundAudit,
+    })).rejects.toThrow("not bound");
+    await expect(captureBenchmarkEvidence({
+      definition,
+      metadata,
+      taskId: "task-00000000-0000-0000-0000-000000000000",
+      relay: relayFixture(completeEvents()),
+      mcpAudit: { ...auditFixture(), context: { ...auditFixture().context, runId: "another-run" } },
+    })).rejects.toThrow("not bound");
   });
 });
 
@@ -176,6 +191,11 @@ function auditFixture() {
     sessionId: "00000000-0000-4000-8000-000000000001",
     startedAt: time(1),
     truncated: false,
+    context: {
+      taskId: "task-00000000-0000-0000-0000-000000000000",
+      runId: "capture-run",
+      boundAt: time(2),
+    },
     calls: [
       { sequence: 1, tool: "validate_game_spec", startedAt: time(2), durationMs: 4, outcome: "success" as const },
       { sequence: 2, tool: "generate_game_project", startedAt: time(3), durationMs: 8, outcome: "error" as const },

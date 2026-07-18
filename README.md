@@ -90,7 +90,7 @@ Tauri 2 桌面 spike 位于 `apps/desktop`，只封装现有 Workbench，不新�
 
 客户端基准使用规范化任务定义的 SHA-256，而不是要求 CodeArts 与 OpenCode 复用同一个 Task ID。运行 `bun run benchmark -- report definition.json codearts.record.json opencode.record.json --out report.md` 可校验记录并生成对比；只有两端都完成时才允许比较工作流质量。
 
-运行 `bun run benchmark -- capture definition.json metadata.json --task-id TASK_ID [--mcp-audit AUDIT.json] --out record.json` 可从 Relay 分页捕获 Task 与完整保留期 RunEvent，校验连续 sequence、Task/Run 终态和定义 Prompt/语言，再生成同一严格 record。`metadata.json` 必须显式提供客户端版本、人工干预与失败分类；未提供 audit 时工具摘要也由人工如实填写，绝不从事件数猜测。配置 `GAMEFORGE_MCP_AUDIT_DIR` 后，生产 MCP 每次启动生成唯一、有界的 0600 JSON，只记录工具名/顺序/时间/耗时/状态；显式导入严格且未截断的 audit 后，capture 机械计算工具摘要并写入 session ID 与 SHA-256。两种证据都不包含 Prompt、参数、返回值、日志正文、URL 或 TTS job handle。输出文件必须不存在，防止覆盖既有证据。
+运行 `bun run benchmark -- capture definition.json metadata.json --task-id TASK_ID [--mcp-audit AUDIT.json] --out record.json` 可从 Relay 分页捕获 Task 与完整保留期 RunEvent，校验连续 sequence、Task/Run 终态和定义 Prompt/语言，再生成同一严格 record。`metadata.json` 必须显式提供客户端版本、人工干预与失败分类；未提供 audit 时工具摘要也由人工如实填写，绝不从事件数猜测。配置 `GAMEFORGE_MCP_AUDIT_DIR` 后，生产 MCP 每次启动生成唯一、有界的 0600 JSON，只记录工具名/顺序/时间/耗时/状态；CodeArts 认领 Task 后通过条件工具 `bind_mcp_audit_context` 一次性绑定 Task/Run，相同绑定幂等、不同绑定拒绝。显式导入 audit 后，capture 必须与 Relay 交叉核对绑定，再机械计算工具摘要并写入 Task/Run、session ID 与 SHA-256。两种证据都不包含 Prompt、参数、返回值、日志正文、URL 或 TTS job handle。输出文件必须不存在，防止覆盖既有证据。
 
 ## 集成边界
 

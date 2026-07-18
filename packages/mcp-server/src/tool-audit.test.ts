@@ -21,8 +21,13 @@ describe("MCP tool audit recorder", () => {
     const second = recorder.begin("submit_voice_job");
     await recorder.finish(second, "error");
     await recorder.finish(first, "success");
+    const taskId = "task-00000000-0000-0000-0000-000000000000";
+    const bound = await recorder.bindContext(taskId, "run-audit");
+    await expect(recorder.bindContext(taskId, "run-audit")).resolves.toEqual(bound);
+    await expect(recorder.bindContext(taskId, "another-run")).rejects.toThrow("already bound");
 
     const audit = mcpToolAuditSchema.parse(JSON.parse(await readFile(auditPath, "utf8")) as unknown);
+    expect(audit.context).toMatchObject({ taskId, runId: "run-audit" });
     expect(audit.calls).toMatchObject([
       { sequence: 1, tool: "validate_game_spec", outcome: "success" },
       { sequence: 2, tool: "submit_voice_job", outcome: "error" },

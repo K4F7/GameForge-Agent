@@ -6,18 +6,26 @@ import type { SoundSearchProvider } from "@gameforge/contracts";
 import type { FreesoundSearchRequest, FreesoundSearchResult } from "@gameforge/providers";
 import { createServer } from "./server.js";
 import type { ProjectGenerationResult } from "@gameforge/contracts";
-import type { ToolAuditRecorder, ToolAuditToken } from "./tool-audit.js";
+import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditToken } from "./tool-audit.js";
 
 describe("GameForge MCP server", () => {
   it("audits executed tool callbacks without inspecting arguments or results", async () => {
     const completed: Array<{ token: ToolAuditToken; outcome: "success" | "error" }> = [];
     let sequence = 0;
-    const toolAudit: ToolAuditRecorder = {
+    let auditContext: { taskId: string; runId: string; boundAt: string } | undefined;
+    const toolAudit: ToolAuditRecorder & ToolAuditContextBinder = {
       begin(tool) {
         sequence += 1;
         return { sequence, tool, startedAt: new Date().toISOString(), monotonicStart: performance.now() };
       },
       async finish(token, outcome) { completed.push({ token, outcome }); },
+      async bindContext(taskId, runId) {
+        if (auditContext !== undefined && (auditContext.taskId !== taskId || auditContext.runId !== runId)) {
+          throw new Error("conflict");
+        }
+        auditContext ??= { taskId, runId, boundAt: new Date().toISOString() };
+        return auditContext;
+      },
     };
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer({ toolAudit });
@@ -25,11 +33,23 @@ describe("GameForge MCP server", () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("bind_mcp_audit_context");
+      const bound = await client.callTool({
+        name: "bind_mcp_audit_context",
+        arguments: { taskId: "task-00000000-0000-0000-0000-000000000000", runId: "audit-run" },
+      });
+      expect(bound.isError).not.toBe(true);
+      const conflict = await client.callTool({
+        name: "bind_mcp_audit_context",
+        arguments: { taskId: "task-00000000-0000-0000-0000-000000000000", runId: "other-run" },
+      });
+      expect(conflict.isError).toBe(true);
       await client.callTool({ name: "get_gameforge_capabilities", arguments: {} });
-      expect(completed).toMatchObject([{
-        token: { sequence: 1, tool: "get_gameforge_capabilities" },
-        outcome: "success",
-      }]);
+      expect(completed).toMatchObject([
+        { token: { sequence: 1, tool: "bind_mcp_audit_context" }, outcome: "success" },
+        { token: { sequence: 2, tool: "bind_mcp_audit_context" }, outcome: "error" },
+        { token: { sequence: 3, tool: "get_gameforge_capabilities" }, outcome: "success" },
+      ]);
       expect(completed[0]?.token).not.toHaveProperty("arguments");
       expect(completed[0]?.token).not.toHaveProperty("result");
     } finally {

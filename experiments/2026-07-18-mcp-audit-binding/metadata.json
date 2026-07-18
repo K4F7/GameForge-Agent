@@ -1,0 +1,17 @@
+{
+  "client": {
+    "name": "codearts",
+    "version": "local-stdio-binding-fixture"
+  },
+  "tools": {
+    "count": null,
+    "names": [],
+    "errors": null
+  },
+  "humanInterventions": [],
+  "failure": "none",
+  "evidence": [
+    "experiments/2026-07-18-mcp-audit-binding/result.md",
+    "experiments/2026-07-18-mcp-audit-binding/mcp-audit.json"
+  ]
+}

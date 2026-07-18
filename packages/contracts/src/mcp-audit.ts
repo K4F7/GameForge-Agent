@@ -1,4 +1,12 @@
 import { z } from "zod";
+import { gameTaskIdSchema } from "./game-tasks.js";
+import { runIdSchema } from "./run-events.js";
+
+export const mcpToolAuditContextSchema = z.strictObject({
+  taskId: gameTaskIdSchema,
+  runId: runIdSchema,
+  boundAt: z.string().datetime({ offset: true }),
+});
 
 export const mcpToolAuditOutcomeSchema = z.enum(["success", "error"]);
 export const mcpToolAuditCallSchema = z.strictObject({
@@ -14,6 +22,7 @@ export const mcpToolAuditSchema = z.strictObject({
   sessionId: z.string().uuid(),
   startedAt: z.string().datetime({ offset: true }),
   truncated: z.boolean(),
+  context: mcpToolAuditContextSchema.optional(),
   calls: z.array(mcpToolAuditCallSchema).max(10_000),
 }).superRefine((audit, context) => {
   audit.calls.forEach((call, index) => {
@@ -25,3 +34,4 @@ export const mcpToolAuditSchema = z.strictObject({
 
 export type McpToolAudit = z.infer<typeof mcpToolAuditSchema>;
 export type McpToolAuditCall = z.infer<typeof mcpToolAuditCallSchema>;
+export type McpToolAuditContext = z.infer<typeof mcpToolAuditContextSchema>;

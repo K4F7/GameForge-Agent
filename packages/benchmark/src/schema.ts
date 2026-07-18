@@ -52,6 +52,8 @@ export const benchmarkRecordSchema = z.strictObject({
   toolAudit: z.strictObject({
     sessionId: z.string().uuid(),
     sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    taskId: z.string().trim().min(1).max(120).optional(),
+    runId: z.string().trim().min(1).max(120).optional(),
   }).optional(),
   verification: z.strictObject({
     passed: z.boolean(),

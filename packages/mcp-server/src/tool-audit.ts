@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, open, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
-import { mcpToolAuditSchema, type McpToolAudit, type McpToolAuditCall } from "@gameforge/contracts";
+import {
+  gameTaskIdSchema,
+  mcpToolAuditSchema,
+  runIdSchema,
+  type McpToolAudit,
+  type McpToolAuditCall,
+  type McpToolAuditContext,
+} from "@gameforge/contracts";
 
 const MAX_AUDIT_BYTES = 4 * 1024 * 1024;
 const MAX_CALLS = 10_000;
@@ -18,7 +25,11 @@ export interface ToolAuditRecorder {
   finish(token: ToolAuditToken, outcome: "success" | "error"): Promise<void>;
 }
 
-export class McpToolAuditRecorder implements ToolAuditRecorder {
+export interface ToolAuditContextBinder {
+  bindContext(taskId: string, runId: string): Promise<McpToolAuditContext>;
+}
+
+export class McpToolAuditRecorder implements ToolAuditRecorder, ToolAuditContextBinder {
   readonly #auditPath: string;
   readonly #audit: McpToolAudit;
   #nextSequence = 1;
@@ -97,6 +108,32 @@ export class McpToolAuditRecorder implements ToolAuditRecorder {
       this.#failed = true;
     });
     await this.#queue;
+  }
+
+  async bindContext(taskIdInput: string, runIdInput: string): Promise<McpToolAuditContext> {
+    if (this.#failed) throw new Error("MCP tool audit is unavailable.");
+    const taskId = gameTaskIdSchema.parse(taskIdInput);
+    const runId = runIdSchema.parse(runIdInput);
+    let conflict = false;
+    let bound: McpToolAuditContext | undefined;
+    this.#queue = this.#queue.then(async () => {
+      const current = this.#audit.context;
+      if (current !== undefined) {
+        if (current.taskId !== taskId || current.runId !== runId) conflict = true;
+        else bound = current;
+        return;
+      }
+      bound = { taskId, runId, boundAt: new Date().toISOString() };
+      this.#audit.context = bound;
+      await replaceAudit(this.#auditPath, this.#audit);
+    }).catch(() => {
+      if (!this.#failed) process.stderr.write("GameForge MCP tool audit write failed; tool execution continues.\n");
+      this.#failed = true;
+    });
+    await this.#queue;
+    if (conflict) throw new Error("MCP tool audit is already bound to another Task or Run.");
+    if (this.#failed || bound === undefined) throw new Error("MCP tool audit context could not be persisted.");
+    return bound;
   }
 }
 

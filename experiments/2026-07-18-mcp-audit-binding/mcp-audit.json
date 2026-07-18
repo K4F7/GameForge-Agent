@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "54639c1d-853c-4ab8-ad08-f0f10ec8664b",
+  "startedAt": "2026-07-18T00:18:49.198Z",
+  "truncated": false,
+  "context": {
+    "taskId": "task-f34fa315-42f5-4fcc-b02b-efb0174157f6",
+    "runId": "mcp-bound-real",
+    "boundAt": "2026-07-18T00:18:49.230Z"
+  },
+  "calls": [
+    {
+      "sequence": 1,
+      "tool": "bind_mcp_audit_context",
+      "startedAt": "2026-07-18T00:18:49.230Z",
+      "durationMs": 9,
+      "outcome": "success"
+    },
+    {
+      "sequence": 2,
+      "tool": "get_gameforge_capabilities",
+      "startedAt": "2026-07-18T00:18:49.249Z",
+      "durationMs": 0,
+      "outcome": "success"
+    }
+  ]
+}
