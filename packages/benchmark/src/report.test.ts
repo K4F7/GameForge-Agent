@@ -25,6 +25,72 @@ const record = (name: "codearts" | "opencode", status: "completed" | "stopped") 
   failure: status === "completed" ? "none" : "rate-limit",
   evidence: ["result.md"],
 });
+const miniDefinition = benchmarkDefinitionSchema.parse({
+  benchmarkId: "douyin-mini-game-v1",
+  prompt: "Build a deterministic Douyin collection mini-game and verify its local package.",
+  language: "en-US",
+  target: {
+    genre: "collect",
+    platform: "douyin-mini-game",
+    runtimeGenre: "arcade",
+    durationSeconds: 45,
+    collectibleCount: 3,
+    hazardCount: 2,
+    startingLives: 3,
+    movementSpeed: 220,
+    mediaEnabled: false,
+  },
+});
+const miniRecord = (name: "codearts" | "opencode") => benchmarkRecordSchema.parse({
+  schemaVersion: 1,
+  benchmarkId: miniDefinition.benchmarkId,
+  definitionFingerprint: fingerprintDefinition(miniDefinition),
+  client: { name, version: "1.0" },
+  taskId: `task-${name}`,
+  runId: `run-${name}`,
+  terminalStatus: "completed",
+  events: {
+    count: 6,
+    types: {
+      "run.started": 1,
+      "capabilities.ready": 1,
+      "spec.ready": 1,
+      "gameplay.verified": 1,
+      "build.ready": 1,
+      "run.completed": 1,
+    },
+  },
+  tools: { count: 8, names: [], errors: 0 },
+  minigame: {
+    projectId: `${name}-game`,
+    target: "douyin-mini-game",
+    genre: "arcade",
+    gameplay: {
+      passed: true,
+      scenarios: [
+        { name: "genre-win", outcome: "won", actions: 3 },
+        { name: "timeout-loss", outcome: "lost", actions: 1 },
+      ],
+      durationMs: 122,
+    },
+    build: {
+      passed: true,
+      cliVersion: "3.4.0",
+      fileCount: 14,
+      totalBytes: 1_112_075,
+      mainPackageBytes: 1_112_075,
+      subpackageCount: 0,
+      deviceOrientation: "portrait",
+      assetManifestRevision: 0,
+      assetCount: 0,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    },
+  },
+  humanInterventions: [],
+  failure: "none",
+  evidence: ["result.md"],
+});
 
 describe("client benchmark report", () => {
   it("distinguishes task equivalence from workflow comparability", () => {
@@ -53,5 +119,33 @@ describe("client benchmark report", () => {
       benchmarkId: definition.benchmarkId,
     };
     expect(fingerprintDefinition(reordered)).toBe(fingerprintDefinition(definition));
+  });
+
+  it("compares completed mini-game workflows using gameplay and build proof", () => {
+    const comparison = compareRecords(miniDefinition, [miniRecord("codearts"), miniRecord("opencode")]);
+    expect(comparison).toMatchObject({ comparableTask: true, workflowComparable: true });
+    expect(formatComparison(miniDefinition, comparison)).toContain("mini:douyin-mini-game/pass");
+  });
+
+  it("keeps legacy schemaVersion 1 browser-only records comparable", () => {
+    const codearts = record("codearts", "completed");
+    const opencode = record("opencode", "completed");
+    expect(codearts.schemaVersion).toBe(1);
+    expect(codearts.minigame).toBeUndefined();
+    expect(definition.target.platform).toBeUndefined();
+    expect(compareRecords(definition, [codearts, opencode])).toMatchObject({
+      comparableTask: true,
+      workflowComparable: true,
+    });
+  });
+
+  it("does not accept mini-game proof for a legacy definition without a platform", () => {
+    const handAuthored = (name: "codearts" | "opencode") => benchmarkRecordSchema.parse({
+      ...miniRecord(name),
+      benchmarkId: definition.benchmarkId,
+      definitionFingerprint: fingerprintDefinition(definition),
+    });
+    expect(compareRecords(definition, [handAuthored("codearts"), handAuthored("opencode")]))
+      .toMatchObject({ comparableTask: true, workflowComparable: false });
   });
 });

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { gameSpecSchema, projectIdSchema } from "@gameforge/contracts";
 import { z } from "zod";
 
 export const benchmarkDefinitionSchema = z.strictObject({
@@ -7,12 +8,23 @@ export const benchmarkDefinitionSchema = z.strictObject({
   language: z.enum(["zh-CN", "en-US"]),
   target: z.strictObject({
     genre: z.enum(["collect", "dodge", "survival", "shooter", "platform"]),
+    platform: z.enum(["web", "douyin-mini-game", "wechat-mini-game"]).optional(),
+    runtimeGenre: gameSpecSchema.shape.genre.optional(),
     durationSeconds: z.number().int().min(30).max(600),
     collectibleCount: z.number().int().min(1).max(10),
     hazardCount: z.number().int().min(0).max(6),
     startingLives: z.number().int().min(1).max(9),
     movementSpeed: z.number().int().min(100).max(360),
     mediaEnabled: z.boolean(),
+  }).superRefine((target, context) => {
+    if ((target.platform === "douyin-mini-game" || target.platform === "wechat-mini-game") &&
+        target.runtimeGenre === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["runtimeGenre"],
+        message: "Mini-game benchmark targets require an explicit runtime genre.",
+      });
+    }
   }),
 });
 
@@ -38,6 +50,47 @@ export const benchmarkFailureSchema = z.enum([
   "none", "rate-limit", "authentication", "provider", "tool", "timeout", "stopped", "unknown",
 ]);
 
+const miniGameScenarioSchema = z.strictObject({
+  name: z.enum(["genre-win", "timeout-loss"]),
+  outcome: z.enum(["won", "lost"]),
+  actions: z.number().int().positive().max(100),
+});
+
+export const miniGameEvidenceSchema = z.strictObject({
+  projectId: projectIdSchema,
+  target: z.enum(["douyin-mini-game", "wechat-mini-game"]),
+  genre: gameSpecSchema.shape.genre,
+  gameplay: z.strictObject({
+    passed: z.literal(true),
+    scenarios: z.tuple([
+      miniGameScenarioSchema.extend({ name: z.literal("genre-win"), outcome: z.literal("won") }),
+      miniGameScenarioSchema.extend({ name: z.literal("timeout-loss"), outcome: z.literal("lost") }),
+    ]),
+    durationMs: z.number().int().nonnegative().max(30_000),
+  }),
+  build: z.strictObject({
+    passed: z.literal(true),
+    cliVersion: z.literal("3.4.0"),
+    fileCount: z.number().int().positive().max(100_000),
+    totalBytes: z.number().int().nonnegative().max(20 * 1024 * 1024),
+    mainPackageBytes: z.number().int().nonnegative().max(4 * 1024 * 1024),
+    subpackageCount: z.number().int().nonnegative().max(100),
+    deviceOrientation: z.enum(["portrait", "landscape"]),
+    assetManifestRevision: z.number().int().nonnegative(),
+    assetCount: z.number().int().nonnegative().max(1_000),
+    stdoutTruncated: z.boolean(),
+    stderrTruncated: z.boolean(),
+  }),
+}).superRefine((evidence, context) => {
+  if (evidence.build.mainPackageBytes > evidence.build.totalBytes) {
+    context.addIssue({
+      code: "custom",
+      path: ["build", "mainPackageBytes"],
+      message: "Main package bytes cannot exceed total build bytes.",
+    });
+  }
+});
+
 export const benchmarkRecordSchema = z.strictObject({
   schemaVersion: z.literal(1),
   benchmarkId: benchmarkDefinitionSchema.shape.benchmarkId,
@@ -62,6 +115,7 @@ export const benchmarkRecordSchema = z.strictObject({
     lives: z.number().int().nonnegative(),
     diagnostics: z.number().int().nonnegative(),
   }).optional(),
+  minigame: miniGameEvidenceSchema.optional(),
   humanInterventions: z.array(z.string().trim().min(1).max(500)).max(50),
   failure: benchmarkFailureSchema,
   evidence: z.array(z.string().trim().min(1).max(500)).min(1).max(50),
@@ -76,8 +130,13 @@ export const benchmarkRecordSchema = z.strictObject({
   if (record.tools.count !== null && record.tools.errors !== null && record.tools.errors > record.tools.count) {
     context.addIssue({ code: "custom", path: ["tools", "errors"], message: "Tool errors cannot exceed the tool call total." });
   }
-  if (record.terminalStatus === "completed" && (record.failure !== "none" || record.verification?.passed !== true)) {
-    context.addIssue({ code: "custom", path: ["terminalStatus"], message: "Completed records require no failure and a passed verification." });
+  if (record.terminalStatus === "completed" &&
+      (record.failure !== "none" || !hasSuccessfulWorkflowEvidence(record))) {
+    context.addIssue({
+      code: "custom",
+      path: ["terminalStatus"],
+      message: "Completed records require no failure and passed browser or mini-game workflow evidence.",
+    });
   }
   if (record.terminalStatus !== "completed" && record.failure === "none") {
     context.addIssue({ code: "custom", path: ["failure"], message: "Incomplete records require a failure classification." });
@@ -86,6 +145,14 @@ export const benchmarkRecordSchema = z.strictObject({
 
 export type BenchmarkDefinition = z.infer<typeof benchmarkDefinitionSchema>;
 export type BenchmarkRecord = z.infer<typeof benchmarkRecordSchema>;
+
+export function hasSuccessfulWorkflowEvidence(record: {
+  verification?: { passed: boolean } | undefined;
+  minigame?: { gameplay: { passed: true }; build: { passed: true } } | undefined;
+}): boolean {
+  return record.verification?.passed === true ||
+    (record.minigame?.gameplay.passed === true && record.minigame.build.passed === true);
+}
 
 export function fingerprintDefinition(input: BenchmarkDefinition): string {
   const definition = benchmarkDefinitionSchema.parse(input);

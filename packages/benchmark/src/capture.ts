@@ -86,6 +86,7 @@ export async function captureBenchmarkEvidence(input: {
   validateSequence(events, task.runId);
   validateTerminal(task, events);
   const verificationEvent = [...events].reverse().find((event) => event.type === "verification.ready");
+  const minigame = summarizeMiniGameEvidence(definition, task, events);
   const evidence = [...new Set([
     ...metadata.evidence,
     ...(verificationEvent === undefined ? [] : [verificationEvent.evidencePath]),
@@ -128,10 +129,100 @@ export async function captureBenchmarkEvidence(input: {
           verificationEvent.diagnostics.pageErrors + verificationEvent.diagnostics.failedRequests,
       },
     }),
+    ...(minigame === undefined ? {} : { minigame }),
     humanInterventions: metadata.humanInterventions,
     failure: metadata.failure,
     evidence,
   });
+}
+
+function summarizeMiniGameEvidence(
+  definition: BenchmarkDefinition,
+  task: GameTask,
+  events: ReadonlyArray<WireRunEvent>,
+): BenchmarkRecord["minigame"] {
+  const gameplay = latestEvent(events, "gameplay.verified");
+  const build = latestEvent(events, "build.ready");
+  const miniGamePlatform = definition.target.platform === "douyin-mini-game" ||
+    definition.target.platform === "wechat-mini-game";
+
+  if (gameplay === undefined || build === undefined) {
+    if (task.status === "completed" && miniGamePlatform) {
+      throw new Error("Completed mini-game evidence requires both gameplay.verified and build.ready events.");
+    }
+    return undefined;
+  }
+  if (!miniGamePlatform || definition.target.runtimeGenre === undefined) {
+    throw new Error("Mini-game evidence requires an explicit mini-game platform and runtime genre in the benchmark definition.");
+  }
+  if (gameplay.projectId !== build.projectId ||
+      (task.projectId !== undefined && gameplay.projectId !== task.projectId)) {
+    throw new Error("Mini-game evidence project IDs must match each other and any Task project ID.");
+  }
+  if (gameplay.target !== build.target || gameplay.target !== definition.target.platform) {
+    throw new Error("Mini-game evidence targets must match the benchmark platform.");
+  }
+  const spec = latestEvent(events, "spec.ready");
+  const capabilities = latestEvent(events, "capabilities.ready");
+  if (spec === undefined || capabilities === undefined) {
+    throw new Error("Mini-game evidence requires capabilities.ready and spec.ready events.");
+  }
+  if (!(capabilities.sequence < spec.sequence && spec.sequence < gameplay.sequence && gameplay.sequence < build.sequence)) {
+    throw new Error("Mini-game evidence must follow capabilities, specification, gameplay, and build order.");
+  }
+  const targetBuildReady = gameplay.target === "douyin-mini-game"
+    ? capabilities.snapshot.engineering.douyinBuild
+    : capabilities.snapshot.engineering.wechatBuild;
+  if (!capabilities.snapshot.engineering.generator ||
+      !capabilities.snapshot.engineering.gameplayVerifier ||
+      !targetBuildReady) {
+    throw new Error("Mini-game capability evidence does not cover generation, gameplay verification, and target build.");
+  }
+  if (spec.spec.genre !== definition.target.runtimeGenre || gameplay.genre !== spec.spec.genre) {
+    throw new Error("Mini-game runtime genres must match the benchmark definition and specification.");
+  }
+  if (spec.spec.locale !== definition.language ||
+      spec.spec.targetDurationSeconds !== definition.target.durationSeconds ||
+      spec.spec.gameplay === undefined ||
+      spec.spec.gameplay.collectibleCount !== definition.target.collectibleCount ||
+      spec.spec.gameplay.hazardCount !== definition.target.hazardCount ||
+      spec.spec.gameplay.startingLives !== definition.target.startingLives ||
+      spec.spec.gameplay.movementSpeed !== definition.target.movementSpeed) {
+    throw new Error("Mini-game specification parameters must match the benchmark definition.");
+  }
+
+  return {
+    projectId: gameplay.projectId,
+    target: gameplay.target,
+    genre: gameplay.genre,
+    gameplay: {
+      passed: true,
+      scenarios: gameplay.scenarios,
+      durationMs: gameplay.durationMs,
+    },
+    build: {
+      passed: true,
+      cliVersion: build.cliVersion,
+      fileCount: build.fileCount,
+      totalBytes: build.totalBytes,
+      mainPackageBytes: build.mainPackageBytes,
+      subpackageCount: build.subpackages.length,
+      deviceOrientation: build.deviceOrientation,
+      assetManifestRevision: build.assetManifestRevision,
+      assetCount: build.assetCount,
+      stdoutTruncated: build.stdoutTruncated,
+      stderrTruncated: build.stderrTruncated,
+    },
+  };
+}
+
+function latestEvent<Type extends WireRunEvent["type"]>(
+  events: ReadonlyArray<WireRunEvent>,
+  type: Type,
+): Extract<WireRunEvent, { type: Type }> | undefined {
+  return [...events].reverse().find(
+    (event): event is Extract<WireRunEvent, { type: Type }> => event.type === type,
+  );
 }
 
 async function replayAll(relay: EvidenceRelayClient, runId: string): Promise<WireRunEvent[]> {
