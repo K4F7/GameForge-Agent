@@ -423,6 +423,24 @@ describe("GameForge MCP server", () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer({
       taskRelayClient: {
+        async createTask(request) {
+          return {
+            task: {
+              ...queued,
+              runId: request.runId,
+              prompt: request.prompt,
+              language: request.language ?? "zh-CN",
+              ...(request.projectId === undefined ? {} : { projectId: request.projectId }),
+            },
+            event: {
+              type: "run.started",
+              runId: request.runId,
+              sequence: 1,
+              emittedAt: queued.createdAt,
+              language: request.language ?? "zh-CN",
+            },
+          };
+        },
         async listTasks() { return [queued]; },
         async getTask() { return queued; },
         async claimTask(_taskId, request) {
@@ -439,8 +457,28 @@ describe("GameForge MCP server", () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      const names = (await client.listTools()).tools.map((tool) => tool.name);
-      expect(names).toEqual(expect.arrayContaining(["list_game_tasks", "get_game_task", "claim_game_task"]));
+      const tools = (await client.listTools()).tools;
+      const names = tools.map((tool) => tool.name);
+      expect(names).toEqual(expect.arrayContaining([
+        "create_game_task",
+        "list_game_tasks",
+        "get_game_task",
+        "claim_game_task",
+      ]));
+      expect(tools.find((tool) => tool.name === "create_game_task")?.annotations).toEqual({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      });
+      expect((await client.callTool({
+        name: "create_game_task",
+        arguments: {
+          runId: queued.runId,
+          prompt: queued.prompt,
+          language: queued.language,
+        },
+      })).isError).not.toBe(true);
       expect((await client.callTool({
         name: "list_game_tasks",
         arguments: { status: "queued", limit: 10 },

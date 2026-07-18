@@ -13,6 +13,7 @@ import {
   recoverGameProjectUpdateTool,
   importSoundAssetTool,
   completeGameRunTool,
+  createGameTaskTool,
   createGameRunTool,
   publishRunEventsTool,
   replayGameRunTool,
@@ -272,6 +273,46 @@ describe("validation tool handlers", () => {
     expect(result.isError).not.toBe(true);
     expect(calls).toEqual(["safety-sprint"]);
     expect(readJsonResult(result)).toMatchObject({ status: "rolled-back" });
+  });
+
+  it("performs exactly one task creation operation", async () => {
+    const calls: string[] = [];
+    const result = await createGameTaskTool({
+      async createTask(input) {
+        calls.push(`create:${input.runId}`);
+        return {
+          task: {
+            taskId: "task-00000000-0000-0000-0000-000000000000",
+            runId: input.runId,
+            prompt: input.prompt,
+            language: input.language ?? "zh-CN",
+            status: "queued",
+            createdAt: "2026-07-18T12:00:00Z",
+          },
+          event: {
+            type: "run.started",
+            runId: input.runId,
+            sequence: 1,
+            emittedAt: "2026-07-18T12:00:00Z",
+            language: input.language ?? "zh-CN",
+          },
+        };
+      },
+      async listTasks() { throw new Error("Unexpected list."); },
+      async getTask() { throw new Error("Unexpected get."); },
+      async claimTask() { throw new Error("Unexpected claim."); },
+    }, {
+      runId: "run-task-create",
+      prompt: "Create one deterministic mini game task.",
+      language: "en-US",
+    });
+
+    expect(result.isError).not.toBe(true);
+    expect(calls).toEqual(["create:run-task-create"]);
+    expect(readJsonResult(result)).toMatchObject({
+      task: { runId: "run-task-create", status: "queued", language: "en-US" },
+      event: { type: "run.started", runId: "run-task-create", sequence: 1 },
+    });
   });
 
   it("performs exactly one relay operation per lifecycle tool call", async () => {

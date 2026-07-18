@@ -32,6 +32,8 @@ import type {
 import type {
   ProjectGenerationRequest,
   ProjectGenerationResult,
+  CreateGameTaskRequest,
+  CreateGameTaskResponse,
   ClaimGameTaskRequest,
   GameTask,
   ListGameTasksRequest,
@@ -622,10 +624,18 @@ export type RunRelayToolClient = {
 };
 
 export type TaskRelayToolClient = {
+  createTask(input: CreateGameTaskRequest): Promise<CreateGameTaskResponse>;
   listTasks(input: ListGameTasksRequest): Promise<ReadonlyArray<GameTask>>;
   getTask(taskId: string): Promise<GameTask>;
   claimTask(taskId: string, input: ClaimGameTaskRequest): Promise<GameTask>;
 };
+
+export async function createGameTaskTool(
+  client: TaskRelayToolClient,
+  input: CreateGameTaskRequest,
+): Promise<CallToolResult> {
+  return relayResult(() => client.createTask(input));
+}
 
 export async function listGameTasksTool(
   client: TaskRelayToolClient,

@@ -3,10 +3,11 @@ import {
   type RegisteredTool,
   type ToolCallback,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import {
   projectGenerationRequestSchema,
   projectIdSchema,
+  createGameTaskRequestSchema,
   claimGameTaskRequestSchema,
   gameTaskIdSchema,
   listGameTasksRequestSchema,
@@ -55,6 +56,7 @@ import {
   submitVoiceJobTool,
   completeGameRunTool,
   claimGameTaskTool,
+  createGameTaskTool,
   createGameRunTool,
   getGameTaskTool,
   listGameTasksTool,
@@ -114,7 +116,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
   });
   const registerTool = <InputArgs extends Record<string, z.ZodType>>(
     name: string,
-    config: { title?: string; description?: string; inputSchema: InputArgs },
+    config: { title?: string; description?: string; inputSchema: InputArgs; annotations?: ToolAnnotations },
     callback: (args: z.infer<z.ZodObject<InputArgs>>) => CallToolResult | Promise<CallToolResult>,
   ): RegisteredTool => {
     const auditedCallback = (async (args: unknown) => {
@@ -391,6 +393,22 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
 
   if (options.taskRelayClient !== undefined) {
     const taskRelayClient = options.taskRelayClient;
+    registerTool(
+      "create_game_task",
+      {
+        title: "Create one game build task",
+        description:
+          "Atomically create one queued Task and its authoritative Run. The same runId and identical request are idempotent; conflicting reuse is rejected.",
+        inputSchema: createGameTaskRequestSchema.shape,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      async (request) => createGameTaskTool(taskRelayClient, request),
+    );
     registerTool(
       "list_game_tasks",
       {

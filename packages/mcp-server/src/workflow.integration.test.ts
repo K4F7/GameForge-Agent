@@ -50,6 +50,71 @@ afterEach(async () => {
 });
 
 describe("local CodeArts workflow boundary", () => {
+  it("creates one idempotent Task and Run through MCP without a GUI", async () => {
+    const relayBaseUrl = await startRelay();
+    const relayClient = new RunRelayClient({ baseUrl: relayBaseUrl });
+    const pair = InMemoryTransport.createLinkedPair();
+    const server = createServer({ runRelayClient: relayClient, taskRelayClient: relayClient });
+    const client = new Client({ name: "codearts-headless-create", version: "1.0.0" });
+    await server.connect(pair[1]);
+    await client.connect(pair[0]);
+    try {
+      const request = {
+        runId: "run-codearts-headless-create",
+        prompt: "制作一个可由 CodeArts CLI 无界面启动的抖音小游戏。",
+        language: "zh-CN" as const,
+        projectId: "headless-douyin-game",
+      };
+      const created = createGameTaskResponseSchema.parse(await callJson(client, "create_game_task", request));
+      const retried = createGameTaskResponseSchema.parse(await callJson(client, "create_game_task", request));
+
+      expect(retried).toEqual(created);
+      expect(created).toMatchObject({
+        task: {
+          runId: request.runId,
+          prompt: request.prompt,
+          language: request.language,
+          projectId: request.projectId,
+          status: "queued",
+        },
+        event: {
+          type: "run.started",
+          runId: request.runId,
+          sequence: 1,
+          language: request.language,
+        },
+      });
+
+      const snapshot = await callJson(client, "list_game_tasks", { limit: 20 }) as {
+        tasks: Array<{ taskId: string; runId: string }>;
+      };
+      expect(snapshot.tasks).toEqual([{ ...created.task }]);
+      const replay = runEventBatchSchema.parse(await callJson(client, "replay_game_run", {
+        runId: request.runId,
+        after: 0,
+      }));
+      expect(replay.events).toEqual([created.event]);
+
+      const conflict = await client.callTool({
+        name: "create_game_task",
+        arguments: { ...request, prompt: "制作一个内容不同、不得复用同一 Run ID 的小游戏。" },
+      });
+      expect(conflict.isError).toBe(true);
+      if (!Array.isArray(conflict.content) || conflict.content[0]?.type !== "text") {
+        throw new Error("Expected a structured Relay conflict.");
+      }
+      expect(JSON.parse(conflict.content[0].text)).toEqual({
+        error: "run_relay_failed",
+        relayCode: "task_run_conflict",
+        message: "Run relay operation failed.",
+      });
+      await expect(relayClient.listTasks({ limit: 20 })).resolves.toHaveLength(1);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("resumes an already claimed task after the CodeArts MCP client restarts", async () => {
     const relayBaseUrl = await startRelay();
     const relayClient = new RunRelayClient({ baseUrl: relayBaseUrl });

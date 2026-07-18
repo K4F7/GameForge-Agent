@@ -56,6 +56,7 @@ describe("GameForge doctor core", () => {
       "claim_game_task",
       "complete_game_run",
       "create_game_run",
+      "create_game_task",
       "generate_game_project",
       "generate_music_asset",
       "get_game_task",
