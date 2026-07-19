@@ -13,6 +13,7 @@ engine:
   model: gpt-5.6-sol
   env:
     OPENAI_BASE_URL: "https://api.sein.moe/v1/"
+    CODEX_API_KEY: ${{ secrets.GAMEFORGE_CODEX_API_KEY }}
     OPENAI_API_KEY: ${{ secrets.GAMEFORGE_CODEX_API_KEY }}
 
 permissions:
