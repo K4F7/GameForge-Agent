@@ -31,7 +31,7 @@ Agentic Workflow 源文件为 `.github/workflows/*.md`，提交时必须同时�
 - Agent job 使用只读权限和 `min-integrity: approved`。
 - Review 和 issue 只能通过 `gh-aw` safe outputs 产生。
 - Reviewer 最多写十条行内意见和一条汇总 review。
-- Comment Fixer 只处理带 `auto-fix-review` 标签的同仓库、非 Draft PR，并且只接受 GameForge Reviewer 的 `REQUEST_CHANGES` 或 OWNER/MEMBER 的人工评论触发。依赖安装禁用 lifecycle scripts；GitHub App 私钥只进入 safe-output job，用于 push、回复和 resolve，不进入 Agent job；Fixer 不能修改 workflow、`.github/aw/**` 或 `AGENTS.md`，也不能审批或合并。
+- Comment Fixer 只处理带 `auto-fix-review` 标签的同仓库、非 Draft PR，并且只接受由 `github-actions[bot]` 对当前 Head SHA 提交、且含 GameForge Reviewer 机器标记的 `REQUEST_CHANGES`，或 OWNER/MEMBER 的人工评论触发。依赖安装禁用 lifecycle scripts；GitHub App 私钥只进入 safe-output job，用于 push、回复和 resolve，不进入 Agent job；Fixer 不能修改 workflow、`.github/aw/**` 或 `AGENTS.md`，也不能审批或合并。
 - Guardian 只能创建一条去重后的诊断 issue，不能写代码、push、审批或 merge。
 - Auto-merge 由无 Agent 的确定性 gate 启用，并由 GitHub 原生能力执行；不采用仍处于实验状态的 Agentic `merge-pull-request` safe output。
 

@@ -24,7 +24,11 @@ if: >-
         github.event_name == 'pull_request_review' &&
         github.event.review.state == 'changes_requested' &&
         (
-          github.event.review.user.login == 'github-actions[bot]' ||
+          (
+            github.event.review.user.login == 'github-actions[bot]' &&
+            github.event.review.commit_id == github.event.pull_request.head.sha &&
+            contains(github.event.review.body, '<!-- gh-aw-agentic-workflow: GameForge PR Reviewer,')
+          ) ||
           contains(fromJSON('["OWNER","MEMBER"]'), github.event.review.author_association)
         )
       ) ||
