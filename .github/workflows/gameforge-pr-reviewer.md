@@ -8,7 +8,12 @@ on:
 
 if: ${{ vars.GAMEFORGE_GH_AW_ENABLED == 'true' && github.event.pull_request.draft == false }}
 
-engine: copilot
+engine:
+  id: codex
+  model: gpt-5.6-sol
+  env:
+    OPENAI_BASE_URL: "https://api.sein.moe/v1/"
+    OPENAI_API_KEY: ${{ secrets.GAMEFORGE_CODEX_API_KEY }}
 
 permissions:
   actions: read
@@ -16,7 +21,10 @@ permissions:
   contents: read
   pull-requests: read
 
-network: defaults
+network:
+  allowed:
+    - defaults
+    - api.sein.moe
 
 tools:
   github:

@@ -11,6 +11,8 @@ GameForge 社区仓库采用四层 GitHub 流程。Git commit、GitHub PR 和 Gi
 | GitHub Agentic Workflows | GitHub Actions 事件或定时运行 | `GameForge PR Reviewer` 提交合并级 review；`GameForge PR Guardian` 在 CI 失败和工作日定时诊断阻断项 | 不直接 merge；Guardian 不写代码、不 push |
 | GitHub Auto-merge | GitHub 原生合并队列 | required checks、required review 和会话解决条件全部满足后 squash merge | 不绕过保护规则 |
 
+PR 可以面向 `main` 或其他维护分支。PR 标题采用 `<type>(<scope>): <subject>`；自动化将 `feat`、`fix`、`docs` 等 `type` 映射为同名 GitHub label。这里使用的是 PR label，不创建同名 Git tag；Git tag 只保留给经授权的版本发布。
+
 ## Required checks
 
 `main` 分支要求以下 CI contexts 成功，并要求分支与 `main` 保持最新：
@@ -31,6 +33,15 @@ Agentic Workflow 源文件为 `.github/workflows/*.md`，提交时必须同时�
 - Guardian 只能创建一条去重后的诊断 issue，不能写代码、push、审批或 merge。
 - Auto-merge 由 GitHub 原生能力执行，不采用仍处于实验状态的 Agentic `merge-pull-request` safe output。
 
+两个工作流均使用 Codex 和 OpenAI-compatible Responses endpoint `https://api.sein.moe/v1/`：
+
+| 工作流 | 模型 | 原因 |
+|---|---|---|
+| `GameForge PR Reviewer` | `gpt-5.6-sol` | 唯一合并审批属于低频、高风险判断，优先使用旗舰推理与编码能力 |
+| `GameForge PR Guardian` | `gpt-5.6-terra` | CI 诊断与定时巡检需要较强推理，但适合平衡质量与成本 |
+
+`gpt-5.6-luna` 暂不参与合并审批。高频、低风险、可确定性复核的分类工作优先使用普通 GitHub Action；以后只有出现足够大的非确定性摘要负载时才评估 Luna。
+
 修改 Agentic Workflow frontmatter 后运行：
 
 ```powershell
@@ -39,10 +50,10 @@ gh aw compile --strict --validate --actionlint
 
 ## 首次启用
 
-Agentic Workflow 默认由仓库变量 `GAMEFORGE_GH_AW_ENABLED=false` 关闭，避免凭据未配置时产生失败运行。维护者应在本机创建只具有 Copilot Requests 权限的 fine-grained token，并直接写入 GitHub Secret；不要在聊天、命令历史、仓库文件或实验记录中粘贴 token：
+Agentic Workflow 默认由仓库变量 `GAMEFORGE_GH_AW_ENABLED=false` 关闭，避免凭据未配置时产生失败运行。维护者应把自有 endpoint 的 Key 直接写入 GitHub Secret；不要在聊天、命令历史、仓库文件或实验记录中粘贴 Key：
 
 ```powershell
-gh secret set COPILOT_GITHUB_TOKEN --repo K4F7/GameForge-Agent
+gh secret set GAMEFORGE_CODEX_API_KEY --repo K4F7/GameForge-Agent
 gh variable set GAMEFORGE_GH_AW_ENABLED --body true --repo K4F7/GameForge-Agent
 ```
 

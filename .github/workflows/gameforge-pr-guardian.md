@@ -19,7 +19,12 @@ on:
 
 if: ${{ vars.GAMEFORGE_GH_AW_ENABLED == 'true' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'failure') }}
 
-engine: copilot
+engine:
+  id: codex
+  model: gpt-5.6-terra
+  env:
+    OPENAI_BASE_URL: "https://api.sein.moe/v1/"
+    OPENAI_API_KEY: ${{ secrets.GAMEFORGE_CODEX_API_KEY }}
 
 permissions:
   actions: read
@@ -28,7 +33,10 @@ permissions:
   issues: read
   pull-requests: read
 
-network: defaults
+network:
+  allowed:
+    - defaults
+    - api.sein.moe
 
 tools:
   github:
