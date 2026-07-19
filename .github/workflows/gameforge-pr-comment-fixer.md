@@ -9,7 +9,10 @@ on:
     types: [created]
 
 concurrency:
-  group: gameforge-pr-comment-fixer-${{ github.event.pull_request.number }}
+  # An inline comment also emits a pull_request_review event. Keep the two
+  # event classes separate so an ineligible review run cannot cancel the
+  # actionable comment run before activation.
+  group: gameforge-pr-comment-fixer-${{ github.event.pull_request.number }}-${{ github.event_name }}
   cancel-in-progress: true
 
 if: >-
