@@ -78,5 +78,7 @@ Do not block on subjective style, unrelated pre-existing problems, or speculativ
 - Add at most ten precise inline comments. Include the failure mode and a concrete correction.
 - Submit `REQUEST_CHANGES` when at least one blocking issue remains.
 - Submit `COMMENT` when findings are useful but all are non-blocking.
-- Submit `APPROVE` only when no blocking issue remains and required CI is passing. If CI is pending, use `COMMENT`; the next `synchronize` event or an explicit rerun can perform a fresh review.
+- Submit `APPROVE` only when no blocking issue remains and the required Bun checks for Ubuntu, Windows, and macOS are passing for the current PR head SHA.
+- Never require the current `GameForge PR Reviewer` run, or any of its own jobs, to be complete before approving. The review is produced from inside that run, so treating it as a prerequisite creates a circular gate.
+- If a required Bun check is pending, use `COMMENT`; the later CI `workflow_run` auto-merge gate or the next `synchronize` event will re-evaluate the latest head.
 - Keep the consolidated review short and identify the evidence considered.
