@@ -72,7 +72,7 @@ gh label create auto-fix-review --color 0E8A16 --description "Allow the review f
 gh label create auto-merge --color 1D76DB --description "Enable native auto-merge after every gate passes" --repo K4F7/GameForge-Agent
 ```
 
-不得把 GitHub App 私钥粘贴到聊天、命令参数、仓库文件或实验记录。没有 App 配置时保持 `GAMEFORGE_PR_AUTOMATION_ENABLED=false`。实际目标分支必须先有 branch protection 或 Ruleset，至少要求三平台 Bun checks、一个 approving review、最后 push 后重新审批和解决全部 review conversations；否则确定性 gate 会拒绝启用 auto-merge。仓库权限和 Ruleset 属于远程治理状态，必须经维护者明确授权后配置。
+不得把 GitHub App 私钥粘贴到聊天、命令参数、仓库文件或实验记录。没有 App 配置时保持 `GAMEFORGE_PR_AUTOMATION_ENABLED=false`。实际目标分支必须先有 legacy branch protection，至少要求三平台 Bun checks、一个 approving review、最后 push 后重新审批和解决全部 review conversations；否则确定性 gate 会拒绝启用 auto-merge。当前 gate 通过分支 API 的 `protected` 状态验证这一要求，不支持仅由 Ruleset 提供保护的目标分支。仓库权限和分支保护属于远程治理状态，必须经维护者明确授权后配置。
 
 ## 日常流程
 
@@ -86,7 +86,9 @@ gh label create auto-merge --color 1D76DB --description "Enable native auto-merg
    gh pr edit <number> --add-label auto-merge
    ```
 
-6. `GameForge Auto Merge Gate` 在 CI 或 Reviewer 成功后核验最新 SHA、三平台 CI、`gh-aw` approval、零未解决线程和分支保护，再通过 GraphQL 启用原生 squash auto-merge。
+首次安装时，必须先将 `GameForge Auto Merge Gate` 工作流合并到默认分支；`workflow_run` 只会对默认分支上已存在的同名工作流触发，因此仅把 Gate 放在当前 PR head 上不能让该 PR 自举启用 auto-merge。合并工作流后，再按本节顺序配置变量、标签和 legacy branch protection，并用一个低风险 PR 验证 Gate 的完整链路。
+
+6. `GameForge Auto Merge Gate` 在 CI 或 Reviewer 成功后核验最新 SHA、三平台 CI、`gh-aw` approval、零未解决线程和 legacy branch protection，再通过 GraphQL 启用原生 squash auto-merge。
 7. GitHub 只会在目标分支的所有保护门禁持续满足时完成合并。任何新的 push 都必须重新运行 CI 和 Reviewer。
 
 Draft PR 不排入 Auto-merge。没有 `auto-merge` 标签时 gate 只跳过，不改变 PR。没有明确合并意图时只报告 ready，不执行第 5 步。
