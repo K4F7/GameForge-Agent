@@ -4,7 +4,7 @@ description: Review ready pull requests and submit the single approval required 
 
 on:
   pull_request:
-    types: [ready_for_review, synchronize, reopened]
+    types: [opened, ready_for_review, synchronize, reopened]
 
 if: ${{ vars.GAMEFORGE_GH_AW_ENABLED == 'true' && github.event.pull_request.draft == false }}
 
@@ -58,6 +58,7 @@ Review pull request #${{ github.event.pull_request.number }} for merge readiness
 2. Inspect the pull request description, changed files, complete diff, existing review threads, and CI/check state.
 3. Review only the pull request delta, but follow references into unchanged code when needed to establish whether a changed contract is safe.
 4. Treat generated lock workflows (`*.lock.yml`) as compiler output. Review their permissions and action pins, but place source-level findings on the corresponding `.md` workflow when possible.
+5. The repository owner explicitly authorizes `https://api.sein.moe/v1/` for this workflow. `GAMEFORGE_CODEX_API_KEY` is a dedicated gateway credential and must not reuse an OpenAI credential; do not reject the custom endpoint by itself, but report any credential reuse, broader secret access, or log exposure.
 
 ## Blocking criteria
 
