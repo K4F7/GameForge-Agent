@@ -59,6 +59,7 @@ network:
   allowed:
     - defaults
     - api.sein.moe
+    - registry.npmjs.org
 
 tools:
   github:
@@ -69,6 +70,16 @@ pre-agent-steps:
   - uses: oven-sh/setup-bun@v2
     with:
       bun-version: 1.3.14
+  - name: Stage Bun for the AWF tool-cache bridge
+    shell: bash
+    run: |
+      set -euo pipefail
+      bun_source="$(command -v bun)"
+      bun_bin="${RUNNER_TOOL_CACHE}/gameforge-bun/1.3.14/x64/bin"
+      mkdir -p "${bun_bin}"
+      cp "${bun_source}" "${bun_bin}/bun"
+      chmod 0555 "${bun_bin}/bun"
+      "${bun_bin}/bun" --version
 
 safe-outputs:
   github-app:
