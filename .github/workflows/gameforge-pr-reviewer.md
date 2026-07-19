@@ -4,7 +4,6 @@ description: Review ready pull requests and submit the single approval required 
 
 on:
   pull_request:
-    branches: [main]
     types: [ready_for_review, synchronize, reopened]
 
 if: ${{ vars.GAMEFORGE_GH_AW_ENABLED == 'true' && github.event.pull_request.draft == false }}
