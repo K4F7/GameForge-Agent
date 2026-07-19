@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bun:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        if: ${{ hashFiles('bun.lock') != '' }}
+        with:
+          bun-version: 1.3.14
+      - name: Verify with Bun
+        if: ${{ hashFiles('bun.lock') != '' }}
+        run: |
+          bun install --frozen-lockfile
+          bun run check
+          bun run test
+          bun run build
+          bun run bundle:check
+      - name: Verify npm baseline
+        if: ${{ hashFiles('bun.lock') == '' }}
+        run: |
+          npm ci
+          npm run check
+          npm run test
+          npm run build
+          npm run bundle:check --if-present
