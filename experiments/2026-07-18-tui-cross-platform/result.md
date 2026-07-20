@@ -1,0 +1,27 @@
+# 结果
+
+状态：本地实现完成，等待 GitHub 托管 runner 的三平台首次运行作为远端证据。
+
+本地测试覆盖纯文本与 ANSI 呈现、终端尺寸边界、resize、q 退出、AbortSignal 和 raw mode 清理。CI 固定 Bun 1.3.14，并在三个操作系统执行 frozen install、check、test、build。未把本地 Windows 通过等同于 macOS/Linux 已通过。
+
+## 本地门禁
+
+- `bun install --frozen-lockfile`：193 个安装项，无变更；
+- `bun run check`：通过；
+- `bun run test`：197 项测试通过，其中 TUI 11 项；
+- `bun run build`：通过，仅有既有 Phaser chunk 大小警告；
+- `bun run doctor`：`ok: true`；
+- `bun run audit`：0 vulnerabilities；
+- `git diff --check`：通过。
+
+中文、日韩字符和常见 emoji 按终端双列宽度裁剪，避免 TTY 在窄窗口中因 JavaScript 字符串长度计算而溢出。远端三平台结果必须在提交并触发 GitHub Actions 后补录。
+
+## 日志滚动增量
+
+交互 `watch` 新增方向键、j/k、PageUp/PageDown 滚动和可见行范围；Escape 序列支持跨 stdin data chunk 拼接，连续 `jj` 会产生两次滚动。空摘要范围显示 `0-0/0`，非 TTY/JSON 输出仍不裁剪、不含 ANSI。TUI 包当前 12 项测试通过。
+
+整仓验证：214 项测试、check、build、bundle budget、MCP doctor、browser doctor 和 `git diff --check` 均通过。`bun audit` 前两次因 registry `ConnectionClosed` 未得到结果，第三次成功返回 0 vulnerabilities；失败请求未被写成安全通过。
+
+## 当前整仓复验
+
+2026-07-18 在 Windows 工作树再次执行 frozen install、check、test、build、bundle budget、MCP/browser/desktop doctor、audit 和 `git diff --check`，全部通过。当前整仓为 239 项测试，其中 TUI 6 个测试文件、16 项测试；`bun audit --prod` 返回 0 vulnerabilities。这里更新的是本地回归数字，不替代仍待取得的 GitHub Ubuntu/macOS/Windows runner 证据。

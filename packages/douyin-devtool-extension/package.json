@@ -1,0 +1,79 @@
+{
+  "name": "gameforge-douyin-devtool-extension",
+  "displayName": "GameForge Douyin Bridge",
+  "description": "Local-only bridge between GameForge and the Douyin Mini Game DevTool.",
+  "version": "0.1.0",
+  "publisher": "gameforge",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "vscode": "^1.59.0"
+  },
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:gameforgeDouyin.connect",
+    "onCommand:gameforgeDouyin.disconnect",
+    "onCommand:gameforgeDouyin.showStatus"
+  ],
+  "main": "./dist/extension.js",
+  "files": [
+    "dist/extension.js",
+    "dist/bridge-client.js",
+    "dist/protocol.js",
+    "dist/runtime-probe.js",
+    "README.md"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "gameforgeDouyin.connect",
+        "title": "GameForge: Connect Local Bridge"
+      },
+      {
+        "command": "gameforgeDouyin.disconnect",
+        "title": "GameForge: Disconnect Local Bridge"
+      },
+      {
+        "command": "gameforgeDouyin.showStatus",
+        "title": "GameForge: Show Bridge Status"
+      }
+    ],
+    "configuration": {
+      "title": "GameForge Douyin Bridge",
+      "properties": {
+        "gameforgeDouyinBridge.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Connect to the local GameForge controller after the DevTool starts."
+        },
+        "gameforgeDouyinBridge.port": {
+          "type": "number",
+          "default": 47653,
+          "minimum": 1024,
+          "maximum": 65535,
+          "description": "Loopback TCP port of the local GameForge controller."
+        },
+        "gameforgeDouyinBridge.cdpPort": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Loopback CDP port exposed by the running Douyin DevTool; 0 auto-discovers DevToolsActivePort."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit",
+    "test": "vitest run src",
+    "smoke": "bun src/smoke.ts",
+    "runtime-smoke": "bun src/runtime-smoke.ts"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "@types/vscode": "1.59.0",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

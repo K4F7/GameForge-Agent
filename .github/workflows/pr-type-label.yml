@@ -1,0 +1,75 @@
+name: PR type label
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: pr-type-label-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      # This workflow deliberately does not check out or execute pull-request code.
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const labels = {
+              feat: ["1f883d", "New functionality"],
+              fix: ["d1242f", "Bug fix"],
+              docs: ["0075ca", "Documentation"],
+              refactor: ["8250df", "Code restructuring without behavior changes"],
+              test: ["fbca04", "Test coverage or test infrastructure"],
+              chore: ["6e7781", "Repository maintenance"],
+              perf: ["0e8a16", "Performance improvement"],
+              build: ["5319e7", "Build system or dependency change"],
+              ci: ["0052cc", "Continuous integration"],
+              style: ["c5def5", "Non-functional style change"],
+              revert: ["b60205", "Reverts an earlier change"],
+              "invalid-title": ["b60205", "PR title does not follow Conventional Commits"],
+            };
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.payload.pull_request.number;
+            const title = context.payload.pull_request.title;
+            const pattern = /^(feat|fix|docs|refactor|test|chore|perf|build|ci|style|revert)(?:\([^)]+\))?!?:\s+\S/;
+            const desired = title.match(pattern)?.[1] ?? "invalid-title";
+            const current = new Set(
+              context.payload.pull_request.labels.map((label) => label.name),
+            );
+
+            for (const [name, [color, description]] of Object.entries(labels)) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name,
+                  color,
+                  description,
+                });
+              }
+
+              if (name !== desired && current.has(name)) {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number, name });
+              }
+            }
+
+            if (!current.has(desired)) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number,
+                labels: [desired],
+              });
+            }

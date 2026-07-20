@@ -1,0 +1,14 @@
+{
+  "benchmarkId": "evidence-capture-smoke",
+  "prompt": "Create a deterministic browser collection game and verify its winning path.",
+  "language": "en-US",
+  "target": {
+    "genre": "collect",
+    "durationSeconds": 90,
+    "collectibleCount": 5,
+    "hazardCount": 3,
+    "startingLives": 3,
+    "movementSpeed": 220,
+    "mediaEnabled": false
+  }
+}

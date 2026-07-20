@@ -1,0 +1,20 @@
+{
+  "name": "@gameforge/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit",
+    "test": "vitest run src",
+    "frontend:build": "bun run --cwd ../workbench build",
+    "frontend:dev": "bun run --cwd ../workbench dev -- --host 127.0.0.1 --port 4173 --strictPort",
+    "doctor": "bun src/doctor.ts",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

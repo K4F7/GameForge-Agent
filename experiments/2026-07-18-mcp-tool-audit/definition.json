@@ -1,0 +1,14 @@
+{
+  "benchmarkId": "mcp-audit-smoke",
+  "prompt": "Create a deterministic browser game and capture its verified MCP workflow evidence.",
+  "language": "en-US",
+  "target": {
+    "genre": "collect",
+    "durationSeconds": 90,
+    "collectibleCount": 5,
+    "hazardCount": 3,
+    "startingLives": 3,
+    "movementSpeed": 220,
+    "mediaEnabled": false
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "mcp-audit-binding-smoke",
+  "definitionFingerprint": "69f944c41f6aaa46bd2d8da9157138ad3335af824f8c98d7659681bfbc5bf8f7",
+  "client": {
+    "name": "codearts",
+    "version": "local-stdio-binding-fixture"
+  },
+  "taskId": "task-f34fa315-42f5-4fcc-b02b-efb0174157f6",
+  "runId": "mcp-bound-real",
+  "terminalStatus": "completed",
+  "durationMs": 29181,
+  "events": {
+    "count": 3,
+    "types": {
+      "run.started": 1,
+      "verification.ready": 1,
+      "run.completed": 1
+    }
+  },
+  "tools": {
+    "count": 2,
+    "names": [
+      "bind_mcp_audit_context",
+      "get_gameforge_capabilities"
+    ],
+    "errors": 0
+  },
+  "toolAudit": {
+    "sessionId": "54639c1d-853c-4ab8-ad08-f0f10ec8664b",
+    "sha256": "a5bb66f194e2ac1cfb0519458ac1962f07744892784d15c0a3ad6bdd7031db95",
+    "taskId": "task-f34fa315-42f5-4fcc-b02b-efb0174157f6",
+    "runId": "mcp-bound-real"
+  },
+  "verification": {
+    "passed": true,
+    "outcome": "won",
+    "score": 5,
+    "lives": 3,
+    "diagnostics": 0
+  },
+  "humanInterventions": [],
+  "failure": "none",
+  "evidence": [
+    "experiments/2026-07-18-mcp-audit-binding/result.md",
+    "experiments/2026-07-18-mcp-audit-binding/mcp-audit.json",
+    ".gameforge/verification/bound.png"
+  ]
+}

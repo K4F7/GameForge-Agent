@@ -11,14 +11,23 @@
     "check": "tsc --noEmit",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "test": "vitest run --passWithNoTests"
+    "doctor": "node dist/doctor.js",
+    "provider:smoke": "node dist/provider-smoke.js",
+    "test": "vitest run src"
   },
   "dependencies": {
+    "@gameforge/asset-store": "0.1.0",
     "@gameforge/contracts": "*",
+    "@gameforge/generator": "0.1.0",
+    "@gameforge/game-verifier": "0.1.0",
+    "@gameforge/minigame-validator": "0.1.0",
+    "@gameforge/providers": "0.1.0",
+    "@gameforge/run-relay": "0.1.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@types/node": "22.20.1",
     "tsx": "4.20.6",
     "typescript": "7.0.2",
     "vitest": "4.1.10"

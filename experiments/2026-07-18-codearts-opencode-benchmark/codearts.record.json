@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "client-safety-game-v1",
+  "definitionFingerprint": "506b2cb6fb448f0c1034da56dbd845c9d20adf0d0e0b73af2c3ad1cb8f5a00b3",
+  "client": {
+    "name": "codearts",
+    "version": "26.6.2"
+  },
+  "taskId": "task-328ebb24-2352-4810-a994-1ca3acf2da65",
+  "runId": "codearts-real-20260718-0145",
+  "terminalStatus": "completed",
+  "events": {
+    "count": 6,
+    "types": {
+      "run.started": 1,
+      "capabilities.ready": 1,
+      "spec.ready": 1,
+      "verification.ready": 1,
+      "preview.ready": 1,
+      "run.completed": 1
+    }
+  },
+  "tools": {
+    "count": null,
+    "names": [],
+    "errors": null
+  },
+  "verification": {
+    "passed": true,
+    "outcome": "won",
+    "score": 2,
+    "lives": 3,
+    "diagnostics": 0
+  },
+  "humanInterventions": [
+    "Start the OAuth TUI.",
+    "Paste the benchmark prompt.",
+    "Send one continuation prompt after project build."
+  ],
+  "failure": "none",
+  "evidence": [
+    "../2026-07-18-codearts-real-e2e/result.md"
+  ]
+}

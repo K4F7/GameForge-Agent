@@ -1,6 +1,6 @@
 # TypeScript开源框架选型
 
-更新日期：2026-07-13
+更新日期：2026-07-17
 
 ## 决策
 
@@ -43,13 +43,23 @@ CodeArts Agent / Agent Team
   ├─ Skills：需求分析与开发流程
   └─ GameForge MCP Server（TypeScript）
        ├─ 规格校验
-       ├─ 模板生成（下一阶段）
-       ├─ 构建与测试（下一阶段）
-       └─ 结果报告（下一阶段）
+       ├─ Provider配置校验
+       ├─ 资产来源Manifest校验
+       ├─ 固定版本 Phaser 项目生成
+       ├─ 国产模型与媒体适配器、Asset Store
+       ├─ Task/Run Relay 确定性协调
+       ├─ 受控预览与浏览器验收
+       └─ 结构化运行产物与验收事件
 
 Generated Game
   └─ Phaser + TypeScript + Vite
 ```
+
+构建、测试命令和失败后的代码修复仍由 CodeArts 执行与判断；MCP 只提供一次性生成、落盘、预览、验收和状态协调操作，不在工具内复制 Agent 循环。
+
+模型与媒体资产不在MCP工具内部形成第二套Agent循环。默认国产模型路由、字节图片生成、TTS、音效检索和资产来源记录方案见[国产模型与游戏媒体资产策略](./model-media-strategy.md)。
+
+R3F、Three.js 与桌面 GUI 的正式适用边界见 [ADR-0001](./decisions/0001-rendering-and-desktop-surfaces.md)：Phaser 保持默认 2D 生成运行时；R3F/Three.js 只在独立 3D 模板或编辑器需求满足对照门槛后评估。
 
 ## 官方项目
 

@@ -1,0 +1,22 @@
+{
+  "client": {
+    "name": "codearts",
+    "version": "26.6.2",
+    "model": "huaweicloud-maas/deepseek-v3.2",
+    "provider": "huaweicloud-maas"
+  },
+  "tools": {
+    "count": null,
+    "names": [],
+    "errors": null
+  },
+  "humanInterventions": [
+    "Allowed eight local GameForge tools in the ignored non-interactive experiment config.",
+    "Restored the tracked CodeArts context file after host initialization rewrote it.",
+    "Reviewed one unexpected sandboxed timestamp shell call and the final absolute-path disclosure."
+  ],
+  "failure": "none",
+  "evidence": [
+    "experiments/2026-07-18-codearts-douyin-full/result.md"
+  ]
+}

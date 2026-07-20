@@ -4,7 +4,13 @@
 node_modules/
 dist/
 coverage/
+.gameforge-validation/
 .vite/
+.playwright-cli/
+output/
 *.tsbuildinfo
 *.log
+apps/desktop/src-tauri/target/
+.codeartsdoer/skills/ProjectSkillStatus.txt
+.opencode/AGENTS.md
 .DS_Store

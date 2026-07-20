@@ -1,0 +1,17 @@
+{
+  "client": {
+    "name": "codearts",
+    "version": "local-mcp-doctor-fixture"
+  },
+  "tools": {
+    "count": null,
+    "names": [],
+    "errors": null
+  },
+  "humanInterventions": [],
+  "failure": "none",
+  "evidence": [
+    "experiments/2026-07-18-mcp-tool-audit/result.md",
+    "experiments/2026-07-18-mcp-tool-audit/mcp-audit.json"
+  ]
+}

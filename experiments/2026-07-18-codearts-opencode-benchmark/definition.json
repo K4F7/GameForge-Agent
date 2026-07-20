@@ -1,0 +1,14 @@
+{
+  "benchmarkId": "client-safety-game-v1",
+  "prompt": "Build a complete deterministic browser safety collection game in English. Use the local GameForge MCP and Relay, generate the project, build it, verify it in Chrome, publish the evidence events, and complete the Run. Do not call cloud media providers.",
+  "language": "en-US",
+  "target": {
+    "genre": "collect",
+    "durationSeconds": 60,
+    "collectibleCount": 2,
+    "hazardCount": 1,
+    "startingLives": 3,
+    "movementSpeed": 200,
+    "mediaEnabled": false
+  }
+}
