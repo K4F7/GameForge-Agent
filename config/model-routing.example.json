@@ -11,26 +11,24 @@
   "agent": {
     "orchestration": {
       "owner": "codearts",
-      "primary": { "provider": "deepseek", "mode": "model", "model": "huaweicloud-maas/deepseek-v3.2", "capabilities": ["long-context", "tool-use", "code"] },
+      "primary": { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5.2", "capabilities": ["long-context", "tool-use", "code", "json-schema"] },
       "fallbacks": [
-        { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5.1", "capabilities": ["long-context", "tool-use"] }
+        { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5.1", "capabilities": ["long-context", "tool-use", "code", "json-schema"] }
       ],
       "reasoning": "max"
     },
     "coding": {
       "owner": "codearts",
-      "primary": { "provider": "deepseek", "mode": "model", "model": "huaweicloud-maas/deepseek-v3.2", "capabilities": ["code", "tool-use", "long-context"] },
+      "primary": { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-4.7-SFT-Harmony", "capabilities": ["code", "tool-use", "long-context"] },
       "fallbacks": [
-        { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-4.7-SFT-Harmony", "capabilities": ["code", "tool-use"] }
+        { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5.1", "capabilities": ["code", "tool-use", "long-context"] }
       ],
       "reasoning": "high"
     },
     "story": {
       "owner": "codearts",
-      "primary": { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/Glm-5-internal", "capabilities": ["narrative", "long-context", "tool-use"] },
-      "fallbacks": [
-        { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5.1", "capabilities": ["narrative", "long-context", "tool-use"] }
-      ],
+      "primary": { "provider": "deepseek", "mode": "model", "model": "huaweicloud-maas/deepseek-v3.2", "capabilities": ["narrative", "long-context", "tool-use"] },
+      "fallbacks": [],
       "reasoning": "high"
     },
     "review": {
@@ -41,11 +39,18 @@
     },
     "quick": {
       "owner": "codearts",
-      "primary": { "provider": "deepseek", "mode": "model", "model": "huaweicloud-maas/deepseek-v3.2", "capabilities": ["tool-use", "code"] },
+      "primary": { "provider": "deepseek", "mode": "model", "model": "huaweicloud-maas/deepseek-flash", "capabilities": ["tool-use", "code"] },
       "fallbacks": [
-        { "provider": "zhipu", "mode": "model", "model": "huaweicloud-maas/GLM-5.1", "capabilities": ["tool-use", "long-context"] }
+        { "provider": "deepseek", "mode": "model", "model": "huaweicloud-maas/deepseek-v3.2", "capabilities": ["tool-use", "code", "long-context"] }
       ],
       "reasoning": "low"
+    },
+    "vision": {
+      "owner": "codearts",
+      "primary": { "provider": "bailian", "mode": "model", "model": "qwen3.8", "capabilities": ["vision", "long-context", "tool-use"] },
+      "fallbacks": [],
+      "reasoning": "high",
+      "availability": "planned"
     }
   },
   "tools": {

@@ -1,6 +1,6 @@
 # 国产模型 SOTA 与排行榜评估（2026-07）
 
-更新日期：2026-07-18  
+更新日期：2026-07-21
 资料访问日期：2026-07-18
 
 ## 评估方法
@@ -48,7 +48,7 @@ OpenAI 2026 年抽查 138 题，报告至少 59.4% 存在测试会拒绝功能�
 5. Aider Polyglot，观察编辑协议与多语言代码；
 6. LiveCodeBench 只作为算法生成补充。
 
-当前 CodeArts 实际列出的 `huaweicloud-maas/deepseek-v3.2` 因“真实可用”优先作为编排/编码默认，GLM-5.1 做复核；K3/Qwen Coder/GLM-5.2 必须在宿主真实提供后用同 Task 重新比较。
+当前策略已按角色重新分工：规划与 GameSpec 条件首选 GLM-5.2、当前回落 GLM-5.1；编码使用已列出的 GLM-4.7 ArkTS；剧情使用 DeepSeek V3.2；审查使用 GLM-5.1；快速任务条件首选 DeepSeek Flash、当前回落 DeepSeek V3.2。GLM-5.2、DeepSeek Flash、Qwen 3.8 和 K3 必须在宿主真实提供后用同 Task 重新比较，不能把策略名当成实测结果。
 
 ## 视觉理解、生图和语音
 
@@ -58,7 +58,7 @@ OpenAI 2026 年抽查 138 题，报告至少 59.4% 存在测试会拒绝功能�
 - Qwen2.5-VL-72B 官方模型卡：MMMU 70.2、MMMU-Pro 51.1、DocVQA 96.4。与 Seed 报告设置可能不同，不直接做差值排名。
 - Kimi K3 官方确认原生视觉和 1M context，但截至访问日没有官方公开 MMMU 数字；第三方未核验的 81.6 不进入决策。
 
-所以 `vision` 的评估顺序是：宿主可用 K3 → Seed1.5-VL → GLM-4.6V/Qwen-VL，并用固定 Workbench/游戏截图集验证错误发现率和误报率。
+当前 `vision` 策略目标改为 Qwen 3.8，并在配置中保持 `planned`。启用前必须先确认官方精确模型 ID、当前宿主可见性和真实视觉输入能力，再用固定 Workbench/游戏截图集验证错误发现率和误报率；K3、Seed1.5-VL、GLM-V/Qwen-VL 继续作为对照候选。
 
 ### 生图
 
@@ -87,11 +87,13 @@ GameForge 借鉴其 role/category、显式能力要求、可诊断 fallback 与�
 
 | GameForge 路由 | 当前部署 | 后续评测方向 |
 |---|---|---|
-| CodeArts orchestration/coding | 实际可用 DeepSeek V3.2 | K3/GLM-5.2/DeepSeek V4 真正在宿主可选并通过同 Task |
-| CodeArts story/localization | 实际可用 GLM-5 internal，GLM-5.1 复核 | 宿主新增模型后做固定剧情与一致性基准 |
+| CodeArts orchestration | 策略首选 GLM-5.2；当前实际 fallback GLM-5.1 | GLM-5.2 出现在宿主后做同 Task 规划基准 |
+| CodeArts coding | 实际可用 GLM-4.7 ArkTS，GLM-5.1 fallback | 固定 TypeScript/Laya/Phaser 修改基准 |
+| CodeArts story/localization | 实际可用 DeepSeek V3.2 | 固定剧情、一致性与本地化基准 |
 | CodeArts review | 实际可用 GLM-5.1 | 有独立审核基准和更低误报时 |
-| 跨宿主 long-context/vision | 不进入默认路由 | Kimi K3 等只保留研究结论，等待用户新授权与宿主实测 |
-| GameSpec | CodeArts 构造，MCP 严格校验 | 百炼 Qwen 适配器保持 `planned` |
+| CodeArts quick | 策略首选 DeepSeek Flash；当前实际 fallback DeepSeek V3.2 | 精确 Flash target 出现在宿主后测延迟与成本 |
+| CodeArts vision | Qwen 3.8 `planned`，当前不可执行 | 先确认精确 target 与视觉输入，再做截图基准 |
+| GameSpec | CodeArts GLM 路由构造，MCP 严格校验 | 百炼 Qwen 适配器仅显式启用 |
 | image | 程序化占位素材 | 字节 Seedream 适配器保持 `planned`，未来用固定资产集实测 |
 | TTS | 字幕/静音回退 | 豆包异步 TTS 适配器保持 `planned` |
 | music | 静音回退 | MiniMax Music 适配器保持 `planned` |

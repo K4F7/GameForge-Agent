@@ -147,6 +147,27 @@ describe("model routing policy", () => {
     })).toMatchObject({ provider: "tencent", model: "tencent/Hy3" });
   });
 
+  it("accepts conditional GLM 5.2, DeepSeek Flash, and Qwen 3.8 targets", () => {
+    expect(modelTargetSchema.parse({
+      provider: "zhipu",
+      mode: "model",
+      model: "huaweicloud-maas/GLM-5.2",
+      capabilities: ["long-context", "tool-use", "json-schema"],
+    })).toMatchObject({ provider: "zhipu", model: "huaweicloud-maas/GLM-5.2" });
+    expect(modelTargetSchema.parse({
+      provider: "deepseek",
+      mode: "model",
+      model: "huaweicloud-maas/deepseek-flash",
+      capabilities: ["code", "tool-use"],
+    })).toMatchObject({ provider: "deepseek", model: "huaweicloud-maas/deepseek-flash" });
+    expect(modelTargetSchema.parse({
+      provider: "bailian",
+      mode: "model",
+      model: "qwen3.8",
+      capabilities: ["vision", "long-context", "tool-use"],
+    })).toMatchObject({ provider: "bailian", model: "qwen3.8" });
+  });
+
   it("treats host model IDs as case-sensitive opaque identifiers", () => {
     const parsed = modelRoutingPolicySchema.parse(policy());
     const primary = parsed.agent.coding.primary;

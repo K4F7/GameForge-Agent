@@ -141,7 +141,7 @@ DASHSCOPE_API_KEY=<阿里云百炼 API key>
 GAMEFORGE_SPEC_MODEL=qwen3.6-flash
 ```
 
-`GAMEFORGE_SPEC_MODEL` 可省略，默认使用 `qwen3.6-flash`。只有设置 `DASHSCOPE_API_KEY` 时，MCP 才注册 `draft_game_spec`；该工具通过百炼官方 OpenAI 兼容接口发起一次非流式请求，要求严格 JSON Schema 输出，并再次按仓库 `GameSpec` Schema 校验。密钥只从服务端环境读取，不进入工具参数、日志或仓库。
+`GAMEFORGE_SPEC_MODEL` 可省略，默认使用 `qwen3.6-flash`。只有设置 `DASHSCOPE_API_KEY` 时，MCP 才注册 `draft_game_spec`；该工具通过百炼官方 OpenAI 兼容接口发起一次非流式请求，要求严格 JSON Schema 输出，并再次按仓库 `GameSpec` Schema 校验。它是显式启用的可选适配器，不是默认 GameSpec 路由；默认由 CodeArts 的 GLM 编排路由生成 GameSpec，再调用 `validate_game_spec`。密钥只从服务端环境读取，不进入工具参数、日志或仓库。
 
 `get_gameforge_capabilities` 始终注册，返回本次 MCP 进程实际可用的国产模型、媒体和工程能力布尔快照，不返回密钥、Token、主机白名单或本机路径。CodeArts 将它发布为 `capabilities.ready` 后，Workbench 才把对应 Provider 标记为“本次 MCP 已配置”；未收到事件时显示等待，完整依赖链缺一项时显示未配置。
 
@@ -149,7 +149,7 @@ Provider HTTP 适配器统一使用有界超时和结构化错误。百炼、Fre
 
 当前国产 SOTA、Artificial Analysis/LMArena/OpenCompass、SWE-bench/Terminal-Bench、视觉/生图/TTS 榜单和 oh-my-opencode 改名状态的交叉评估见 [2026-07 模型评估](docs/model-evaluation-2026-07.md)。榜单只作为先验；宿主实际模型列表与 GameForge 同 Task 证据优先。
 
-[`config/model-routing.example.json`](config/model-routing.example.json) 是无密钥的国产模型角色/类别路由建议，并由 `modelRoutingPolicySchema` 与集成测试验证。MCP 启动时严格加载该策略并条件注册只读的 `get_agent_model_route`：调用方把宿主真实 `models` 结果映射为国产 Provider + 精确 host target，工具只按显式覆盖、primary、fallback 顺序返回选择与来源，不调用模型或实现 Agent 循环；没有匹配项时返回 `unavailable`，不得静默冒充。动态启动器会写入跨平台绝对策略路径，独立配置可用 `GAMEFORGE_MODEL_ROUTING_POLICY` 覆盖。当前默认 Agent 路由只包含 CodeArts 账号真实列出的内置模型：DeepSeek V3.2 负责玩法与代码，GLM-5 负责剧情对白，GLM-5.1 负责独立复核，GLM-4.7 ArkTS 作为编码 fallback。OpenCode/腾讯 Hy3 的既有同任务记录保留为历史显式 override 证据，不再进入默认 fallback；Kimi K3 也只保留研究结论。Seedream、豆包 TTS、Freesound 与 MiniMax 适配器仍保留，但当前未配置、不会调用，游戏继续使用程序化占位素材。配置中的期望模型不能替代宿主 `models` 输出，实验必须记录实际生效模型。
+[`config/model-routing.example.json`](config/model-routing.example.json) 是无密钥的国产模型角色/类别路由建议，并由 `modelRoutingPolicySchema` 与集成测试验证。MCP 启动时严格加载该策略并条件注册只读的 `get_agent_model_route`：调用方把宿主真实 `models` 结果映射为国产 Provider + 精确 host target，工具只按显式覆盖、primary、fallback 顺序返回选择与来源，不调用模型或实现 Agent 循环；没有匹配项时返回 `unavailable`，不得静默冒充。动态启动器会写入跨平台绝对策略路径，独立配置可用 `GAMEFORGE_MODEL_ROUTING_POLICY` 覆盖。当前策略优先用 GLM-5.2 做规划与 GameSpec，宿主未提供时回落 GLM-5.1；编码使用 GLM-4.7 ArkTS，GLM-5.1 fallback；剧情使用 DeepSeek V3.2；审查使用 GLM-5.1；快速任务优先 DeepSeek Flash、当前回落 DeepSeek V3.2；视觉审查预留 Qwen 3.8，但在宿主确认精确 target 前保持 `planned`。2026-07-21 的 CodeArts 26.6.2 实机列表仍只有 DeepSeek V3.2、GLM-4.7、GLM-5 和 GLM-5.1，因此 GLM-5.2、DeepSeek Flash 与 Qwen 3.8 均不得记录为实际生效模型。OpenCode/腾讯 Hy3 的既有同任务记录保留为历史显式 override 证据，不再进入默认 fallback；Kimi K3 也只保留研究结论。Seedream、豆包 TTS、Freesound 与 MiniMax 适配器仍保留，但当前未配置、不会调用，游戏继续使用程序化占位素材。配置中的期望模型不能替代宿主 `models` 输出，实验必须记录实际生效模型。
 
 启用许可证过滤的音效搜索工具时，在启动MCP服务的进程环境中设置：
 
@@ -236,7 +236,7 @@ Workbench 的 SSE 出错或出现 sequence 缺口时会关闭旧连接，从最�
 
 Task 创建以 Run ID 作为幂等键：网络响应丢失后，以完全相同的 Run ID、Prompt、语言和可选 `projectId` 重试会返回原 Task 与原始 `run.started`，不会重复排队；同 Run ID 携带不同内容会返回稳定的 `task_run_conflict`。`projectId` 存在时 CodeArts 必须更新该受管项目，不存在时才创建新项目；不得从 Prompt 或目录猜测。一个 Run ID 只代表一次不可变任务，完成新需求时应使用新的 Run ID。
 
-Workbench 可选择 `zh-CN` 或 `en-US`。语言随 Task 进入权威 `run.started`，因此重连与事件回放可以恢复选择；CodeArts 必须把 Task 的 Prompt 与 language 原样传给 `draft_game_spec`。百炼返回的 `GameSpec.locale` 不匹配时会被拒绝，生成项目的静态 HTML `lang`、无障碍标签和 Phaser HUD/控制提示均随 locale 输出；旧规格缺少 locale 时仍默认中文。
+Workbench 可选择 `zh-CN` 或 `en-US`。语言随 Task 进入权威 `run.started`，因此重连与事件回放可以恢复选择；CodeArts 的 GLM 路由必须按 Task 的 Prompt 与 language 构造 GameSpec。只有用户显式启用百炼草拟器时，才把两者原样传给 `draft_game_spec`。任何来源的 `GameSpec.locale` 不匹配时都会被拒绝，生成项目的静态 HTML `lang`、无障碍标签和 Phaser HUD/控制提示均随 locale 输出；旧规格缺少 locale 时仍默认中文。
 
 Workbench 会为每次页面会话准备唯一 Run ID；连接期间输入锁定。若提交响应不确定，直接保留当前 ID 和项目选择重试；若要开始不同需求，先停止或等待当前 Run 终止，再点击“新任务”显式轮换 ID。不要手工修改已连接 Run 的 ID。
 

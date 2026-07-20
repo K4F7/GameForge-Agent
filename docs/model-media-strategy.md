@@ -1,6 +1,6 @@
 # 国产模型与游戏媒体资产策略
 
-更新日期：2026-07-18
+更新日期：2026-07-21
 官方资料访问日期：2026-07-18
 
 国产厂商 SOTA、独立权威榜单、编码/视觉/媒体专项评测及 oh-my-openagent 当前状态的详细交叉分析见 [2026-07 模型评估](./model-evaluation-2026-07.md)。本文件保留生产 Provider 与资产边界；榜单不能替代账号实际可用性和 GameForge 同 Task 验收。
@@ -17,11 +17,13 @@
 
 | 游戏制作环节 | 默认Provider | 默认模型或能力 | 备选 | 决策状态 |
 |---|---|---|---|---|
-| 需求理解、玩法设计、任务规划 | CodeArts 当前账号 | `huaweicloud-maas/deepseek-v3.2` | CodeArts GLM-5.1 | 当前默认只使用宿主内置模型 |
-| GameSpec结构化生成、分类和摘要 | CodeArts 当前账号 | DeepSeek V3.2 / GLM-5 + `validate_game_spec` | 百炼 `qwen3.6-flash` 适配器 | 当前由 CodeArts 构造并强制 Schema 校验；百炼未启用 |
-| TypeScript、Phaser和Three.js代码生成与修复 | CodeArts 当前账号 | `huaweicloud-maas/deepseek-v3.2` | CodeArts GLM-4.7 ArkTS | 当前默认只使用宿主实际账号模型 |
-| 剧情、世界观、对白与本地化 | CodeArts 当前账号 | `huaweicloud-maas/Glm-5-internal`（显示名 GLM-5） | CodeArts GLM-5.1 | 使用精确 host ID；输出仍需剧情 Schema 与内容审核 |
-| 长上下文仓库审查 | CodeArts 当前账号 | `huaweicloud-maas/GLM-5.1` | DeepSeek V3.2 | Kimi K3/视觉模型只保留研究结论，不进入默认路由 |
+| 需求理解、玩法设计、任务规划 | CodeArts 当前账号 | 条件首选 `huaweicloud-maas/GLM-5.2` | 当前回落 `huaweicloud-maas/GLM-5.1` | GLM-5.2 尚未出现在当前宿主列表，运行记录必须写实际 fallback |
+| GameSpec结构化生成、分类和摘要 | CodeArts 当前账号 | 同一 GLM 规划路由 + `validate_game_spec` | 百炼 `qwen3.6-flash` 适配器 | 默认由 GLM 构造并强制 Schema 校验；百炼仅显式启用时使用 |
+| TypeScript、Phaser和Three.js代码生成与修复 | CodeArts 当前账号 | `huaweicloud-maas/GLM-4.7-SFT-Harmony` | CodeArts GLM-5.1 | 当前使用宿主已列出的 GLM 编码 target |
+| 剧情、世界观、对白与本地化 | CodeArts 当前账号 | `huaweicloud-maas/deepseek-v3.2` | 暂无默认 fallback | 按角色路由使用 DeepSeek；输出仍需剧情 Schema 与内容审核 |
+| 长上下文仓库审查 | CodeArts 当前账号 | `huaweicloud-maas/GLM-5.1` | 暂无默认 fallback | 审查保持 GLM，并与剧情模型分离 |
+| 快速查询和低复杂度工具任务 | CodeArts 当前账号 | 条件首选 `huaweicloud-maas/deepseek-flash` | 当前回落 `huaweicloud-maas/deepseek-v3.2` | DeepSeek Flash 尚未出现在当前宿主列表 |
+| 截图与视觉审查 | CodeArts/待确认宿主 | 条件目标 `qwen3.8` | 无 | 当前 CodeArts 未列出该精确 target，路由保持 `planned` |
 | 角色立绘、场景、概念图和图像编辑 | 程序化占位素材 | 固定图形与颜色 | Seedream 适配器 | 当前不配置外部账号，不声称 CodeArts 内置文本模型能够生图 |
 | NPC对白、旁白和语音提示 | 程序化/静音回退 | 文本字幕 | 豆包语音适配器 | 当前不配置外部账号 |
 | 常见短音效 | 程序化/静音回退 | 无外部下载 | Freesound CC0 检索适配器 | 当前不配置外部账号 |
@@ -32,7 +34,7 @@
 
 ### 已实现的 GameSpec 适配器
 
-仓库已实现 `BailianGameSpecProvider` 与条件注册的 MCP 工具 `draft_game_spec`。服务端设置 `DASHSCOPE_API_KEY` 后，适配器调用百炼官方 OpenAI 兼容端点 `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`；`GAMEFORGE_SPEC_MODEL` 可覆盖默认的 `qwen3.6-flash`。请求使用 `response_format.type = json_schema` 与严格 Schema，并对模型返回再次执行 `gameSpecSchema.parse`。百炼官方建议对 429、5xx 和连接错误执行有界指数退避，因此确定性传输层最多尝试三次；它不改变 Prompt、模型或请求体，也不承担 Agent 规划、反思或代码修改。
+仓库已实现 `BailianGameSpecProvider` 与条件注册的 MCP 工具 `draft_game_spec`。默认生产流程不调用该工具，而由 CodeArts 的 GLM `orchestration` 路由构造 GameSpec 后执行 `validate_game_spec`。只有用户显式启用百炼草拟器时，服务端设置 `DASHSCOPE_API_KEY`，适配器才调用官方 OpenAI 兼容端点 `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`；`GAMEFORGE_SPEC_MODEL` 可覆盖默认的 `qwen3.6-flash`。请求使用 `response_format.type = json_schema` 与严格 Schema，并对模型返回再次执行 `gameSpecSchema.parse`。百炼官方建议对 429、5xx 和连接错误执行有界指数退避，因此确定性传输层最多尝试三次；它不改变 Prompt、模型或请求体，也不承担 Agent 规划、反思或代码修改。
 
 当前证据只覆盖模拟官方 HTTP 契约、错误脱敏和本地 Schema 验证；尚未使用真实百炼账号验证模型可用性、结构化输出兼容性、延迟和费用。
 
@@ -46,13 +48,14 @@ GameSpec 草拟的严格 JSON Schema 现在还要求 `gameplay`：目标数、�
 
 ### 默认路由
 
-- `planner`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/deepseek-v3.2`，用于玩法拆解、架构设计、关卡规划和工具编排。
-- `spec`：当前由 CodeArts 的 DeepSeek/GLM 按 Skill 构造原生 JSON object，再由 `validate_game_spec` 做严格 Zod 校验；百炼 `qwen3.6-flash` 仅保留为未启用的条件适配器。
-- `coder`：当前 CodeArts 使用 `huaweicloud-maas/deepseek-v3.2`，GLM-4.7 ArkTS 作为同宿主 fallback。
+- `planner`：策略首选 `huaweicloud-maas/GLM-5.2`，用于玩法拆解、架构设计、关卡规划和工具编排；当前 CodeArts 未列出该 target，因此实际解析回落 `huaweicloud-maas/GLM-5.1`。
+- `spec`：复用同一 GLM `orchestration` 路由构造原生 JSON object，再由 `validate_game_spec` 做严格 Zod 校验；百炼 `qwen3.6-flash` 仅保留为用户显式启用的条件适配器。
+- `coder`：当前使用宿主实际提供的 `huaweicloud-maas/GLM-4.7-SFT-Harmony`（显示名 GLM-4.7-ArkTS-SPARK），GLM-5.1 作为同宿主 fallback。
 - `cross-host coding`：默认策略不包含跨宿主 target。OpenCode 1.18.3 的腾讯 Hy3 只保留为既有基准的显式 override 证据，不参与后续普通 Run。
-- `story`：当前 CodeArts 使用账号实际提供的 `huaweicloud-maas/Glm-5-internal`（显示名 GLM-5），专门生成剧情结构、角色卡、对白和本地化草案；GLM-5.1 复核。模型 ID 大小写和 `-internal` 后缀必须与宿主输出完全一致。
+- `story`：当前 CodeArts 使用 `huaweicloud-maas/deepseek-v3.2` 生成剧情结构、角色卡、对白和本地化草案；输出继续交给 GLM `review` 路由与剧情 Schema 复核。
 - `reviewer`：当前 CodeArts 优先 GLM-5.1，并与生成步骤使用不同提示词；构建、测试和静态检查仍是最终证据。
-- `vision`：当前 CodeArts 列表没有已确认的视觉模型，不配置默认 vision 路由，也不把截图审查记为已完成。
+- `quick`：策略首选 `huaweicloud-maas/deepseek-flash`；当前宿主未列出，因此回落 `huaweicloud-maas/deepseek-v3.2`，保持低 reasoning 档位。
+- `vision`：策略目标为 `qwen3.8`，但当前 CodeArts 列表没有该精确 target，因此保持 `planned`，也不把截图采集记成模型视觉审查。
 
 Qwen官方资料确认Qwen3系列具备代码、工具调用、思考/非思考模式以及长上下文能力；Qwen3-Coder面向Agent式编码和工具调用。阿里云函数调用文档列出了Qwen3-Coder、Qwen-Plus和Qwen-Flash系列。具体快照版本会变化，因此仓库只提供经过验证的默认值，不将模型ID散落在业务代码中。
 
@@ -66,7 +69,7 @@ CodeArts 普通 CLI 通过 `codearts models [provider]` 列出当前账号可用
 
 Kimi 官方于 2026-07-16 发布 `kimi-k3`。官方资料给出的事实包括：2.8T 参数 MoE、原生视觉、最长 1M context，以及在 Kimi Code/API 中进行长时编码、仓库导航和终端工具编排；API 模型 ID 是 `kimi-k3`，Kimi Code 中也提供 `k3`。官方同时明确 API 当前不直接支持视频输入、PPT 和 Deep Research，完整权重计划在 2026-07-27 开放，且官方建议自部署至少使用 64 个加速器，因此普通开发机不把本地 K3 作为默认。
 
-GameForge 对这些事实的推断是：K3 未来可评估长上下文编排、代码审查和浏览器截图复核；不用于 Seedream 生图、TTS 或短音效。2026-07-18 使用已配置的 CodeArts CLI 凭据只读调用 `models`，当前账号实际列出 DeepSeek V3.2、GLM-4.7 ArkTS、GLM-5 和 GLM-5.1，没有 K3。故当前 CodeArts 生产默认只使用这些内置模型；K3 不进入默认或 fallback，直到用户改变范围、宿主真实列出并完成同 Task 基准。模型列表证据不含凭据或账号信息。
+GameForge 对这些事实的推断是：K3 未来可评估长上下文编排、代码审查和浏览器截图复核；不用于 Seedream 生图、TTS 或短音效。2026-07-21 使用已配置的 CodeArts 26.6.2 CLI 只读调用 `models --verbose --pure`，当前账号实际列出 DeepSeek V3.2、GLM-4.7 ArkTS、GLM-5 和 GLM-5.1；没有 GLM-5.2、DeepSeek Flash、Qwen 3.8 或 K3。路由策略可以记录条件首选，但生产 Run 只能记录解析后真实生效的宿主 target。模型列表证据不含凭据或账号信息。
 
 ### 从 oh-my-opencode 借鉴的路由原则
 
@@ -78,7 +81,7 @@ oh-my-opencode/后续更名项目 oh-my-openagent 的官方配置把 agent role 
 4. 运行记录必须写实际生效模型，而不是配置中希望使用但宿主未提供的模型；
 5. 快速任务不滥用最昂贵的长上下文模型，视觉任务不交给无视觉能力的模型。
 
-可提交示例位于 `config/model-routing.example.json`，由 `modelRoutingPolicySchema` 和集成测试验证。当前默认可执行 Agent 路由只包含 `codearts models` 已确认的 DeepSeek/GLM 精确 target；未确认的视觉路由保持缺省。Schema 仍能严格解析 `tencent/Hy3` 与 `opencode/hy3-free` 等历史显式 override，但示例不会将其放入 fallback，也不会在两个 ID 间做模糊别名匹配。Schema 以受支持国产 Provider 与模型家族 ID 的匹配规则约束推理与生成模型，并保持 Freesound 的所有 fallback 都是许可证检索；家族规则不是当前账号模型 allowlist。`officialApiRequired` 表示只允许仓库已登记的官方适配器，但不能证明账号授权或实时可用性；示例不替代宿主当前 `models` 输出。
+可提交示例位于 `config/model-routing.example.json`，由 `modelRoutingPolicySchema` 和集成测试验证。示例允许把用户指定的条件首选放在 primary，但只有出现在宿主 `models` 列表中的 target 才能被解析为 `selected`；GLM-5.2 和 DeepSeek Flash 当前分别回落 GLM-5.1 与 DeepSeek V3.2，Qwen 3.8 视觉路由保持 `planned`。Schema 仍能严格解析 `tencent/Hy3` 与 `opencode/hy3-free` 等历史显式 override，但示例不会将其放入 fallback，也不会在两个 ID 间做模糊别名匹配。Schema 以受支持国产 Provider 与模型家族 ID 的匹配规则约束推理与生成模型，并保持 Freesound 的所有 fallback 都是许可证检索；家族规则不是当前账号模型 allowlist。`officialApiRequired` 表示只允许仓库已登记的官方适配器，但不能证明账号授权或实时可用性；示例不替代宿主当前 `models` 输出。
 
 ### 配置原则
 
@@ -233,7 +236,7 @@ type AssetProvenance = {
 
 ## 结论与置信度
 
-- 高置信度：采用配置化国产模型路由；当前默认只让 CodeArts 内置 DeepSeek/GLM 按玩法/剧情/复核分工，外部媒体 capability 保持未配置并使用程序化/静音回退。
+- 高置信度：采用配置化国产模型路由；当前实际可执行的是 GLM-5.1 规划与 GameSpec、GLM-4.7 编码、DeepSeek V3.2 剧情与快速 fallback、GLM-5.1 审查，外部媒体 capability 保持未配置并使用程序化/静音回退。
 - 中置信度：具体Qwen和Seedream模型快照。云端模型更新较快，接入时需要在控制台再次确认可用ID。
 - 低置信度：独立国产短音效生成和生成内容商业授权。在获得明确API及条款前不设置默认实现。
 
