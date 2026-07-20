@@ -5,3 +5,4 @@ export * from "./minimax-music.js";
 export * from "./seedream.js";
 export * from "./transport.js";
 export * from "./volcengine-async-tts.js";
+export * from "./volcengine-bidirectional-tts.js";

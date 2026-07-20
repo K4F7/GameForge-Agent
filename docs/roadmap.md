@@ -1,6 +1,6 @@
 # GameForge Agent 路线图
 
-更新日期：2026-07-18
+更新日期：2026-07-20
 
 ## 当前产品优先级：抖音小游戏 V1
 
@@ -19,11 +19,13 @@
 - [x] 增加纯 CLI `minigame:handoff`：validator 前后双快照、逐文件 SHA-256、聚合摘要和无路径 JSON；`build.ready`/TUI 显式标记远程操作禁止与 DevTool 未验收；
 - [x] 将 Seedream 图片、Freesound 音效和火山 TTS/BGM 的统一 Asset Store 桥接到 Laya `resources/assets/`；官方构建后逐项复核 Manifest、字节数和 SHA-256；
 - [x] 增加 `tt-minigame-ide-cli` 2.1.1 官方 `bin/tmg.js --version` 诊断与条件 MCP capability；明确拒绝小程序 `tma`，不开放登录、打开、项目 version、配置、预览或上传命令；
-- [ ] 在抖音小游戏开发者工具完成原型本地导入、编译器与模拟器检查；不执行平台 preview 或上传；
+- [x] 在抖音小游戏开发者工具 4.5.4 完成受管原型本地导入、普通编译与模拟器检查；修复平台运行时持续时间非有限值导致的 HUD `undefined`/`NaN`，重新编译后问题计数为零且倒计时正常；未执行平台 preview 或上传；
 - [ ] 真实抖音客户端扫码运行因依赖远程 preview 暂缓；若未来改变策略，需再次明确授权并记录脱敏截图、日志、包体和人工干预；
 - [x] 研判 CLI 自动化边界：本地生成/构建/静态门禁可 no-GUI；中国抖音小游戏最终预览、提审与发布没有公开的完整 no-GUI 链路；
 - [x] 实现 `wechat-mini-game` 第二导出 target：复用同一 Laya TypeScript 玩法和 Asset Store，增加固定 `wxgame` 构建、微信策略/API 静态校验、MCP capability 与 target-aware Workbench/TUI；五种 genre 已逐一通过真实 LayaAir CLI 3.4.0 构建；
 - [ ] 在微信开发者工具导入 `release/wxgame`，完成编译、预览与真机扫码证据；快手暂不进入 V1 发布门禁。
+
+2026-07-20 首次探针确认当前 Windows 环境安装抖音开发者工具 4.5.4 且客户端可启动，但未登录时停在前置管理页；证据见 `experiments/2026-07-20-douyin-devtool-login-gate/`。用户随后自行完成登录并进入项目工作区，受控实验完成本地导入、编译器与模拟器验收；证据见 `experiments/2026-07-20-douyin-devtool-local-validation/`。
 
 ## 第一轮：真实 CodeArts 闭环
 

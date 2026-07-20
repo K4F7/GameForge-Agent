@@ -74,7 +74,10 @@ export class Main extends Laya.Scene {
     const hazardCount = gameplay?.hazardCount ?? (this.genre === "platformer" ? 2 : 3);
     this.lives = gameplay?.startingLives ?? 3;
     this.movementSpeed = gameplay?.movementSpeed ?? (this.genre === "strategy" ? 150 : this.genre === "platformer" ? 210 : 220);
-    this.remainingSeconds = spec.targetDurationSeconds;
+    const targetDurationSeconds = Number(spec.targetDurationSeconds);
+    this.remainingSeconds = Number.isFinite(targetDurationSeconds) && targetDurationSeconds > 0
+      ? targetDurationSeconds
+      : 60;
     this.shooterHadHazards = this.genre === "shooter" && hazardCount > 0;
 
     this.width = 960;

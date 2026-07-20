@@ -96,6 +96,8 @@ describe("GameProjectGenerator", () => {
       .toContain('Laya.loader.load("resources/game-spec.json"');
     const runtime = await readFile(path.join(root, "douyin-spike", "src", "Main.ts"), "utf8");
     expect(runtime).toContain("this.invulnerableUntilMs = now + 1000");
+    expect(runtime).toContain("const targetDurationSeconds = Number(spec.targetDurationSeconds)");
+    expect(runtime).toContain("Number.isFinite(targetDurationSeconds) && targetDurationSeconds > 0");
     expect(runtime).toContain('Laya.loader.load("resources/assets/manifest.json"');
     expect(runtime).toContain('return "resources/" + assetPath');
     expect(runtime).toContain('this.drawRole(this.player, "player", 32, 32');
