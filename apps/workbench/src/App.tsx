@@ -17,6 +17,8 @@ import {
 import { createWorkbenchRunId } from "./run-id.js";
 import { createMapView, createSceneNodes } from "./design-view.js";
 import { configuredPreviewOrigins, isAllowedPreviewUrl, previewFramePolicy, previewWindowRel, safePreviewUrl } from "./preview-security.js";
+import { createOpenChamberRuntimeView } from "./openchamber-adapter.js";
+import { OpenChamberRuntimeBrand, TaskRunNavigator } from "./openchamber-ui.js";
 
 const configuredPreviewUrl = gamePreviewUrlSchema.safeParse(
   import.meta.env.VITE_GAME_PREVIEW_URL ?? "http://localhost:5173/",
@@ -82,6 +84,7 @@ export function App(): React.JSX.Element {
   const relayConnectionRef = useRef<RecoveringRunEventConnection | null>(null);
   const relayConnectionGenerationRef = useRef(0);
   const taskHistoryRequestRef = useRef(0);
+  const taskHistoryBootstrapRef = useRef(false);
 
   useEffect(() => {
     if (runState.language !== null) setTaskLanguage(runState.language);
@@ -120,6 +123,12 @@ export function App(): React.JSX.Element {
       item("抖音 tmg 探针", engineering?.douyinCliProbe),
     ];
   }, [runState.capabilities]);
+  const openChamberRuntime = useMemo(() => createOpenChamberRuntimeView({
+    runState,
+    taskHistory,
+    selectedTaskId,
+    fallbackRunId: relayRunId,
+  }), [relayRunId, runState, selectedTaskId, taskHistory]);
 
   const stopDemo = (): void => {
     const timerId = timerRef.current;
@@ -342,6 +351,12 @@ export function App(): React.JSX.Element {
     relayConnectionRef.current.reconnect();
   };
 
+  useEffect(() => {
+    if (agentBaseUrl === null || taskHistoryBootstrapRef.current) return;
+    taskHistoryBootstrapRef.current = true;
+    void refreshTaskHistory();
+  }, []);
+
   useEffect(() => () => {
     if (timerRef.current !== null) {
       window.clearInterval(timerRef.current);
@@ -350,15 +365,9 @@ export function App(): React.JSX.Element {
   }, []);
 
   return (
-    <main className="workbench-shell">
+    <main className="workbench-shell" data-runtime={openChamberRuntime.runtime}>
       <header className="topbar">
-        <div className="brand-block">
-          <span className="brand-mark" aria-hidden="true">GF</span>
-          <div>
-            <strong>GameForge</strong>
-            <span>AGENT WORKBENCH</span>
-          </div>
-        </div>
+        <OpenChamberRuntimeBrand relayState={relayState} runtime={openChamberRuntime} />
 
         <div className="provider-strip" aria-label="Provider 支持情况">
           {providers.map((provider) => (
@@ -422,20 +431,11 @@ export function App(): React.JSX.Element {
                   />
                   <p role={relayState === "error" ? "alert" : "status"} aria-live={relayState === "error" ? "assertive" : "polite"}>{relayMessage}</p>
                   {taskId !== null && <p className="task-receipt">Task <code>{taskId}</code></p>}
-                  <label htmlFor="relay-task-history">Task 历史（最近 20 项）</label>
-                  <select
-                    id="relay-task-history"
-                    value={selectedTaskId}
-                    disabled={relayState === "connecting" || relayState === "connected" || taskHistory.length === 0}
-                    onChange={(event) => setSelectedTaskId(event.target.value)}
-                  >
-                    {taskHistory.length === 0 && <option value="">尚未读取</option>}
-                    {taskHistory.map((task) => (
-                      <option value={task.taskId} key={task.taskId}>
-                        {task.status} · {task.projectId ?? "新项目"} · {task.runId}
-                      </option>
-                    ))}
-                  </select>
+                  <TaskRunNavigator
+                    tasks={openChamberRuntime.tasks}
+                    disabled={relayState === "connecting" || relayState === "connected"}
+                    onSelect={setSelectedTaskId}
+                  />
                   <div>
                     <button type="button" onClick={() => void refreshTaskHistory()}>刷新历史</button>
                     <button type="button" disabled={selectedTaskId === ""} onClick={() => void loadSelectedTask()}>载入历史</button>
