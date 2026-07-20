@@ -98,7 +98,7 @@ bun run --silent minigame:handoff -- --project-id <project-id> --target douyin-m
 
 `bun run workbench:smoke` 在系统分配且始终保持绑定的随机 loopback 端口启动真实 Relay、生产 Workbench 静态服务与受控预览页，再用系统 Chrome 从表单提交一个 Task。确定性 fixture 认领该 Task 并发布合法的规格、资产、七阶段完成、预览、浏览器验收、日志和终态事件；命令验证 UI、iframe、100% 阶段进度、Relay sequence 1–14 连续性与三类浏览器诊断，截图和脱敏 JSON 写入忽略的 `output/playwright/`。它验证 Workbench/Relay 浏览器链路，不冒充 CodeArts 或国产 Provider 账号验收。
 
-`dev:local` 通过 Bun 并行启动示例游戏（5173）、Workbench（4173）和 Run Relay（8787）。仅在 Vite 开发模式且未显式配置时，Workbench 默认连接 `http://127.0.0.1:8787/`；生产构建仍要求设置 `VITE_AGENT_BASE_URL`。MCP 是 stdio 子进程，应由 CodeArts 启动，不包含在该并行命令中。生产式本地联调先执行 `bun run build`，再使用 `bun run start:relay`；CodeArts MCP 配置见 [CodeArts 快速开始](docs/codearts-quickstart.md)。
+`dev:local` 通过 Bun 并行启动示例游戏（5173）、Workbench（4173）、Run Relay（8787）和持久 Douyin Bridge Host。Bridge Host 独立于 stdio MCP 生命周期，扩展只连接 loopback，并在 host/controller 重启后用 short-lived rendezvous 自动恢复。仅在 Vite 开发模式且未显式配置时，Workbench 默认连接 `http://127.0.0.1:8787/`；生产构建仍要求设置 `VITE_AGENT_BASE_URL`。MCP 仍由 CodeArts 作为 stdio 子进程启动；设置 `GAMEFORGE_DOUYIN_BRIDGE_MODE=host` 后通过本地 host 代理使用同一 DevTool 连接。生产式本地联调先执行 `bun run build`，再分别使用 `bun run start:relay` 和 `bun run start:douyin-bridge`；CodeArts MCP 配置见 [CodeArts 快速开始](docs/codearts-quickstart.md)。
 
 `generate_game_project` 除安全新建外也支持受管更新。更新必须先 dry-run，再以返回的当前 plan SHA-256 做 apply CAS；只更新 Manifest 中哈希未变的生成器文件，运行时资产、`bun.lock`、未知文件和用户已修改代码都不会被覆盖。发生冲突时没有 force 开关，由 CodeArts 审阅并显式合并。
 
@@ -110,7 +110,7 @@ bun run --silent minigame:handoff -- --project-id <project-id> --target douyin-m
 
 Tauri 2 桌面 spike 位于 `apps/desktop`，只封装现有 Workbench，不新增 Agent 循环、自定义 Rust command 或 Tauri plugin。`bun run doctor:desktop` 静态校验零权限 capability、CSP、loopback 开发地址和 Workbench 构建；Tauri Schema、Cargo 和图标由真实 `desktop:build` 验证。Windows 本机构建需进入 MSVC 开发环境后运行该命令。当前只验证了不打安装包的 Windows 可执行文件，签名、自动更新和 macOS/Linux 仍不在已验收范围。完整说明见 [桌面壳说明](docs/desktop.md)。
 
-GUI 后续可借鉴 OpenCodeUI 的三栏工作区、SSE 增量消息、终端、文件树/Diff、响应式布局和 Tauri 2 外壳，但不复制其 GPL-3.0-only 代码，也不搬入 OpenCode SDK 或 Agent 循环。独立实现边界见 [GUI 方向](docs/gui-direction.md)。
+GUI 后续以 MIT 许可的 [OpenChamber](https://github.com/btriapitsyn/openchamber) 为前端代码与交互基线，优先适配其共享 React UI、布局、主题、组件和运行时抽象。GameForge 仍以 Relay/RunEvent/reducer 为状态权威，不搬入 OpenCode 会话契约、Agent 循环、PTY/Git/SSH/tunnel 或 Electron 特权边界；当前 Tauri 2 零 IPC 桌面壳继续保留。迁移边界见 [GUI 方向](docs/gui-direction.md)。
 
 客户端基准使用规范化任务定义的 SHA-256，而不是要求 CodeArts 与 OpenCode 复用同一个 Task ID。运行 `bun run benchmark -- report definition.json codearts.record.json opencode.record.json --out report.md` 可校验记录并生成对比；只有两端都完成时才允许比较工作流质量。
 

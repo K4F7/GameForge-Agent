@@ -18,6 +18,7 @@
   "main": "./dist/extension.js",
   "files": [
     "dist/extension.js",
+    "dist/bridge-connection-manager.js",
     "dist/bridge-client.js",
     "dist/protocol.js",
     "dist/runtime-probe.js",

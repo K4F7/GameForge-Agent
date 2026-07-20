@@ -19,6 +19,8 @@
     "audit": "bun audit --prod",
     "doctor": "bun run build:foundation && bun run --filter @gameforge/mcp-server build && node packages/mcp-server/dist/doctor.js",
     "doctor:douyin": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/minigame-validator build && node packages/minigame-validator/dist/douyin-cli-doctor.js",
+    "douyin:e2e": "bun run --filter @gameforge/mcp-server douyin:e2e",
+    "douyin:host-smoke": "bun run --filter @gameforge/mcp-server douyin:host-smoke",
     "doctor:browser": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/game-verifier build && node packages/game-verifier/dist/browser-doctor.js",
     "doctor:desktop": "bun run --filter @gameforge/workbench build && bun run --filter @gameforge/desktop doctor",
     "workbench:smoke": "bun run build:foundation && bun run --filter @gameforge/workbench check && bun run --filter @gameforge/game-verifier smoke:workbench",
@@ -28,6 +30,7 @@
     "dev:game": "bun run --filter @gameforge/game dev",
     "dev:workbench": "bun run --filter @gameforge/workbench dev",
     "dev:mcp": "bun run --filter @gameforge/mcp-server dev",
+    "dev:douyin-bridge": "bun run --filter @gameforge/mcp-server douyin:bridge-host",
     "dev:relay": "bun run --filter @gameforge/run-relay dev",
     "tui": "bun run --filter @gameforge/tui start",
     "integrations:check": "bun run --filter @gameforge/integrations check",
@@ -38,8 +41,9 @@
     "bundle:check": "bun run --filter @gameforge/game build && bun run --filter @gameforge/workbench build && bun packages/bundle-budget/src/cli.ts",
     "minigame:validate": "bun packages/minigame-validator/src/cli.ts",
     "minigame:handoff": "bun packages/minigame-validator/src/handoff-runner.ts",
-    "dev:local": "bun run --parallel dev:relay dev:game dev:workbench",
+    "dev:local": "bun run --parallel dev:relay dev:game dev:workbench dev:douyin-bridge",
     "start:mcp": "node packages/mcp-server/dist/index.js",
+    "start:douyin-bridge": "node packages/mcp-server/dist/douyin-bridge-host.js",
     "start:relay": "node packages/run-relay/dist/index.js"
   },
   "engines": {

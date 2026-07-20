@@ -87,7 +87,7 @@ Windows 本地已使用真实 Relay 验证 `submit → watch(SSE) → stop → �
 
 优先评估 Tauri 2 封装现有 React Workbench；Electron 作为生态成熟但体积更大的备选。渲染栈与桌面表面的决策、进入条件和验证要求已记录在 [ADR-0001](./decisions/0001-rendering-and-desktop-surfaces.md)。
 
-用户指定 [OpenCodeUI](https://github.com/lehhair/OpenCodeUI) 作为交互参考。可借鉴三栏工作区、SSE 增量状态、终端、文件树/Diff、响应式布局和 Tauri 2 外壳；该仓库声明 GPL-3.0-only 并依赖 OpenCode SDK，因此 GameForge 只借鉴设计思想并独立实现，不复制源码或搬入 Agent 循环。详见 [GUI 方向](./gui-direction.md)。
+2026-07-20 起，用户指定 MIT 许可的 [OpenChamber](https://github.com/btriapitsyn/openchamber) 作为后续 GUI 的前端代码与交互基线，首个评估提交为 `31b43fbde90d368c5d131ec52e761d888466d597`。迁移优先复用其共享 React UI、布局、主题、组件和多运行时抽象，同时把 OpenCode SDK/session 状态替换为 GameForge Relay/RunEvent/reducer；PTY、Git/SSH、tunnel、Electron 特权边界和 Agent 循环不随 UI 默认引入。详见 [GUI 方向](./gui-direction.md)。
 
 桌面 GUI 不改变协议边界：CodeArts 仍是主智能体，Relay 仍只协调状态，MCP 仍是确定性工具。若 TUI 的共享 controller 尚未稳定，不开始桌面打包。
 
@@ -96,6 +96,9 @@ Windows 本地已使用真实 Relay 验证 `submit → watch(SSE) → stop → �
 - [x] capability 保持零权限，不注册 Tauri plugin、自定义 Rust command 或 invoke handler；
 - [x] 新增 `doctor:desktop`，检查 CSP、loopback dev URL、构建目录与最小权限边界；
 - [x] 在 Windows 11、MSVC 14.44、Rust/Cargo 1.88.0 和 WebView2 环境完成 `--no-bundle` release 构建；
+- [ ] 完成 OpenChamber 固定版本的源码、依赖许可证、安全面与构建体积清单；
+- [ ] 建立 OpenChamber UI 到 GameForge Relay/RunEvent/reducer 的 Runtime API adapter；
+- [ ] 分垂直切片迁移 UI，并通过现有 Workbench 的恢复、CSP、bundle、浏览器 smoke 与桌面门禁；
 - [ ] 验证 macOS/Linux 原生构建与 WebView 行为；
 - [ ] 设计并验证安装包签名、更新公钥和发布流程；
 - [ ] 在明确需求与最小 scope 后才考虑文件选择器或系统通知 plugin。

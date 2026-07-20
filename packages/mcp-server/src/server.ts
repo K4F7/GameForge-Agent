@@ -90,7 +90,7 @@ import {
   type LayaGameplayVerifier,
 } from "./tools.js";
 import type { ToolAuditContextBinder, ToolAuditRecorder } from "./tool-audit.js";
-import type { DouyinBridgeController, DouyinRuntimeAction } from "./douyin-bridge-controller.js";
+import type { DouyinBridgePort, DouyinRuntimeAction } from "./douyin-bridge-controller.js";
 import { DouyinRuntimeActionCoordinator } from "./douyin-runtime-action.js";
 
 export type CreateServerOptions = {
@@ -112,7 +112,7 @@ export type CreateServerOptions = {
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
   toolAudit?: ToolAuditRecorder & Partial<ToolAuditContextBinder>;
   modelRoutingPolicy?: ModelRoutingPolicy;
-  douyinBridgeController?: DouyinBridgeController;
+  douyinBridgeController?: DouyinBridgePort;
 };
 
 export function createServer(options: CreateServerOptions = {}): McpServer {

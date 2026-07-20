@@ -63,4 +63,10 @@ describe("DouyinBridgeController", () => {
     await new Promise<void>((resolveClosed) => socket.once("close", () => resolveClosed()));
     await expect(controller.getRuntimeStatus()).rejects.toThrow("not connected");
   });
+
+  test("allows a bounded request timeout suitable for multi-stage CDP actions", () => {
+    expect(() => new DouyinBridgeController(undefined, 45_000)).not.toThrow();
+    expect(() => new DouyinBridgeController(undefined, 999)).toThrow("between 1000 and 60000");
+    expect(() => new DouyinBridgeController(undefined, 60_001)).toThrow("between 1000 and 60000");
+  });
 });

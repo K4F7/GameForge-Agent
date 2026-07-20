@@ -22,6 +22,7 @@ import { createServer } from "./server.js";
 import { McpToolAuditRecorder } from "./tool-audit.js";
 import { loadModelRoutingPolicy } from "./model-routing.js";
 import { DouyinBridgeController } from "./douyin-bridge-controller.js";
+import { DouyinBridgeHostClient } from "./douyin-bridge-host-client.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -65,8 +66,13 @@ const modelRoutingPolicy = await loadModelRoutingPolicy(
     ? defaultModelRoutingPolicy
     : configuredModelRoutingPolicy,
 );
-const douyinBridgeController = new DouyinBridgeController();
-await douyinBridgeController.start();
+const douyinBridgeMode = process.env.GAMEFORGE_DOUYIN_BRIDGE_MODE?.trim() ?? "embedded";
+if (douyinBridgeMode !== "embedded" && douyinBridgeMode !== "host") {
+  throw new Error("GAMEFORGE_DOUYIN_BRIDGE_MODE must be embedded or host.");
+}
+const embeddedDouyinBridgeController = douyinBridgeMode === "embedded" ? new DouyinBridgeController() : undefined;
+await embeddedDouyinBridgeController?.start();
+const douyinBridgeController = embeddedDouyinBridgeController ?? new DouyinBridgeHostClient();
 if (douyinMiniGameCliInput !== undefined && douyinMiniGameCliPath?.length === 0) {
   throw new Error("GAMEFORGE_DOUYIN_MINIGAME_CLI must be unset or contain an absolute regular file path.");
 }
@@ -230,7 +236,7 @@ await server.connect(transport);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
-    void Promise.all([previewManager?.closeAll(), douyinBridgeController.stop()])
+    void Promise.all([previewManager?.closeAll(), embeddedDouyinBridgeController?.stop()])
       .finally(() => process.exit(signal === "SIGINT" ? 130 : 143));
   });
 }
