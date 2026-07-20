@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 
 const PROTOCOL_VERSION = 1;
 const MAX_BUFFER_BYTES = 16_384;
+const DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
 
 export type DouyinRuntimeAction =
   | { action: "reload" | "screenshot" }
@@ -19,7 +20,13 @@ export interface DouyinBridgeControllerStatus {
   workspaceStatus?: Record<string, unknown>;
 }
 
-export class DouyinBridgeController {
+export interface DouyinBridgePort {
+  getStatus(): DouyinBridgeControllerStatus;
+  getRuntimeStatus(): Promise<Record<string, unknown>>;
+  runRuntimeAction(action: DouyinRuntimeAction): Promise<Record<string, unknown>>;
+}
+
+export class DouyinBridgeController implements DouyinBridgePort {
   private server: Server | undefined;
   private socket: Socket | undefined;
   private token: string | undefined;
@@ -30,7 +37,14 @@ export class DouyinBridgeController {
   private requestSequence = 0;
   private readonly pending = new Map<string, { resolve: (value: Record<string, unknown>) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
 
-  constructor(private readonly rendezvousPath = resolve(tmpdir(), "gameforge-douyin-bridge.json")) {}
+  constructor(
+    private readonly rendezvousPath = resolve(tmpdir(), "gameforge-douyin-bridge.json"),
+    private readonly requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  ) {
+    if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 1_000 || requestTimeoutMs > 60_000) {
+      throw new Error("Douyin bridge request timeout must be between 1000 and 60000 milliseconds.");
+    }
+  }
 
   async start(): Promise<void> {
     if (this.server !== undefined) return;
@@ -143,7 +157,7 @@ export class DouyinBridgeController {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
         reject(new Error("Timed out waiting for the Douyin DevTool bridge."));
-      }, 10_000);
+      }, this.requestTimeoutMs);
       this.pending.set(requestId, { resolve: resolveRequest, reject, timer });
     });
     socket.write(`${JSON.stringify({ ...payload, requestId })}\n`);

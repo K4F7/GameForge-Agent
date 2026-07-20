@@ -1,0 +1,169 @@
+{
+  "capturedAt": "2026-07-20T14:12:26.637Z",
+  "runId": "run-douyin-runtime-e2e-20260720141222960",
+  "constraints": {
+    "remoteOperations": "forbidden",
+    "preview": false,
+    "upload": false,
+    "submit": false,
+    "publish": false
+  },
+  "runtimeStatus": {
+    "bridge": {
+      "listening": true,
+      "connected": true,
+      "extensionVersion": "0.1.0",
+      "workspaceStatus": {
+        "type": "status",
+        "protocolVersion": 1,
+        "connected": true,
+        "workspaceFolders": [
+          "d:\\19016\\Documents\\Workload\\GameForge-Agent\\.gameforge-validation\\gameforge-laya-spike\\release\\bytedancegame"
+        ],
+        "capabilities": [
+          "workspace-status",
+          "runtime-status",
+          "runtime-actions"
+        ],
+        "remoteOperations": "forbidden"
+      }
+    },
+    "runtime": {
+      "type": "runtimeStatus",
+      "protocolVersion": 1,
+      "requestId": "mcp-1",
+      "available": true,
+      "target": {
+        "id": "0349AEAEE848DE37E01559368045EA1D",
+        "type": "webview",
+        "title": "MiniApp Webview"
+      },
+      "contextCount": 2,
+      "gameContext": {
+        "readyState": "complete",
+        "canvases": [
+          {
+            "width": 1179,
+            "height": 2556,
+            "clientWidth": 393,
+            "clientHeight": 852
+          }
+        ],
+        "hasTt": true,
+        "hasGameGlobal": true
+      },
+      "viewport": {
+        "offsetX": 0,
+        "offsetY": 0,
+        "pageX": 0,
+        "pageY": 0,
+        "clientWidth": 393,
+        "clientHeight": 852,
+        "scale": 1,
+        "zoom": 1
+      },
+      "remoteOperations": "forbidden"
+    }
+  },
+  "actions": {
+    "tap": {
+      "result": {
+        "type": "runtimeActionResult",
+        "protocolVersion": 1,
+        "requestId": "mcp-2",
+        "action": "tap",
+        "ok": true,
+        "remoteOperations": "forbidden"
+      },
+      "relay": {
+        "accepted": 1,
+        "lastSequence": 2
+      },
+      "replayed": false
+    }
+  },
+  "runtimeStatusAfterAction": {
+    "bridge": {
+      "listening": true,
+      "connected": true,
+      "extensionVersion": "0.1.0",
+      "workspaceStatus": {
+        "type": "status",
+        "protocolVersion": 1,
+        "connected": true,
+        "workspaceFolders": [
+          "d:\\19016\\Documents\\Workload\\GameForge-Agent\\.gameforge-validation\\gameforge-laya-spike\\release\\bytedancegame"
+        ],
+        "capabilities": [
+          "workspace-status",
+          "runtime-status",
+          "runtime-actions"
+        ],
+        "remoteOperations": "forbidden"
+      }
+    },
+    "runtime": {
+      "type": "runtimeStatus",
+      "protocolVersion": 1,
+      "requestId": "mcp-3",
+      "available": true,
+      "target": {
+        "id": "0349AEAEE848DE37E01559368045EA1D",
+        "type": "webview",
+        "title": "MiniApp Webview"
+      },
+      "contextCount": 2,
+      "gameContext": {
+        "readyState": "complete",
+        "canvases": [
+          {
+            "width": 1179,
+            "height": 2556,
+            "clientWidth": 393,
+            "clientHeight": 852
+          }
+        ],
+        "hasTt": true,
+        "hasGameGlobal": true
+      },
+      "viewport": {
+        "offsetX": 0,
+        "offsetY": 0,
+        "pageX": 0,
+        "pageY": 0,
+        "clientWidth": 393,
+        "clientHeight": 852,
+        "scale": 1,
+        "zoom": 1
+      },
+      "remoteOperations": "forbidden"
+    }
+  },
+  "replay": {
+    "runId": "run-douyin-runtime-e2e-20260720141222960",
+    "after": 0,
+    "events": [
+      {
+        "runId": "run-douyin-runtime-e2e-20260720141222960",
+        "sequence": 1,
+        "emittedAt": "2026-07-20T14:12:26.306Z",
+        "type": "run.started"
+      },
+      {
+        "runId": "run-douyin-runtime-e2e-20260720141222960",
+        "sequence": 2,
+        "emittedAt": "2026-07-20T14:12:26.471Z",
+        "type": "log.appended",
+        "source": "test",
+        "level": "info",
+        "message": "Douyin Runtime action tap (run-douyin-runtime-e2e-20260720141222960-tap) completed."
+      },
+      {
+        "runId": "run-douyin-runtime-e2e-20260720141222960",
+        "sequence": 3,
+        "emittedAt": "2026-07-20T14:12:26.632Z",
+        "type": "run.completed"
+      }
+    ]
+  }
+}

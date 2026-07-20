@@ -87,7 +87,7 @@ $env:GAMEFORGE_RUN_RELAY_STATE_FILE="D:\GameForgeState\relay-state.json"
 bun run dev:local
 ```
 
-`dev:local` 使用 Bun 并行启动示例游戏、Workbench 和 Run Relay，不启动 stdio MCP。然后在 CodeArts IDE 中依次进入“设置 → MCP工具 → 配置MCP”，打开官方 `mcp_settings.json`。根据官方 `mcpServers` 通用模板添加以下配置；把两个示例绝对路径替换为本机路径，Windows JSON 路径中的反斜杠必须写成 `\\`：
+`dev:local` 使用 Bun 并行启动示例游戏、Workbench、Run Relay 和持久 Douyin Bridge Host，不启动 stdio MCP。然后在 CodeArts IDE 中依次进入“设置 → MCP工具 → 配置MCP”，打开官方 `mcp_settings.json`。根据官方 `mcpServers` 通用模板添加以下配置；把两个示例绝对路径替换为本机路径，Windows JSON 路径中的反斜杠必须写成 `\\`：
 
 ```json
 {
@@ -101,12 +101,15 @@ bun run dev:local
         "GAMEFORGE_PROJECT_OUTPUT_ROOT": "D:\\GameForgeGenerated",
         "GAMEFORGE_LAYAIR_CLI": "C:\\Users\\you\\.layaair\\layaair.cmd",
         "GAMEFORGE_RUN_RELAY_URL": "http://127.0.0.1:8787/",
+        "GAMEFORGE_DOUYIN_BRIDGE_MODE": "host",
         "GAMEFORGE_MCP_AUDIT_DIR": "D:\\GameForgeAudit"
       }
     }
   }
 }
 ```
+
+`host` 模式让 CodeArts 的 stdio MCP 通过 `%TEMP%/gameforge-douyin-bridge-host.json` 中的本地随机端口和 token 访问持久 Bridge Host。该文件只用于本机进程认证，不纳入仓库；MCP 会话退出不会关闭 DevTool 连接。未设置该变量时继续使用兼容的 `embedded` 模式，controller 生命周期仍跟随单个 MCP 进程。
 
 `GAMEFORGE_LAYAIR_CLI` 必须是固定 LayaAir 3.4.0 CLI 的绝对普通文件路径。官方 `dispatcher.js`、`layaair.cmd`、`layaair` 或 `Resources/cli-main.js` 入口只用于定位安装：Builder 核验 `versions.json`、`Resources/package.json` 与固定的 `Resources/cli-main.js` 后，以当前 Node、`shell: false` 和受限环境直接运行主入口，不执行 `.cmd` wrapper，也不继承用户 PATH 或凭据。与项目输出根同时配置后，MCP 同时注册 `build_douyin_mini_game` 与 `build_wechat_mini_game`，只对 target 匹配的托管 Manifest 分别执行一次固定 `bytedancegame` 或 `wxgame` 构建并离线校验；不接受任意命令/参数，不登录、预览、上传、提审或发布。CLI 缺失、版本不符、并发锁、超时、非零退出、路径/符号链接异常或包体校验失败都返回稳定错误。
 
