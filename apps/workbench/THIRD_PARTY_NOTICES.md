@@ -1,16 +1,14 @@
-# Third-party notices
+# 第三方声明
 
 ## OpenChamber
 
-The Workbench runtime header, Task/Run navigation structure, and warm design
-tokens are adapted from OpenChamber commit
+Workbench 运行时顶栏、Task/Run 导航结构及暖色设计令牌改写自 OpenChamber 提交
 `31b43fbde90d368c5d131ec52e761d888466d597`.
 
-- Source: <https://github.com/btriapitsyn/openchamber>
-- Evaluated commit: <https://github.com/btriapitsyn/openchamber/commit/31b43fbde90d368c5d131ec52e761d888466d597>
-- License: MIT
+- 来源：<https://github.com/btriapitsyn/openchamber>
+- 评估提交：<https://github.com/btriapitsyn/openchamber/commit/31b43fbde90d368c5d131ec52e761d888466d597>
+- 许可证：MIT
 - Copyright (c) 2025 Bohdan Triapitsyn
 
-The OpenCode SDK, session model, Electron shell, PTY, Git/SSH, tunnel, and
-credential-management code are not included. GameForge continues to use its
-own Task, RunEvent, Relay, Manifest, and Audit contracts.
+GameForge 未引入 OpenCode SDK、会话模型、Electron 壳、PTY、Git/SSH、隧道及凭据管理代码，
+继续使用自有的 Task、RunEvent、Relay、Manifest 和 Audit 契约。

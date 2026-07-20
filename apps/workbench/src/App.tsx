@@ -355,7 +355,7 @@ export function App(): React.JSX.Element {
     if (agentBaseUrl === null || taskHistoryBootstrapRef.current) return;
     taskHistoryBootstrapRef.current = true;
     void refreshTaskHistory();
-  }, []);
+  }, [agentBaseUrl]);
 
   useEffect(() => () => {
     if (timerRef.current !== null) {
