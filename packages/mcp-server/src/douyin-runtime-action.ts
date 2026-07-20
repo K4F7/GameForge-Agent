@@ -5,10 +5,11 @@ export interface DouyinRuntimeActionRunContext { runId: string; after: number }
 
 export class DouyinRuntimeActionCoordinator {
   private readonly actions = new Map<string, { fingerprint: string; result: Promise<Record<string, unknown>> }>();
+  private readonly publications = new Map<string, { fingerprint: string; result: Promise<{ accepted: number; lastSequence?: number }> }>();
 
   constructor(
     private readonly controller: Pick<DouyinBridgeController, "runRuntimeAction">,
-    private readonly relay?: Pick<RunRelayToolClient, "publishEvents">,
+    private readonly relay?: Pick<RunRelayToolClient, "publishEvents" | "replayEvents">,
   ) {}
 
   async execute(actionId: string, action: DouyinRuntimeAction, run?: DouyinRuntimeActionRunContext): Promise<{
@@ -34,10 +35,14 @@ export class DouyinRuntimeActionCoordinator {
     }
     const result = await resultPromise;
     if (run === undefined) return { result, replayed };
-    const relay = await this.relay!.publishEvents({
-      runId: run.runId,
-      after: run.after,
-      events: [{
+    const publicationFingerprint = `${run.runId}:${run.after}`;
+    const existingPublication = this.publications.get(actionId);
+    if (existingPublication !== undefined && existingPublication.fingerprint !== publicationFingerprint) {
+      throw new Error("actionId is already bound to a different Run Relay cursor.");
+    }
+    let publicationPromise = existingPublication?.result;
+    if (publicationPromise === undefined) {
+      const event = {
         type: "log.appended",
         runId: run.runId,
         sequence: run.after + 1,
@@ -45,8 +50,21 @@ export class DouyinRuntimeActionCoordinator {
         source: "test",
         level: result.ok === false ? "error" : "info",
         message: `Douyin Runtime action ${action.action} (${actionId}) ${result.ok === false ? "failed" : "completed"}.`,
-      }],
-    });
+      } as const;
+      publicationPromise = this.relay!.publishEvents({ runId: run.runId, after: run.after, events: [event] })
+        .catch(async (error) => {
+          const replay = await this.relay!.replayEvents({ runId: run.runId, after: run.after });
+          const committed = replay.events.some((candidate) =>
+            candidate.sequence === event.sequence && candidate.type === "log.appended" && candidate.message === event.message);
+          if (committed) return { accepted: 1, lastSequence: event.sequence };
+          throw error;
+        });
+      this.publications.set(actionId, { fingerprint: publicationFingerprint, result: publicationPromise });
+      void publicationPromise.catch(() => {
+        if (this.publications.get(actionId)?.result === publicationPromise) this.publications.delete(actionId);
+      });
+    }
+    const relay = await publicationPromise;
     return { result, relay, replayed };
   }
 }

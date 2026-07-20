@@ -16,6 +16,7 @@ describe("DouyinRuntimeActionCoordinator", () => {
         if (publications === 1) throw new Error("relay unavailable");
         return { accepted: batch.events.length, lastSequence: batch.after + 1 };
       },
+      async replayEvents(input) { return { runId: input.runId, after: input.after, events: [] }; },
     });
     const run = { runId: "run-douyin-action", after: 3 };
     await expect(coordinator.execute("action-0001", { action: "reload" }, run)).rejects.toThrow("relay unavailable");
@@ -25,6 +26,41 @@ describe("DouyinRuntimeActionCoordinator", () => {
     });
     expect(actions).toBe(1);
     expect(publications).toBe(2);
+  });
+
+  test("shares one publication and reconciles a committed event after a lost response", async () => {
+    let actions = 0;
+    let publications = 0;
+    let replays = 0;
+    const coordinator = new DouyinRuntimeActionCoordinator({
+      async runRuntimeAction() { actions += 1; return { action: "reload", ok: true }; },
+    }, {
+      async publishEvents() { publications += 1; throw new Error("response lost"); },
+      async replayEvents(input) {
+        replays += 1;
+        return {
+          runId: input.runId,
+          after: input.after,
+          events: [{
+            type: "log.appended" as const,
+            runId: input.runId,
+            sequence: input.after + 1,
+            emittedAt: "2026-07-20T12:00:00Z",
+            source: "test" as const,
+            level: "info" as const,
+            message: "Douyin Runtime action reload (action-0004) completed.",
+          }],
+        };
+      },
+    });
+    const run = { runId: "run-douyin-action", after: 7 };
+    const [first, second] = await Promise.all([
+      coordinator.execute("action-0004", { action: "reload" }, run),
+      coordinator.execute("action-0004", { action: "reload" }, run),
+    ]);
+    expect(first.relay).toEqual({ accepted: 1, lastSequence: 8 });
+    expect(second.relay).toEqual({ accepted: 1, lastSequence: 8 });
+    expect({ actions, publications, replays }).toEqual({ actions: 1, publications: 1, replays: 1 });
   });
 
   test("rejects reuse of one actionId for a different payload", async () => {
