@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { BRIDGE_PROTOCOL_VERSION } from "./protocol.js";
 
@@ -21,13 +22,26 @@ async function main(): Promise<void> {
   const temporaryRoot = await mkdtemp(resolve(tmpdir(), "gameforge-douyin-extension-smoke-"));
   const userDataDirectory = resolve(temporaryRoot, "user-data");
   const extensionsDirectory = resolve(temporaryRoot, "extensions");
-  const installedExtensionDirectory = resolve(extensionsDirectory, "gameforge.douyin-devtool-extension-0.1.0");
+  const installedExtensionDirectory = resolve(
+    extensionsDirectory,
+    "gameforge.gameforge-douyin-devtool-extension-0.1.0",
+  );
   const token = randomBytes(32).toString("hex");
   const useExistingProfile = process.env.GAMEFORGE_DOUYIN_SMOKE_USE_EXISTING_PROFILE === "1";
   const installedExtensionsDirectory = process.env.GAMEFORGE_DOUYIN_SMOKE_EXTENSIONS_DIR;
   await mkdir(installedExtensionDirectory, { recursive: true });
   await cp(resolve(extensionRoot, "package.json"), resolve(installedExtensionDirectory, "package.json"));
   await cp(resolve(extensionRoot, "dist"), resolve(installedExtensionDirectory, "dist"), { recursive: true });
+  await cp(resolve(extensionRoot, "README.md"), resolve(installedExtensionDirectory, "README.md"));
+  await cp(
+    resolve(extensionRoot, "THIRD_PARTY_NOTICES.md"),
+    resolve(installedExtensionDirectory, "THIRD_PARTY_NOTICES.md"),
+  );
+  await writeFile(
+    resolve(extensionsDirectory, "extensions.json"),
+    JSON.stringify([createExtensionRegistryEntry(installedExtensionDirectory)]),
+    "utf8",
+  );
 
   const result = await new Promise<{ hello: Record<string, unknown>; status: Record<string, unknown> }>(
     (resolveResult, reject) => {
@@ -36,6 +50,21 @@ async function main(): Promise<void> {
       let status: Record<string, unknown> | undefined;
       let buffer = "";
       let settled = false;
+      const finish = (value: { hello: Record<string, unknown>; status: Record<string, unknown> }): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        server.close();
+        terminateProcessTree(child).finally(() => resolveResult(value));
+      };
+      const fail = (error: unknown): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        server.close();
+        const failure = error instanceof Error ? error : new Error(String(error));
+        terminateProcessTree(child).finally(() => reject(failure));
+      };
       const server = createServer((socket) => {
         socket.setEncoding("utf8");
         socket.on("data", (chunk) => {
@@ -43,42 +72,44 @@ async function main(): Promise<void> {
           const lines = buffer.split("\n");
           buffer = lines.pop() ?? "";
           for (const line of lines) {
-            const parsed = JSON.parse(line) as Record<string, unknown>;
+            let parsed: Record<string, unknown>;
+            try {
+              const value = JSON.parse(line) as unknown;
+              if (typeof value !== "object" || value === null || Array.isArray(value)) {
+                throw new Error("The extension smoke probe received a non-object handshake message.");
+              }
+              parsed = value as Record<string, unknown>;
+            } catch (error) {
+              fail(new Error(`The extension smoke probe received invalid JSON: ${error instanceof Error ? error.message : String(error)}`));
+              return;
+            }
             if (parsed.type === "hello") hello = parsed;
             if (parsed.type === "status") status = parsed;
-            if (!settled && hello !== undefined && status !== undefined) {
-              settled = true;
-              clearTimeout(timeout);
-              server.close();
-              terminateProcessTree(child).finally(() => resolveResult({ hello: hello!, status: status! }));
-            }
+            if (hello !== undefined && status !== undefined) finish({ hello, status });
+          }
+        });
+        socket.once("error", fail);
+        socket.once("end", () => {
+          if (!settled && (hello === undefined || status === undefined)) {
+            fail(new Error("The extension bridge socket closed before the handshake completed."));
           }
         });
       });
 
       const timeout = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        server.close();
-        terminateProcessTree(child).finally(() =>
-          reject(new Error("Timed out waiting for the Douyin DevTool extension handshake.")),
-        );
+        fail(new Error("Timed out waiting for the Douyin DevTool extension handshake."));
       }, 30_000);
       timeout.unref();
 
-      server.on("error", reject);
+      server.on("error", fail);
       server.listen(0, "127.0.0.1", () => {
         const address = server.address();
         if (address === null || typeof address === "string") {
-          reject(new Error("Failed to allocate the local bridge port."));
+          fail(new Error("Failed to allocate the local bridge port."));
           return;
         }
         const profileArguments = useExistingProfile
-          ? [
-              ...(installedExtensionsDirectory === undefined
-                ? []
-                : [`--extensions-dir=${resolve(installedExtensionsDirectory)}`]),
-            ]
+          ? [`--extensions-dir=${resolve(installedExtensionsDirectory ?? extensionsDirectory)}`]
           : [`--user-data-dir=${userDataDirectory}`, `--extensions-dir=${extensionsDirectory}`];
         child = spawn(executable, [cliEntry, ...profileArguments, "--preserve-env", "--new-window", "--wait", workspaceRoot], {
           env: {
@@ -92,7 +123,12 @@ async function main(): Promise<void> {
           windowsHide: true,
           cwd: dirname(executable),
         });
-        child.once("error", reject);
+        child.once("error", fail);
+        child.once("exit", (code) => {
+          if (!settled && code !== 0) {
+            fail(new Error(`The Douyin DevTool smoke process exited before handshake (code ${String(code)}).`));
+          }
+        });
       });
     },
   ).finally(async () => {
@@ -124,6 +160,30 @@ async function main(): Promise<void> {
       remoteOperations: result.status.remoteOperations,
     })}\n`,
   );
+}
+
+function createExtensionRegistryEntry(extensionDirectory: string): Record<string, unknown> {
+  const extensionUri = pathToFileURL(extensionDirectory);
+  return {
+    identifier: { id: "gameforge.gameforge-douyin-devtool-extension" },
+    version: "0.1.0",
+    location: {
+      $mid: 1,
+      fsPath: extensionDirectory,
+      external: extensionUri.href,
+      path: extensionUri.pathname,
+      scheme: "file",
+    },
+    relativeLocation: "gameforge.gameforge-douyin-devtool-extension-0.1.0",
+    metadata: {
+      isApplicationScoped: false,
+      isMachineScoped: false,
+      isBuiltin: false,
+      installedTimestamp: Date.now(),
+      pinned: true,
+      source: "vsix",
+    },
+  };
 }
 
 async function terminateProcessTree(child: ReturnType<typeof spawn> | undefined): Promise<void> {

@@ -20,8 +20,10 @@
     "dist/extension.js",
     "dist/bridge-connection-manager.js",
     "dist/bridge-client.js",
+    "dist/cdp-client.js",
     "dist/protocol.js",
     "dist/runtime-probe.js",
+    "THIRD_PARTY_NOTICES.md",
     "README.md"
   ],
   "contributes": {
@@ -65,15 +67,21 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node18 --external:vscode --legal-comments=eof --outfile=dist/extension.js",
     "check": "tsc --noEmit",
     "test": "vitest run src",
     "smoke": "bun src/smoke.ts",
     "runtime-smoke": "bun src/runtime-smoke.ts"
   },
+  "dependencies": {
+    "chrome-remote-interface": "0.34.0"
+  },
   "devDependencies": {
+    "@types/chrome-remote-interface": "0.34.0",
     "@types/node": "22.20.1",
     "@types/vscode": "1.59.0",
+    "devtools-protocol": "0.0.1663043",
+    "esbuild": "0.25.12",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
   }
