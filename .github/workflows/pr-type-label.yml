@@ -11,7 +11,9 @@ concurrency:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  # PR labels can require pull-request write permission even though the REST
+  # endpoint is exposed under issues. Keep both explicit for the job token.
+  pull-requests: write
 
 jobs:
   label:
