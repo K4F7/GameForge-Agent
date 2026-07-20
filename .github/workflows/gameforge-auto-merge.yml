@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   checks: read
   pull-requests: write
 
@@ -112,7 +112,7 @@ jobs:
               return;
             }
 
-            const query = "query($owner: String!, $repo: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { id headRefOid reviewDecision mergeable autoMergeRequest { enabledAt } reviewThreads(first: 100, after: $cursor) { nodes { isResolved } pageInfo { hasNextPage endCursor } } } } }";
+            const query = "query($owner: String!, $repo: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { id headRefOid reviewDecision mergeable mergeStateStatus autoMergeRequest { enabledAt } reviewThreads(first: 100, after: $cursor) { nodes { isResolved } pageInfo { hasNextPage endCursor } } } } }";
             let cursor = null;
             let pullRequest = null;
             let unresolved = 0;
@@ -148,6 +148,22 @@ jobs:
             }
             if (pullRequest.autoMergeRequest) {
               core.notice("PR #" + pull_number + " already has auto-merge enabled.");
+              return;
+            }
+
+            if (pullRequest.mergeStateStatus === "CLEAN") {
+              const { data: mergeResult } = await github.rest.pulls.merge({
+                owner,
+                repo,
+                pull_number,
+                sha: pr.head.sha,
+                merge_method: "squash",
+              });
+              if (!mergeResult.merged) {
+                core.setFailed("GitHub declined the guarded squash merge for PR #" + pull_number + ": " + (mergeResult.message ?? "unknown reason"));
+                return;
+              }
+              core.notice("Squash merged clean PR #" + pull_number + " at " + pr.head.sha + ".");
               return;
             }
 
