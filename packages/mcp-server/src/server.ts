@@ -90,6 +90,7 @@ import {
   type LayaGameplayVerifier,
 } from "./tools.js";
 import type { ToolAuditContextBinder, ToolAuditRecorder } from "./tool-audit.js";
+import type { DouyinBridgeController, DouyinRuntimeAction } from "./douyin-bridge-controller.js";
 
 export type CreateServerOptions = {
   gameSpecDraftProvider?: GameSpecDraftProvider;
@@ -110,6 +111,7 @@ export type CreateServerOptions = {
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
   toolAudit?: ToolAuditRecorder & Partial<ToolAuditContextBinder>;
   modelRoutingPolicy?: ModelRoutingPolicy;
+  douyinBridgeController?: DouyinBridgeController;
 };
 
 export function createServer(options: CreateServerOptions = {}): McpServer {
@@ -167,6 +169,77 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     },
     async () => getGameforgeCapabilitiesTool(capabilitySnapshot),
   );
+
+  if (options.douyinBridgeController !== undefined) {
+    const controller = options.douyinBridgeController;
+    registerTool(
+      "get_douyin_devtool_runtime_status",
+      {
+        title: "Inspect the connected Douyin DevTool Runtime",
+        description: "Read the authenticated local MiniApp Runtime status through the loopback bridge. This never previews, uploads, submits, publishes, or accepts JavaScript.",
+        inputSchema: {},
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+      async () => {
+        try {
+          const runtime = await controller.getRuntimeStatus();
+          return { content: [{ type: "text", text: JSON.stringify({ bridge: controller.getStatus(), runtime }, null, 2) }] };
+        } catch (error) {
+          return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: "douyin_bridge_unavailable", message: error instanceof Error ? error.message : String(error), bridge: controller.getStatus() }) }] };
+        }
+      },
+    );
+    registerTool(
+      "run_douyin_runtime_action",
+      {
+        title: "Run one bounded Douyin simulator action",
+        description: "Run exactly one fixed local Runtime action: reload, screenshot evidence, bounded console collection, or viewport-validated tap. No arbitrary JavaScript or remote platform operation is exposed.",
+        inputSchema: {
+          action: z.enum(["reload", "screenshot", "tap", "collectConsole"]),
+          x: z.number().finite().min(0).max(4_096).optional(),
+          y: z.number().finite().min(0).max(4_096).optional(),
+          durationMs: z.number().int().min(0).max(5_000).optional(),
+          runId: runIdSchema.optional(),
+          after: z.number().int().min(0).optional(),
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      },
+      async ({ action, x, y, durationMs, runId, after }) => {
+        let request: DouyinRuntimeAction;
+        if (action === "tap") {
+          if (x === undefined || y === undefined) return { isError: true, content: [{ type: "text", text: "tap requires x and y." }] };
+          request = { action, x, y };
+        } else if (action === "collectConsole") {
+          request = { action, durationMs: durationMs ?? 500 };
+        } else request = { action };
+        try {
+          const result = await controller.runRuntimeAction(request);
+          let relay: { accepted: number; lastSequence?: number } | undefined;
+          if (runId !== undefined || after !== undefined) {
+            if (runId === undefined || after === undefined || options.runRelayClient === undefined) {
+              return { isError: true, content: [{ type: "text", text: "runId and after require a configured Run Relay and must be supplied together." }] };
+            }
+            relay = await options.runRelayClient.publishEvents({
+              runId,
+              after,
+              events: [{
+                type: "log.appended",
+                runId,
+                sequence: after + 1,
+                emittedAt: new Date().toISOString(),
+                source: "test",
+                level: result.ok === false ? "error" : "info",
+                message: `Douyin Runtime action ${action} ${result.ok === false ? "failed" : "completed"}.`,
+              }],
+            });
+          }
+          return { content: [{ type: "text", text: JSON.stringify({ result, ...(relay === undefined ? {} : { relay }) }, null, 2) }] };
+        } catch (error) {
+          return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: "douyin_runtime_action_failed", message: error instanceof Error ? error.message : String(error) }) }] };
+        }
+      },
+    );
+  }
 
   if (options.modelRoutingPolicy !== undefined) {
     registerTool(

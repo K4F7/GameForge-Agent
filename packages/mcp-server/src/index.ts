@@ -21,6 +21,7 @@ import { RunRelayClient } from "@gameforge/run-relay/client";
 import { createServer } from "./server.js";
 import { McpToolAuditRecorder } from "./tool-audit.js";
 import { loadModelRoutingPolicy } from "./model-routing.js";
+import { DouyinBridgeController } from "./douyin-bridge-controller.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -64,6 +65,8 @@ const modelRoutingPolicy = await loadModelRoutingPolicy(
     ? defaultModelRoutingPolicy
     : configuredModelRoutingPolicy,
 );
+const douyinBridgeController = new DouyinBridgeController();
+await douyinBridgeController.start();
 if (douyinMiniGameCliInput !== undefined && douyinMiniGameCliPath?.length === 0) {
   throw new Error("GAMEFORGE_DOUYIN_MINIGAME_CLI must be unset or contain an absolute regular file path.");
 }
@@ -136,6 +139,7 @@ if (minimaxApiKey !== undefined && minimaxApiKey.length > 0) {
 }
 const server = createServer({
   modelRoutingPolicy,
+  douyinBridgeController,
   ...(toolAudit === undefined ? {} : { toolAudit }),
   ...(bailianApiKey === undefined || bailianApiKey.length === 0
     ? {}
@@ -226,6 +230,7 @@ await server.connect(transport);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
-    void previewManager?.closeAll().finally(() => process.exit(signal === "SIGINT" ? 130 : 143));
+    void Promise.all([previewManager?.closeAll(), douyinBridgeController.stop()])
+      .finally(() => process.exit(signal === "SIGINT" ? 130 : 143));
   });
 }
