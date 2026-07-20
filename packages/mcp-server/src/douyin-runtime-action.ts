@@ -4,7 +4,7 @@ import type { DouyinBridgeController, DouyinRuntimeAction } from "./douyin-bridg
 export interface DouyinRuntimeActionRunContext { runId: string; after: number }
 
 export class DouyinRuntimeActionCoordinator {
-  private readonly results = new Map<string, Record<string, unknown>>();
+  private readonly actions = new Map<string, { fingerprint: string; result: Promise<Record<string, unknown>> }>();
 
   constructor(
     private readonly controller: Pick<DouyinBridgeController, "runRuntimeAction">,
@@ -17,13 +17,22 @@ export class DouyinRuntimeActionCoordinator {
     replayed: boolean;
   }> {
     if (run !== undefined && this.relay === undefined) throw new Error("A configured Run Relay is required when runId and after are supplied.");
-    const cached = this.results.get(actionId);
-    const replayed = cached !== undefined;
-    const result = cached ?? await this.controller.runRuntimeAction(action);
-    if (!replayed) {
-      if (this.results.size >= 256) this.results.delete(this.results.keys().next().value as string);
-      this.results.set(actionId, result);
+    const fingerprint = JSON.stringify(action);
+    const existing = this.actions.get(actionId);
+    if (existing !== undefined && existing.fingerprint !== fingerprint) {
+      throw new Error("actionId is already bound to a different Douyin Runtime action.");
     }
+    const replayed = existing !== undefined;
+    let resultPromise = existing?.result;
+    if (resultPromise === undefined) {
+      if (this.actions.size >= 256) this.actions.delete(this.actions.keys().next().value as string);
+      resultPromise = this.controller.runRuntimeAction(action);
+      this.actions.set(actionId, { fingerprint, result: resultPromise });
+      void resultPromise.catch(() => {
+        if (this.actions.get(actionId)?.result === resultPromise) this.actions.delete(actionId);
+      });
+    }
+    const result = await resultPromise;
     if (run === undefined) return { result, replayed };
     const relay = await this.relay!.publishEvents({
       runId: run.runId,
