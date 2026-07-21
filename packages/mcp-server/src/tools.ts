@@ -28,6 +28,7 @@ import type {
   StopGamePreviewResult,
   VerifyGameRequest,
   VerificationReport,
+  OrderCollectWebVerificationReport,
 } from "@gameforge/game-verifier";
 import type {
   ProjectGenerationRequest,
@@ -50,6 +51,11 @@ import type {
   WechatMiniGameBuildResult,
 } from "@gameforge/minigame-validator";
 import type { LayaGameplayVerificationReport } from "@gameforge/generator";
+import {
+  compareOrderCollectTelemetry,
+  type OrderCollectTelemetry,
+  type OrderCollectTelemetryComparison,
+} from "@gameforge/simulation-core";
 
 function validationResult(
   schema: ZodType,
@@ -542,7 +548,107 @@ async function ttsResult(operation: () => Promise<unknown>): Promise<CallToolRes
 
 export type ProjectVerifier = {
   verify(request: VerifyGameRequest): Promise<VerificationReport>;
+  verifyOrderCollectDualTerminal?(projectId: string): Promise<OrderCollectWebVerificationReport>;
 };
+
+export async function verifyOrderCollectWebGameplayTool(
+  verifier: ProjectVerifier,
+  projectId: string,
+): Promise<CallToolResult> {
+  if (verifier.verifyOrderCollectDualTerminal === undefined) {
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify({ error: "order_collect_verifier_unavailable" }) }],
+    };
+  }
+  try {
+    const report = await verifier.verifyOrderCollectDualTerminal(projectId);
+    return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
+  } catch (error) {
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify({
+        error: "order_collect_web_verification_failed",
+        message: error instanceof Error ? error.message : "Order-collect Web verification failed.",
+      }) }],
+    };
+  }
+}
+
+export type OrderCollectCrossRuntimeVerificationReport = Readonly<{
+  passed: boolean;
+  webProjectId: string;
+  miniGameProjectId: string;
+  remainingMsTolerance: number;
+  comparisons: Readonly<{
+    win: OrderCollectTelemetryComparison;
+    livesDepletedLoss: OrderCollectTelemetryComparison;
+  }>;
+  web: OrderCollectWebVerificationReport;
+  miniGame: LayaGameplayVerificationReport;
+}>;
+
+export async function verifyOrderCollectCrossRuntimeTool(
+  webVerifier: ProjectVerifier,
+  miniGameVerifier: LayaGameplayVerifier,
+  input: Readonly<{ webProjectId: string; miniGameProjectId: string; remainingMsTolerance: number }>,
+): Promise<CallToolResult> {
+  if (webVerifier.verifyOrderCollectDualTerminal === undefined) {
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify({ error: "order_collect_verifier_unavailable" }) }],
+    };
+  }
+  try {
+    const [web, miniGame] = await Promise.all([
+      webVerifier.verifyOrderCollectDualTerminal(input.webProjectId),
+      miniGameVerifier.verify(input.miniGameProjectId),
+    ]);
+    const webWin = requireOrderCollectTelemetry(web.win.state.simulation, "Web win");
+    const webLoss = requireOrderCollectTelemetry(web.loss.state.simulation, "Web lives-depleted loss");
+    const miniGameWin = requireOrderCollectTelemetry(
+      miniGame.scenarios.find((scenario) => scenario.name === "genre-win")?.telemetry,
+      "Mini-game win",
+    );
+    const miniGameLoss = requireOrderCollectTelemetry(
+      miniGame.scenarios.find((scenario) => scenario.name === "lives-depleted-loss")?.telemetry,
+      "Mini-game lives-depleted loss",
+    );
+    const comparisons = {
+      win: compareOrderCollectTelemetry(webWin, miniGameWin, { remainingMsTolerance: input.remainingMsTolerance }),
+      livesDepletedLoss: compareOrderCollectTelemetry(webLoss, miniGameLoss, { remainingMsTolerance: input.remainingMsTolerance }),
+    };
+    const report: OrderCollectCrossRuntimeVerificationReport = {
+      passed: comparisons.win.matched && comparisons.livesDepletedLoss.matched,
+      webProjectId: input.webProjectId,
+      miniGameProjectId: input.miniGameProjectId,
+      remainingMsTolerance: input.remainingMsTolerance,
+      comparisons,
+      web,
+      miniGame,
+    };
+    return {
+      ...(report.passed ? {} : { isError: true }),
+      content: [{ type: "text", text: JSON.stringify(report, null, 2) }],
+    };
+  } catch (error) {
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify({
+        error: "order_collect_cross_runtime_verification_failed",
+        message: error instanceof Error ? error.message : "Order-collect cross-runtime verification failed.",
+      }) }],
+    };
+  }
+}
+
+function requireOrderCollectTelemetry(
+  telemetry: OrderCollectTelemetry | undefined,
+  scenario: string,
+): OrderCollectTelemetry {
+  if (telemetry === undefined) throw new Error(`${scenario} did not expose canonical SimulationCore telemetry.`);
+  return telemetry;
+}
 
 export async function verifyGameProjectTool(
   verifier: ProjectVerifier,

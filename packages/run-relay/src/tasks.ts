@@ -46,7 +46,8 @@ export class TaskInbox {
       const existing = this.#tasks.get(existingTaskId);
       if (existing === undefined) throw new Error("Task inbox run index is inconsistent.");
       if (existing.prompt !== request.prompt || existing.language !== request.language ||
-          existing.projectId !== request.projectId) {
+          existing.projectId !== request.projectId ||
+          existing.requestedSpecialists.join("\0") !== request.requestedSpecialists.join("\0")) {
         throw new TaskInboxError(
           409,
           "task_run_conflict",
@@ -65,6 +66,7 @@ export class TaskInbox {
       prompt: request.prompt,
       language: request.language,
       ...(request.projectId === undefined ? {} : { projectId: request.projectId }),
+      requestedSpecialists: request.requestedSpecialists,
       status: "queued",
       createdAt: new Date().toISOString(),
     });
@@ -168,5 +170,5 @@ export class TaskInbox {
 }
 
 function clone(task: GameTask): GameTask {
-  return { ...task };
+  return { ...task, requestedSpecialists: [...task.requestedSpecialists] };
 }

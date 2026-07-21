@@ -78,7 +78,7 @@ describe("run event client", () => {
     expect(fetchMock.mock.calls[0]?.[1]?.body).toContain('"projectId":"safety-game"');
   });
 
-  it("lists bounded authoritative task history", async () => {
+  it("lists bounded authoritative task history and normalizes legacy specialist metadata", async () => {
     const task = {
       taskId: "task-00000000-0000-0000-0000-000000000000",
       runId: "run-history",
@@ -99,7 +99,7 @@ describe("run event client", () => {
       baseUrl: "http://127.0.0.1:8787/",
       limit: 20,
       fetch: fetchMock,
-    })).resolves.toEqual([task]);
+    })).resolves.toEqual([{ ...task, requestedSpecialists: [] }]);
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://127.0.0.1:8787/tasks?limit=20");
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ headers: { Accept: "application/json" } });
   });

@@ -9,6 +9,7 @@ import {
   toRunEvent,
   type RunEvent,
   type GameTask,
+  type GameTaskSpecialist,
 } from "@gameforge/contracts";
 import {
   recoverRunEvents,
@@ -33,6 +34,7 @@ export type CreateGameTaskOptions = CreateRunOptions & {
   prompt: string;
   language?: "zh-CN" | "en-US";
   projectId?: string;
+  requestedSpecialists?: ReadonlyArray<GameTaskSpecialist>;
 };
 
 export type ListGameTasksOptions = {
@@ -63,6 +65,7 @@ export async function createGameTask(options: CreateGameTaskOptions): Promise<{
     prompt: options.prompt,
     ...(options.language === undefined ? {} : { language: options.language }),
     ...(options.projectId === undefined ? {} : { projectId: options.projectId }),
+    ...(options.requestedSpecialists === undefined ? {} : { requestedSpecialists: options.requestedSpecialists }),
   });
   const response = await (options.fetch ?? globalThis.fetch)(new URL("tasks", baseUrl), {
     method: "POST",

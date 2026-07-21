@@ -63,6 +63,11 @@ describe("terminal run summary", () => {
     expect(formatSummary(summary!)).toContain("Douyin build: LayaAir 3.4.0 portrait files=16");
     expect(formatSummary(summary!)).toContain("Verification: passed won score=2 lives=3");
     expect(formatSummary(summary!)).toContain("Logic proof: douyin-mini-game arcade won(2) lost(1) 42ms [no-render]");
+    expect(formatSummary(summary!)).toContain("Web Preview: pending");
+    expect(formatSummary(summary!)).toContain("Web Visual Verification: passed");
+    expect(formatSummary(summary!)).toContain("Mini-game Logic: passed [no-render]");
+    expect(formatSummary(summary!)).toContain("Douyin Build: passed");
+    expect(formatSummary(summary!)).toContain("Douyin DevTool: not-run");
     expect(formatSummary(summary!)).toContain(`Handoff: sha256=${"f".repeat(64)} remote=forbidden devtool=not-run`);
     const wechat = summarizeRun(events.map((event) => event.type === "build.ready"
       ? { ...event, target: "wechat-mini-game" as const }
@@ -88,5 +93,17 @@ describe("terminal run summary", () => {
     ]);
     expect(summary?.build).toMatchObject({ projectId: "legacy-game", fileCount: 2 });
     expect(formatSummary(summary!)).not.toContain("Handoff:");
+  });
+
+  it("projects explicit failure and DevTool connection states independently", () => {
+    const summary = summarizeRun([
+      { type: "run.started", runId: "status-run", sequence: 1, emittedAt },
+      { type: "evidence.status", runId: "status-run", sequence: 2, emittedAt, surface: "web-preview", status: "failed" },
+      { type: "douyin.devtool.status", runId: "status-run", sequence: 3, emittedAt, status: "connected" },
+    ]);
+
+    expect(formatSummary(summary!)).toContain("Web Preview: failed");
+    expect(formatSummary(summary!)).toContain("Douyin Build: pending");
+    expect(formatSummary(summary!)).toContain("Douyin DevTool: connected");
   });
 });

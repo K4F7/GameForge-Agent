@@ -12,6 +12,13 @@ export const gameTaskIdSchema = z
 export const gameTaskPromptSchema = z.string().trim().min(10).max(12_000);
 export const gameTaskLanguageSchema = z.enum(["zh-CN", "en-US"]);
 export const gameTaskStatusSchema = z.enum(["queued", "claimed", "completed", "failed", "stopped"]);
+export const gameTaskSpecialistIds = ["planner", "programmer", "artist", "tester"] as const;
+export const gameTaskSpecialistSchema = z.enum(gameTaskSpecialistIds);
+export const gameTaskSpecialistsSchema = z
+  .array(gameTaskSpecialistSchema)
+  .max(gameTaskSpecialistIds.length)
+  .default([])
+  .transform((specialists) => gameTaskSpecialistIds.filter((specialist) => specialists.includes(specialist)));
 export const gameTaskAgentIdSchema = z
   .string()
   .trim()
@@ -24,6 +31,7 @@ export const createGameTaskRequestSchema = z.strictObject({
   prompt: gameTaskPromptSchema,
   language: gameTaskLanguageSchema.default("zh-CN"),
   projectId: projectIdSchema.optional(),
+  requestedSpecialists: gameTaskSpecialistsSchema,
 });
 
 export const claimGameTaskRequestSchema = z.strictObject({ agentId: gameTaskAgentIdSchema });
@@ -39,6 +47,7 @@ export const gameTaskSchema = z.strictObject({
   prompt: gameTaskPromptSchema,
   language: gameTaskLanguageSchema,
   projectId: projectIdSchema.optional(),
+  requestedSpecialists: gameTaskSpecialistsSchema,
   status: gameTaskStatusSchema,
   createdAt: z.string().datetime({ offset: true }),
   claimedAt: z.string().datetime({ offset: true }).optional(),
@@ -71,5 +80,6 @@ export const listGameTasksResponseSchema = z.strictObject({ tasks: z.array(gameT
 export type CreateGameTaskRequest = z.input<typeof createGameTaskRequestSchema>;
 export type ClaimGameTaskRequest = z.infer<typeof claimGameTaskRequestSchema>;
 export type ListGameTasksRequest = z.input<typeof listGameTasksRequestSchema>;
+export type GameTaskSpecialist = z.infer<typeof gameTaskSpecialistSchema>;
 export type GameTask = z.infer<typeof gameTaskSchema>;
 export type CreateGameTaskResponse = z.infer<typeof createGameTaskResponseSchema>;

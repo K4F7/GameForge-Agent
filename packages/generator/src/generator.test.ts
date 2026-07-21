@@ -4,6 +4,7 @@ import { hostname } from "node:os";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { GameSpec } from "@gameforge/contracts";
 import { GameProjectGenerator } from "./generator.js";
 
 const temporaryRoots: string[] = [];
@@ -15,6 +16,22 @@ const spec = {
   winCondition: "Collect all required equipment.",
   loseCondition: "The timer reaches zero.",
   targetDurationSeconds: 90,
+};
+const orderCollectSpec: GameSpec = {
+  specVersion: "1.0",
+  title: "花园订单冲刺",
+  locale: "zh-CN",
+  genre: "arcade",
+  mechanicProfile: "order-collect",
+  theme: "garden",
+  randomSeed: 19016,
+  inputActions: ["move-pointer", "move-left", "move-right", "move-up", "move-down", "restart"],
+  objective: "在倒计时结束前收齐花园订单中的全部六件物品。",
+  controls: ["单指拖动篮子", "桌面端使用指针或方向键", "结束后立即重开"],
+  winCondition: "在时限内收齐全部六件订单物品。",
+  loseCondition: "倒计时耗尽或三点生命全部失去。",
+  targetDurationSeconds: 75,
+  gameplay: { collectibleCount: 6, hazardCount: 3, startingLives: 3, movementSpeed: 220 },
 };
 
 async function createGenerator(): Promise<{ generator: GameProjectGenerator; root: string }> {
@@ -43,6 +60,20 @@ describe("GameProjectGenerator", () => {
     expect(first.plan.files.map((file) => file.path)).toContain("public/assets/manifest.json");
     expect(first.plan.files.map((file) => file.path)).toContain(".npmrc");
     await expect(readFile(path.join(root, "safety-sprint", "game-spec.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("keeps the golden order-collect spec, manifest, and managed source hashes deterministic", async () => {
+    const { generator } = await createGenerator();
+
+    for (const target of ["web", "douyin-mini-game"] as const) {
+      const first = await generator.execute({ projectId: `order-collect-${target}`, target, spec: orderCollectSpec });
+      const second = await generator.execute({ projectId: `order-collect-${target}`, target, spec: orderCollectSpec });
+
+      expect(second.plan).toEqual(first.plan);
+      expect(first.plan.specSha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(first.plan.planSha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(first.plan.files.every((file) => /^[a-f0-9]{64}$/.test(file.sha256))).toBe(true);
+    }
   });
 
   it("atomically creates a new standalone Phaser project", async () => {

@@ -2,7 +2,7 @@
 
 状态：接受  
 日期：2026-07-18
-修订：2026-07-18，当前阶段禁止平台 preview、上传、提审和发布
+修订：2026-07-21，补充 Cocos Creator 3.8 LTS 对照；当前阶段禁止平台 preview、上传、提审和发布
 
 ## 决策
 
@@ -19,7 +19,7 @@ GameForge 第一版的可发布游戏目标是抖音小游戏；微信小游戏�
 
 Phaser 不是抖音或微信当前官方支持的导出器。2026-07-18 兼容性 spike 已触发退出条件：Phaser 4.2.1 在无浏览器全局的动态导入阶段即访问 `window`/`navigator`，初始化与运行还要求 DOM canvas/audio/video、Image、RAF 和可见性事件。GameForge 不维护大范围浏览器 shim 或 fork Phaser；Web target 保留 Phaser，抖音 target 优先采用当前官方下载页的 LayaAir 3.4.0 官方 `bytedancegame` 构建后端，Cocos Creator 3.8 LTS 作为对照与备选。不得把浏览器通过当作小游戏通过。
 
-选择 LayaAir 的原因是其 TypeScript 工作流、官方 `microgame-adapter.js`、固定抖音输出结构，以及 `LayaAirIDE --project=... --script=...` 调用 `IEditorEnv.BuildTask.start("bytedancegame")` 的可脚本化构建链，与 GameForge 的 Bun/TypeScript 生成和 CI 更贴合。Cocos 的抖音支持与 Asset Bundle 分包更成熟，但当前官方资料没有同等明确的抖音无头构建/上传闭环。Unity WebGL/StarkSDK 面向已有 C#/Unity 工程，不作为 TypeScript 第一版后端。
+选择 LayaAir 的原因是其 TypeScript 工作流、官方 `microgame-adapter.js`、固定抖音输出结构，以及当前本机已验证的 LayaAir CLI 3.4.0 `bytedancegame`/`wxgame` 构建链，与 GameForge 的 Bun/TypeScript 生成和 CI 更贴合。Cocos 的抖音支持与 Asset Bundle 分包更成熟，官方也提供带确定退出码的命令行构建；但 Cocos 3.8 文档明确指出命令行仍需要 GUI 环境，抖音和微信产物仍需平台开发者工具预览调试。它不能替代当前纯本地 Laya 构建证据，也不能消除 DevTool/真机边界。Unity WebGL/StarkSDK 面向已有 C#/Unity 工程，不作为 TypeScript 第一版后端。
 
 ## 原因
 
@@ -56,3 +56,6 @@ LayaAir/Cocos 提供官方小游戏构建支持，但迁移会同时改变运行
 - [抖音 Cocos/Laya/Egret 引擎适配](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/game-engine/cocos-laya-egret)（访问日期：2026-07-18）
 - [LayaAir 抖音小游戏发布](https://www.layaair.com/3.x/doc/released/miniGame/byteDance/readme.html)（访问日期：2026-07-18）
 - [LayaAir 命令行发布](https://www.layaair.com/3.x/doc/released/commandLine/readme.html)（访问日期：2026-07-18）
+- [Cocos Creator 3.8 命令行发布](https://docs.cocos.com/creator/3.8/manual/zh/editor/publish/publish-in-command-line.html)（访问日期：2026-07-21）
+- [Cocos Creator 3.8 抖音小游戏发布](https://docs.cocos.com/creator/3.8/manual/zh/editor/publish/publish-bytedance-mini-game.html)（访问日期：2026-07-21）
+- [Cocos Creator 3.8 微信小游戏发布](https://docs.cocos.com/creator/3.8/manual/zh/editor/publish/publish-wechatgame.html)（访问日期：2026-07-21）

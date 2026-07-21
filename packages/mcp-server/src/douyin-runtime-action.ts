@@ -42,7 +42,7 @@ export class DouyinRuntimeActionCoordinator {
     }
     let publicationPromise = existingPublication?.result;
     if (publicationPromise === undefined) {
-      const event = {
+      const logEvent = {
         type: "log.appended",
         runId: run.runId,
         sequence: run.after + 1,
@@ -51,12 +51,23 @@ export class DouyinRuntimeActionCoordinator {
         level: result.ok === false ? "error" : "info",
         message: `Douyin Runtime action ${action.action} (${actionId}) ${result.ok === false ? "failed" : "completed"}.`,
       } as const;
-      publicationPromise = this.relay!.publishEvents({ runId: run.runId, after: run.after, events: [event] })
+      const statusEvent = {
+        type: "douyin.devtool.status",
+        runId: run.runId,
+        sequence: run.after + 2,
+        emittedAt: new Date().toISOString(),
+        status: result.ok === false ? "failed" : "connected",
+        detail: `Runtime action ${action.action} ${result.ok === false ? "failed" : "completed"}.`,
+      } as const;
+      const events = [logEvent, statusEvent];
+      publicationPromise = this.relay!.publishEvents({ runId: run.runId, after: run.after, events })
         .catch(async (error) => {
           const replay = await this.relay!.replayEvents({ runId: run.runId, after: run.after });
-          const committed = replay.events.some((candidate) =>
-            candidate.sequence === event.sequence && candidate.type === "log.appended" && candidate.message === event.message);
-          if (committed) return { accepted: 1, lastSequence: event.sequence };
+          const committedLog = replay.events.some((candidate) =>
+            candidate.sequence === logEvent.sequence && candidate.type === "log.appended" && candidate.message === logEvent.message);
+          const committedStatus = replay.events.some((candidate) =>
+            candidate.sequence === statusEvent.sequence && candidate.type === "douyin.devtool.status" && candidate.status === statusEvent.status);
+          if (committedLog && committedStatus) return { accepted: 2, lastSequence: statusEvent.sequence };
           throw error;
         });
       this.publications.set(actionId, { fingerprint: publicationFingerprint, result: publicationPromise });

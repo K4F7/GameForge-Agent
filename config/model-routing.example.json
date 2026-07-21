@@ -84,7 +84,7 @@
     },
     "music": {
       "owner": "mcp",
-      "primary": { "provider": "minimax", "mode": "model", "model": "music-2.6", "capabilities": ["music-generation"] },
+      "primary": { "provider": "minimax", "mode": "model", "model": "music-3.0-free", "capabilities": ["music-generation"] },
       "fallbacks": [],
       "reasoning": "none",
       "availability": "planned"

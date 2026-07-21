@@ -1,6 +1,6 @@
 # 国内小游戏平台调研与 GameForge V1 范围
 
-更新日期：2026-07-18
+更新日期：2026-07-21
 
 ## 平台比较
 
@@ -39,7 +39,7 @@
 
 没有找到当前 Phaser 4 的官方抖音/微信导出链。Phaser 官网可见的微信文章来自 2018 年且针对旧版 Phaser CE，只能作为历史参考。实际 Phaser 4.2.1 无 DOM 动态导入探测已失败，并确认广泛依赖浏览器媒体、Canvas、RAF 和可见性 API，因此不继续浏览器 shim 路线。
 
-抖音官方明确写明 Cocos、Laya、Egret 已完成适配并可直接导出抖音小游戏，也提供 Unity WebGL/Wasm、Godot专题和原生 JavaScript/单 Canvas 路线，但没有指定唯一推荐引擎。GameForge V1 选择当前官方下载页的 LayaAir 3.4.0 作为首选抖音生成后端：它使用 TypeScript，输出 `game.js`、`game.json`、`projectconfig.json`、`microgame-adapter.js`，并提供可脚本化的 `bytedancegame` 构建任务。Cocos Creator 3.8 LTS 作为成熟编辑器/Asset Bundle 分包备选；Unity WebGL 需要 C#/Unity/StarkSDK 和 Wasm 工具链，留给已有 Unity 项目而非 TS 第一版。LayaAir 3.x IDE 官方明确要求登录账号，且发布器不以 npm 包或 GitHub release 独立提供，因此安装和首次登录是本地工具链前置。
+抖音官方明确写明 Cocos、Laya、Egret 已完成适配并可直接导出抖音小游戏，也提供 Unity WebGL/Wasm、Godot专题和原生 JavaScript/单 Canvas 路线，但没有指定唯一推荐引擎。GameForge V1 选择当前官方下载页的 LayaAir 3.4.0 作为首选抖音生成后端：它使用 TypeScript，输出 `game.js`、`game.json`、`projectconfig.json`、`microgame-adapter.js`，并提供当前机器已经验证的 `bytedancegame` 与 `wxgame` CLI 构建任务。Cocos Creator 3.8 LTS 作为成熟编辑器/Asset Bundle 分包备选；其官方 CLI 支持平台参数、JSON 配置和确定退出码，但文档明确要求 GUI 环境，当前机器也未安装 Creator，故尚无真实构建证据。Unity WebGL 需要 C#/Unity/StarkSDK 和 Wasm 工具链，留给已有 Unity 项目而非 TS 第一版。LayaAir 3.x IDE 官方明确要求登录账号，且发布器不以 npm 包或 GitHub release 独立提供，因此安装和首次登录是本地工具链前置。
 
 本机随后安装并只读核验 Layabox 官方 `layaair-cli` 3.4.0。与完整 IDE 不同，CLI 直接提供 `create`、`build`、`validate`、`run`，内置 2D/3D 空项目，并在真实项目中列出 `bytedancegame`、`wxgame`、OPPO、vivo、支付宝、淘宝等构建目标。使用受管 Laya 源工程后，`build bytedancegame` 与 `build wxgame` 都成功输出各自官方适配库和根文件；微信五种 genre 的校验产物均为 14 个文件、约 1.06 MiB、无分包、portrait。该结果证明两个本地构建链可用，不证明抖音/微信 DevTool 或真机运行。
 
@@ -57,4 +57,6 @@
 - [快手小游戏开发流程](https://open.kuaishou.com/miniGameDocs/gameDev/start/start.html)
 - [快手小游戏 API](https://ks-game-docs.kuaishou.com/minigame/api/api.html)
 - [LayaAir 抖音小游戏发布](https://layaair.layabox.com/3.x/doc/released/miniGame/byteDance/readme.html)
-- [Cocos Creator 微信小游戏发布](https://docs.cocos.com/creator/3.2/manual/zh/editor/publish/publish-wechatgame.html)
+- [Cocos Creator 3.8 命令行发布](https://docs.cocos.com/creator/3.8/manual/zh/editor/publish/publish-in-command-line.html)（访问日期：2026-07-21）
+- [Cocos Creator 3.8 微信小游戏发布](https://docs.cocos.com/creator/3.8/manual/zh/editor/publish/publish-wechatgame.html)（访问日期：2026-07-21）
+- [Cocos Creator 3.8 抖音小游戏发布](https://docs.cocos.com/creator/3.8/manual/zh/editor/publish/publish-bytedance-mini-game.html)（访问日期：2026-07-21）

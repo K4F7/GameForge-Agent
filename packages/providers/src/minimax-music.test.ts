@@ -67,13 +67,27 @@ describe("MinimaxMusicProvider", () => {
       .toThrow("official HTTPS");
   });
 
-  it("requires an explicit output license and a supported 2.6 model", () => {
+  it("supports the official 2.6 and 3.0 music model families", async () => {
+    const fetchMock = vi.fn<MinimaxMusicFetchLike>(async () => success());
+    const provider = new MinimaxMusicProvider({
+      apiKey,
+      license: "noncommercial-evaluation",
+      model: "music-3.0-free",
+      fetch: fetchMock,
+    });
+    const result = await provider.execute({ assetId: "audio/free-theme.mp3", prompt: "Theme" });
+    expect(result.provenance.model).toBe("music-3.0-free");
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(init?.body))).toMatchObject({ model: "music-3.0-free" });
+  });
+
+  it("requires an explicit output license and a supported music model", () => {
     expect(() => new MinimaxMusicProvider({ apiKey, license: "" })).toThrow("license");
     expect(() => new MinimaxMusicProvider({ apiKey: "", license: "terms" })).toThrow("API key");
     expect(() => new MinimaxMusicProvider({
       apiKey,
       license: "terms",
-      model: "music-3.0" as "music-2.6",
+      model: "music-4.0" as "music-3.0",
     })).toThrow();
     expect(() => new MinimaxMusicProvider({ apiKey, license: "terms", maxOutputBytes: 16 * 1024 * 1024 + 1 }))
       .toThrow("maxOutputBytes");
@@ -105,6 +119,20 @@ describe("MinimaxMusicProvider", () => {
     }
     expect(message).toContain("status 1001");
     expect(message).not.toContain(apiKey);
+  });
+
+  it("reports provider status when MiniMax returns null failure data", async () => {
+    const provider = new MinimaxMusicProvider({
+      apiKey,
+      license: "terms",
+      fetch: async () => new Response(JSON.stringify({
+        data: null,
+        extra_info: null,
+        base_resp: { status_code: 1004, status_msg: `failed ${apiKey}` },
+      })),
+    });
+    await expect(provider.execute({ assetId: "audio/theme.mp3", prompt: "Theme" }))
+      .rejects.toThrow("provider status 1004");
   });
 
   it("does not retry generation by default and redacts HTTP failures", async () => {

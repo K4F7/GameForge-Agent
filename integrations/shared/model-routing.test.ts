@@ -71,7 +71,7 @@ describe("committed model routing example", () => {
     expect(policy.tools.sound.primary).toMatchObject({ provider: "freesound", mode: "retrieval" });
     expect(policy.tools.music).toMatchObject({
       availability: "planned",
-      primary: { provider: "minimax", model: "music-2.6" },
+      primary: { provider: "minimax", model: "music-3.0-free" },
     });
     expect(Object.values(policy.tools).every(({ availability }) => availability === "planned")).toBe(true);
     expect(text).not.toMatch(/api[_-]?key|access[_-]?key|secret|token/i);

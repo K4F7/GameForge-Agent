@@ -5,8 +5,12 @@ node_modules/
 dist/
 coverage/
 .gameforge-validation/
+.third-party/
 .vite/
 .playwright-cli/
+.playwright-mcp/
+/openchamber_probe2/
+/opencode_probe_20260721/
 output/
 *.tsbuildinfo
 *.log

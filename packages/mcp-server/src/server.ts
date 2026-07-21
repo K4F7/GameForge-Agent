@@ -68,6 +68,8 @@ import {
   startGamePreviewTool,
   stopGamePreviewTool,
   verifyGameProjectTool,
+  verifyOrderCollectWebGameplayTool,
+  verifyOrderCollectCrossRuntimeTool,
   getGameforgeCapabilitiesTool,
   getProjectAssetsTool,
   getDouyinMiniGameCliStatusTool,
@@ -491,7 +493,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       {
         title: "Create one game build task",
         description:
-          "Atomically create one queued Task and its authoritative Run. The same runId and identical request are idempotent; conflicting reuse is rejected.",
+          "Atomically create one queued Task and its authoritative Run, optionally recording requested specialist roles. The same runId and identical request are idempotent; conflicting reuse is rejected.",
         inputSchema: createGameTaskRequestSchema.shape,
         annotations: {
           readOnlyHint: false,
@@ -610,7 +612,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       {
         title: "Generate and store instrumental game music",
         description:
-          "Perform one official MiniMax Music 2.6 request for instrumental MP3 and store it as the project's BGM. No automatic generation retry is performed. Replacement requires mode=replace and the current expectedRevision.",
+          "Perform one official MiniMax Music 2.6 or 3.0 request for instrumental MP3 and store it as the project's BGM. Free model variants are supported when configured. No automatic generation retry is performed. Replacement requires mode=replace and the current expectedRevision.",
         inputSchema: {
           projectId: projectIdSchema,
           ...minimaxMusicRequestSchema.shape,
@@ -672,6 +674,38 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         inputSchema: verifyGameRequestSchema.shape,
       },
       async (request) => verifyGameProjectTool(projectVerifier, request),
+    );
+    if (projectVerifier.verifyOrderCollectDualTerminal !== undefined) {
+      registerTool(
+        "verify_order_collect_web_gameplay",
+        {
+          title: "Verify order-collect Web win and loss gameplay",
+          description: "Use real browser pointer drags against deterministic telemetry targets in two isolated sessions, proving an order-complete win and a lives-depleted loss with screenshots and browser diagnostics.",
+          inputSchema: { projectId: projectIdSchema },
+        },
+        async ({ projectId }) => verifyOrderCollectWebGameplayTool(projectVerifier, projectId),
+      );
+    }
+  }
+
+  if (
+    options.projectVerifier?.verifyOrderCollectDualTerminal !== undefined &&
+    options.layaGameplayVerifier !== undefined
+  ) {
+    const projectVerifier = options.projectVerifier;
+    const layaGameplayVerifier = options.layaGameplayVerifier;
+    registerTool(
+      "verify_order_collect_cross_runtime",
+      {
+        title: "Compare order-collect Web and mini-game gameplay",
+        description: "Run isolated Web and Laya win/lives-depleted scenarios, then compare canonical SimulationCore seed, score, lives, order progress, terminal reason, and remaining time with an explicit tolerance.",
+        inputSchema: {
+          webProjectId: projectIdSchema,
+          miniGameProjectId: projectIdSchema,
+          remainingMsTolerance: z.number().int().min(0).max(75_000).default(5_000),
+        },
+      },
+      async (request) => verifyOrderCollectCrossRuntimeTool(projectVerifier, layaGameplayVerifier, request),
     );
   }
 

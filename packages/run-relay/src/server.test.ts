@@ -78,12 +78,18 @@ describe("run relay HTTP server", () => {
         prompt: "制作一个可以收集装备并避开危险的浏览器小游戏。",
         language: "zh-CN",
         projectId: "safety-game",
+        requestedSpecialists: ["artist", "programmer"],
       }),
     });
     expect(createdResponse.status).toBe(201);
     const created = createGameTaskResponseSchema.parse(await createdResponse.json());
     expect(created).toMatchObject({
-      task: { runId: "run-task-1", status: "queued", projectId: "safety-game" },
+      task: {
+        runId: "run-task-1",
+        status: "queued",
+        projectId: "safety-game",
+        requestedSpecialists: ["programmer", "artist"],
+      },
       event: { type: "run.started", sequence: 1 },
     });
 
@@ -95,10 +101,25 @@ describe("run relay HTTP server", () => {
         prompt: "制作一个可以收集装备并避开危险的浏览器小游戏。",
         language: "zh-CN",
         projectId: "safety-game",
+        requestedSpecialists: ["programmer", "artist", "programmer"],
       }),
     });
     expect(retriedResponse.status).toBe(201);
     expect(createGameTaskResponseSchema.parse(await retriedResponse.json())).toEqual(created);
+
+    const specialistConflictResponse = await fetch(`${baseUrl}/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "http://localhost:4173" },
+      body: JSON.stringify({
+        runId: "run-task-1",
+        prompt: "制作一个可以收集装备并避开危险的浏览器小游戏。",
+        language: "zh-CN",
+        projectId: "safety-game",
+        requestedSpecialists: ["tester"],
+      }),
+    });
+    expect(specialistConflictResponse.status).toBe(409);
+    await expect(specialistConflictResponse.json()).resolves.toMatchObject({ error: "task_run_conflict" });
 
     const conflictingResponse = await fetch(`${baseUrl}/tasks`, {
       method: "POST",
@@ -108,6 +129,7 @@ describe("run relay HTTP server", () => {
         prompt: "制作一个可以收集装备并避开危险的浏览器小游戏。",
         language: "zh-CN",
         projectId: "another-game",
+        requestedSpecialists: ["programmer", "artist"],
       }),
     });
     expect(conflictingResponse.status).toBe(409);
@@ -115,7 +137,10 @@ describe("run relay HTTP server", () => {
 
     const relayClient = new RunRelayClient({ baseUrl });
     await expect(relayClient.listTasks({ status: "queued", limit: 10 }))
-      .resolves.toEqual([expect.objectContaining({ taskId: created.task.taskId })]);
+      .resolves.toEqual([expect.objectContaining({
+        taskId: created.task.taskId,
+        requestedSpecialists: ["programmer", "artist"],
+      })]);
     await expect(relayClient.claimTask(created.task.taskId, { agentId: "codearts" }))
       .resolves.toMatchObject({ status: "claimed", claimedBy: "codearts" });
     await expect(relayClient.completeRun("run-task-1")).resolves.toMatchObject({ type: "run.completed" });

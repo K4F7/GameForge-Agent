@@ -41,6 +41,8 @@
 │   ├── model-evaluation-2026-07.md    # 国产 SOTA、权威榜单与 oh-my-openagent 评估
 │   ├── game-generation-runtime.md    # 项目生成器与事件服务
 │   ├── roadmap.md                    # CodeArts 实验与第二轮 TUI/GUI 计划
+│   ├── prd-web2d-opencodegui.md      # Web 2D 与 @专业角色 GUI 产品需求
+│   ├── mvp-web2d-opencodegui.md      # Web 2D 专业 Agent GUI MVP
 │   ├── codearts-opencode-analysis.md # CodeArts 与 OpenCode 官方资料研判
 │   └── open-source-references.md      # 可借鉴的游戏Agent与前端开源项目
 └── experiments/                      # 后续基准任务与实验记录
@@ -110,7 +112,7 @@ bun run --silent minigame:handoff -- --project-id <project-id> --target douyin-m
 
 Tauri 2 桌面 spike 位于 `apps/desktop`，只封装现有 Workbench，不新增 Agent 循环、自定义 Rust command 或 Tauri plugin。`bun run doctor:desktop` 静态校验零权限 capability、CSP、loopback 开发地址和 Workbench 构建；Tauri Schema、Cargo 和图标由真实 `desktop:build` 验证。Windows 本机构建需进入 MSVC 开发环境后运行该命令。当前只验证了不打安装包的 Windows 可执行文件，签名、自动更新和 macOS/Linux 仍不在已验收范围。完整说明见 [桌面壳说明](docs/desktop.md)。
 
-GUI 后续以 MIT 许可的 [OpenChamber](https://github.com/btriapitsyn/openchamber) 为前端代码与交互基线，优先适配其共享 React UI、布局、主题、组件和运行时抽象。GameForge 仍以 Relay/RunEvent/reducer 为状态权威，不搬入 OpenCode 会话契约、Agent 循环、PTY/Git/SSH/tunnel 或 Electron 特权边界；当前 Tauri 2 零 IPC 桌面壳继续保留。迁移边界见 [GUI 方向](docs/gui-direction.md)。
+GUI 后续以 MIT 许可的 [OpenChamber](https://github.com/openchamber/openchamber) 为前端代码与交互基线，当前固定上游提交为 `f9ad0de3e5e7cf281dd4966391409f3e19de4e79`。第一版先运行固定版本的原版 OpenChamber，通过 CodeArts OpenCode-compatible server 接入；后续再通过 Runtime API、MCP 或插件把 GameForge 的 Task/Run、预览和证据接上，现有 Workbench 保留为可回滚实现。迁移边界见 [GUI 方向](docs/gui-direction.md)，产品需求与 MVP 见 [Web 2D 专业 Agent GUI PRD](docs/prd-web2d-opencodegui.md) 和 [对应 MVP](docs/mvp-web2d-opencodegui.md)。
 
 客户端基准使用规范化任务定义的 SHA-256，而不是要求 CodeArts 与 OpenCode 复用同一个 Task ID。运行 `bun run benchmark -- report definition.json codearts.record.json opencode.record.json --out report.md` 可校验记录并生成对比；只有两端都完成时才允许比较工作流质量。
 
@@ -209,15 +211,15 @@ GAMEFORGE_IMAGE_REFERENCE_HOSTS=example-oss.cn-beijing.aliyuncs.com
 
 只有同时设置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 和上述三个必填变量时，MCP 才注册 `request_image_asset`。其角色只能是 `player`、`collectible`、`hazard` 或 `background`；无效音频角色会在调用 Seedream 前被 MCP Schema 拒绝。Seedream 等生图模型输出的角色图片会在生成游戏中归一化到固定显示尺寸与碰撞体，不让源分辨率改变玩法尺度。Freesound 与输出目录均配置后，还会注册 `import_sound_asset`；它只下载搜索结果中的官方 preview，不把 Token 拼入 URL，也不替代需要 OAuth2 的原始文件下载接口。选择 `collect-sound` 或 `hit-sound` 时按音效入库，明确选择 `bgm` 时按音乐入库；生成游戏会在玩家第一次交互后循环播放 BGM。
 
-启用 MiniMax Music 2.6 纯音乐配乐：
+启用 MiniMax Music 2.6/3.0 纯音乐配乐：
 
 ```text
 MINIMAX_API_KEY=<MiniMax API key>
-GAMEFORGE_MUSIC_MODEL=music-2.6
+GAMEFORGE_MUSIC_MODEL=music-3.0-free
 GAMEFORGE_MUSIC_LICENSE=<当前账号与用途对应的输出许可说明>
 ```
 
-同时配置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 后才注册 `generate_music_asset`。工具固定使用官方 HTTPS API、非流式 hex MP3、`is_instrumental=true`，不发送歌词，也不自动重试生成 POST；成功素材以唯一 `bgm` 角色进入 Manifest。官方 API 文档没有直接授予通用商用权，`GAMEFORGE_MUSIC_LICENSE` 必须由账号持有人按实际套餐和用途确认，不能填写猜测值。
+同时配置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 后才注册 `generate_music_asset`。支持 `music-2.6`、`music-2.6-free`、`music-3.0` 与 `music-3.0-free`；当前本机选择免费的 `music-3.0-free`，官方价格页标记其单价为 0 元且 RPM 为 3。工具固定使用官方 HTTPS API、非流式 hex MP3、`is_instrumental=true`，不发送歌词，也不自动重试生成 POST；成功素材以唯一 `bgm` 角色进入 Manifest。免费计费不等于自动获得通用商用许可，`GAMEFORGE_MUSIC_LICENSE` 必须由账号持有人按实际套餐和用途确认，不能填写猜测值。
 
 启用火山引擎异步长文本配音：
 

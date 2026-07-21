@@ -1,4 +1,4 @@
-import { projectIdSchema } from "@gameforge/contracts";
+import { orderCollectTelemetrySchema, projectIdSchema, simulationPointSchema } from "@gameforge/contracts";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { access, lstat, mkdir, readFile, realpath } from "node:fs/promises";
@@ -24,6 +24,20 @@ export const verificationActionSchema = z.discriminatedUnion("type", [
     x: z.number().int().min(0).max(4_096),
     y: z.number().int().min(0).max(4_096),
   }),
+  z.strictObject({
+    type: z.literal("drag"),
+    fromX: z.number().int().min(0).max(4_096),
+    fromY: z.number().int().min(0).max(4_096),
+    toX: z.number().int().min(0).max(4_096),
+    toY: z.number().int().min(0).max(4_096),
+    durationMs: z.number().int().min(1).max(10_000).default(250),
+  }),
+  z.strictObject({
+    type: z.literal("drag-to-telemetry"),
+    target: z.enum(["collectible", "hazard"]),
+    index: z.number().int().min(0).max(99).default(0),
+    durationMs: z.number().int().min(1).max(10_000).default(250),
+  }),
   z.strictObject({ type: z.literal("wait"), durationMs: z.number().int().min(1).max(10_000) }),
 ]);
 
@@ -41,10 +55,11 @@ const verificationStateSchema = z.strictObject({
   remainingSeconds: z.number().nonnegative(),
   detail: z.string().max(1_000).optional(),
   telemetry: z.strictObject({
-    player: z.strictObject({ x: z.number().finite(), y: z.number().finite() }),
-    collectibles: z.array(z.strictObject({ x: z.number().finite(), y: z.number().finite() })).max(100),
-    hazards: z.array(z.strictObject({ x: z.number().finite(), y: z.number().finite() })).max(100),
+    player: simulationPointSchema,
+    collectibles: z.array(simulationPointSchema).max(100),
+    hazards: z.array(simulationPointSchema).max(100),
   }).optional(),
+  simulation: orderCollectTelemetrySchema.optional(),
 });
 
 const managedProjectSchema = z.object({ projectId: projectIdSchema });
@@ -65,6 +80,12 @@ export type VerificationReport = {
   actionsExecuted: number;
   durationMs: number;
 };
+export type OrderCollectWebVerificationReport = Readonly<{
+  projectId: string;
+  passed: true;
+  win: VerificationReport & { state: VerificationState & { status: "won" } };
+  loss: VerificationReport & { state: VerificationState & { status: "lost" } };
+}>;
 
 export type VerificationSession = {
   onConsoleError(listener: (message: string) => void): void;
@@ -74,7 +95,7 @@ export type VerificationSession = {
   waitUntilReady(timeoutMs: number): Promise<void>;
   perform(action: VerificationAction): Promise<void>;
   readState(): Promise<unknown>;
-  readCanvas(): Promise<{ width: number; height: number } | null>;
+  readCanvas(): Promise<{ width: number; height: number; nonBlank: boolean } | null>;
   screenshot(target: string): Promise<void>;
   close(): Promise<void>;
 };
@@ -144,6 +165,7 @@ export class GameVerifier {
       if (canvas === null || canvas.width < 1 || canvas.height < 1) {
         throw new Error("Generated game did not expose a visible canvas.");
       }
+      if (!canvas.nonBlank) throw new Error("Generated game canvas is blank.");
       await withTimeout(session.screenshot(screenshotPath), remaining("screenshot"), "Verifier screenshot timed out.");
       const passed = consoleErrors.length === 0 && pageErrors.length === 0 && failedRequests.length === 0 &&
         (input.expectedOutcome === undefined || state.status === input.expectedOutcome);
@@ -168,6 +190,27 @@ export class GameVerifier {
       await withTimeout(server?.close() ?? Promise.resolve(), 10_000, "Verifier server cleanup timed out.")
         .catch(() => undefined);
     }
+  }
+
+  async verifyOrderCollectDualTerminal(projectId: string): Promise<OrderCollectWebVerificationReport> {
+    const winActions: VerificationAction[] = Array.from({ length: 6 }, () => ({
+      type: "drag-to-telemetry", target: "collectible", index: 0, durationMs: 250,
+    }));
+    const lossActions: VerificationAction[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      lossActions.push({ type: "drag-to-telemetry", target: "hazard", index: 1, durationMs: 250 });
+      if (index < 2) lossActions.push({ type: "wait", durationMs: 1_000 });
+    }
+    const win = await this.verify({ projectId, actions: winActions, expectedOutcome: "won", timeoutMs: 30_000 });
+    const loss = await this.verify({ projectId, actions: lossActions, expectedOutcome: "lost", timeoutMs: 30_000 });
+    if (!win.passed || win.state.status !== "won") throw new Error("Order-collect Web win verification failed.");
+    if (!loss.passed || loss.state.status !== "lost") throw new Error("Order-collect Web loss verification failed.");
+    return {
+      projectId,
+      passed: true,
+      win: win as VerificationReport & { state: VerificationState & { status: "won" } },
+      loss: loss as VerificationReport & { state: VerificationState & { status: "lost" } },
+    };
   }
 
   async #screenshotPath(projectPath: string): Promise<string> {
@@ -305,7 +348,14 @@ class PlaywrightSession implements VerificationSession {
     await this.#page.waitForFunction(
       () => {
         const canvas = document.querySelector("canvas");
-        const state = window.__GAMEFORGE_TEST__;
+        const state = window.__GAMEFORGE_TEST__ as unknown as {
+          status?: "running" | "won" | "lost";
+          telemetry?: {
+            player: { x: number; y: number };
+            collectibles: Array<{ x: number; y: number }>;
+            hazards: Array<{ x: number; y: number }>;
+          };
+        };
         if (
           canvas === null || typeof state !== "object" || state === null ||
           !("telemetry" in state) || typeof state.telemetry !== "object" || state.telemetry === null
@@ -328,6 +378,43 @@ class PlaywrightSession implements VerificationSession {
       await this.#page.keyboard.up(action.key);
     }
     if (action.type === "click") await this.#page.mouse.click(action.x, action.y);
+    if (action.type === "drag") {
+      await this.#page.mouse.move(action.fromX, action.fromY);
+      await this.#page.mouse.down();
+      await this.#page.mouse.move(action.toX, action.toY, { steps: Math.max(2, Math.ceil(action.durationMs / 16)) });
+      await this.#page.mouse.up();
+    }
+    if (action.type === "drag-to-telemetry") {
+      const coordinates = await this.#page.evaluate(({ target, index }) => {
+        const canvas = document.querySelector("canvas");
+        const state = window.__GAMEFORGE_TEST__ as unknown as {
+          status?: "running" | "won" | "lost";
+          telemetry?: {
+            player: { x: number; y: number };
+            collectibles: Array<{ x: number; y: number }>;
+            hazards: Array<{ x: number; y: number }>;
+          };
+        };
+        if (canvas === null || state.telemetry === undefined) return null;
+        if (state.status !== "running") return { terminal: true as const };
+        const points = target === "collectible" ? state.telemetry.collectibles : state.telemetry.hazards;
+        const destination = points[index];
+        if (destination === undefined) return state.status === "running" ? null : { terminal: true as const };
+        const bounds = canvas.getBoundingClientRect();
+        const map = (point: { x: number; y: number }): { x: number; y: number } => ({
+          x: bounds.left + point.x / canvas.width * bounds.width,
+          y: bounds.top + point.y / canvas.height * bounds.height,
+        });
+        return { terminal: false as const, from: map(state.telemetry.player), to: map(destination) };
+      }, { target: action.target, index: action.index });
+      if (coordinates === null) throw new Error(`Telemetry target is unavailable: ${action.target}[${action.index}].`);
+      if (coordinates.terminal) return;
+      await this.#page.mouse.move(coordinates.from.x, coordinates.from.y);
+      await this.#page.mouse.down();
+      await this.#page.mouse.move(coordinates.to.x, coordinates.to.y, { steps: Math.max(2, Math.ceil(action.durationMs / 16)) });
+      await this.#page.mouse.up();
+      await this.#page.waitForTimeout(32);
+    }
     if (action.type === "wait") await this.#page.waitForTimeout(action.durationMs);
   }
 
@@ -335,11 +422,37 @@ class PlaywrightSession implements VerificationSession {
     return this.#page.evaluate(() => window.__GAMEFORGE_TEST__);
   }
 
-  readCanvas(): Promise<{ width: number; height: number } | null> {
-    return this.#page.evaluate(() => {
+  async readCanvas(): Promise<{ width: number; height: number; nonBlank: boolean } | null> {
+    const dimensions = await this.#page.evaluate(() => {
       const canvas = document.querySelector("canvas");
-      return canvas === null ? null : { width: canvas.width, height: canvas.height };
+      if (canvas === null) return null;
+      return { width: canvas.width, height: canvas.height };
     });
+    if (dimensions === null) return null;
+    const screenshot = await this.#page.locator("canvas").screenshot({ type: "png" });
+    const imageUrl = `data:image/png;base64,${screenshot.toString("base64")}`;
+    const nonBlank = await this.#page.evaluate(async (source) => {
+      const image = new Image();
+      image.src = source;
+      await image.decode();
+      const sample = document.createElement("canvas");
+      sample.width = 32;
+      sample.height = 32;
+      const context = sample.getContext("2d", { willReadFrequently: true });
+      if (context === null) return false;
+      context.drawImage(image, 0, 0, sample.width, sample.height);
+      const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+      const first = [pixels[0], pixels[1], pixels[2], pixels[3]].join(",");
+      let nonBlank = false;
+      for (let offset = 4; offset < pixels.length; offset += 4) {
+        if ([pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3]].join(",") !== first) {
+          nonBlank = true;
+          break;
+        }
+      }
+      return nonBlank;
+    }, imageUrl);
+    return { ...dimensions, nonBlank };
   }
 
   async screenshot(target: string): Promise<void> {

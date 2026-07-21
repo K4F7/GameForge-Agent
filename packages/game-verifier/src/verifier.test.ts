@@ -42,7 +42,7 @@ class FakeSession implements VerificationSession {
       hazards: [{ x: 400, y: 270 }],
     },
   };
-  canvas: { width: number; height: number } | null = { width: 960, height: 540 };
+  canvas: { width: number; height: number; nonBlank: boolean } | null = { width: 960, height: 540, nonBlank: true };
 
   onConsoleError(listener: (message: string) => void): void { this.consoleListener = listener; }
   onPageError(listener: (message: string) => void): void { this.pageErrorListener = listener; }
@@ -51,7 +51,7 @@ class FakeSession implements VerificationSession {
   async waitUntilReady(_timeoutMs: number): Promise<void> { return undefined; }
   async perform(action: VerificationAction): Promise<void> { this.actions.push(action); }
   async readState(): Promise<unknown> { return this.state; }
-  async readCanvas(): Promise<{ width: number; height: number } | null> { return this.canvas; }
+  async readCanvas(): Promise<{ width: number; height: number; nonBlank: boolean } | null> { return this.canvas; }
   async screenshot(): Promise<void> { return undefined; }
   async close(): Promise<void> { this.closed = true; }
 }
@@ -167,6 +167,13 @@ describe("GameVerifier", () => {
     expect(result.passed).toBe(false);
     expect(result.consoleErrors).toEqual(["bad console message"]);
     expect(result.failedRequests).toHaveLength(1);
+  });
+
+  it("rejects a visible but blank canvas", async () => {
+    const { runtime, verifier } = await fixture();
+    runtime.session.canvas = { width: 960, height: 540, nonBlank: false };
+
+    await expect(verifier.verify({ projectId: "safety-sprint" })).rejects.toThrow("canvas is blank");
   });
 
   it("preserves bounded browser diagnostics when readiness fails", async () => {

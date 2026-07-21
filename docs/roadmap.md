@@ -1,6 +1,6 @@
 # GameForge Agent 路线图
 
-更新日期：2026-07-20
+更新日期：2026-07-21
 
 ## 当前产品优先级：抖音小游戏 V1
 
@@ -13,19 +13,30 @@
 - [x] 增加受限 headless Laya 逻辑宿主，直接执行同一生成 `Main.ts`，以可控输入和时钟覆盖五种 genre 的移动、碰撞、伤害与胜负遥测；该证据不替代 DevTool/真机；
 - [x] 将 headless Laya 宿主提升为 `verify_minigame_gameplay` 生产 MCP 能力：只接受受管固定模板哈希，对抖音/微信五 genre 分别发布无视觉字段的 `gameplay.verified` 双终态证据，Workbench/TUI 明确标记 no-render；
 - [x] 增加有界 `build_douyin_mini_game` MCP 工具与 `douyinBuild` capability；真实 Node stdio MCP 已调用官方 LayaAir 3.4.0 并通过校验；
-- [ ] 与 Cocos Creator 3.8 LTS 对照 CodeArts 修复成本；
+- [x] 完成 Cocos Creator 3.8 LTS 官方资料、仓库改动面与 CodeArts 修复成本对照，并用 Creator 3.8.8 官方 Empty2D 模板真实构建 `bytedance-mini-game`：抖音 DevTool 4.5.4 已本地导入、加载场景并跑通竖屏交互；该证据尚未实现仓库 Cocos 生产 target；
 - [x] 通过官方 LayaAir 3.4.0 构建生成 `game.js`、`game.json`、`project.config.json` 与平台适配入口；
 - [x] 增加主包 4MB、整体 20MB、文件类型、远程脚本、HTTPS 域名与 capability 静态校验；生成器 0.12.0 默认声明离线且关闭登录、分享、广告和支付；
 - [x] 增加纯 CLI `minigame:handoff`：validator 前后双快照、逐文件 SHA-256、聚合摘要和无路径 JSON；`build.ready`/TUI 显式标记远程操作禁止与 DevTool 未验收；
 - [x] 将 Seedream 图片、Freesound 音效和火山 TTS/BGM 的统一 Asset Store 桥接到 Laya `resources/assets/`；官方构建后逐项复核 Manifest、字节数和 SHA-256；
 - [x] 增加 `tt-minigame-ide-cli` 2.1.1 官方 `bin/tmg.js --version` 诊断与条件 MCP capability；明确拒绝小程序 `tma`，不开放登录、打开、项目 version、配置、预览或上传命令；
 - [x] 在抖音小游戏开发者工具 4.5.4 完成受管原型本地导入、普通编译与模拟器检查；修复平台运行时持续时间非有限值导致的 HUD `undefined`/`NaN`，重新编译后问题计数为零且倒计时正常；未执行平台 preview 或上传；
+- [x] 完成一次 Cocos Creator 3.8.8 → `bytedance-mini-game` → 抖音 DevTool 4.5.4 的受限本地回环；模拟器验证场景、TypeScript、竖屏渲染、输入、计时、碰撞、计分和失败终态，记录 AssetDB 热刷新、CLI 参数类型、stdout 生命周期、分辨率和包体问题；
 - [ ] 真实抖音客户端扫码运行因依赖远程 preview 暂缓；若未来改变策略，需再次明确授权并记录脱敏截图、日志、包体和人工干预；
 - [x] 研判 CLI 自动化边界：本地生成/构建/静态门禁可 no-GUI；中国抖音小游戏最终预览、提审与发布没有公开的完整 no-GUI 链路；
 - [x] 实现 `wechat-mini-game` 第二导出 target：复用同一 Laya TypeScript 玩法和 Asset Store，增加固定 `wxgame` 构建、微信策略/API 静态校验、MCP capability 与 target-aware Workbench/TUI；五种 genre 已逐一通过真实 LayaAir CLI 3.4.0 构建；
 - [ ] 在微信开发者工具导入 `release/wxgame`，完成编译、预览与真机扫码证据；快手暂不进入 V1 发布门禁。
 
 2026-07-20 首次探针确认当前 Windows 环境安装抖音开发者工具 4.5.4 且客户端可启动，但未登录时停在前置管理页；证据见 `experiments/2026-07-20-douyin-devtool-login-gate/`。用户随后自行完成登录并进入项目工作区，受控实验完成本地导入、编译器与模拟器验收；证据见 `experiments/2026-07-20-douyin-devtool-local-validation/`。
+
+## 抖音 MVP 后产品中心：Web 2D + 单一 GUI
+
+当前抖音小游戏 MVP 只负责关闭一次平台端到端验证，不继续扩大 Cocos、LayaAir IDE 或平台 GUI 集成。GUI 第一版直接运行固定版本的原版 OpenChamber，并通过其 OpenCode-compatible server 接口连接 CodeArts；GameForge 的 Task/Run、预览、Diff、资产候选与验证证据留到后续通过 Runtime API、MCP 或插件接入。
+
+- [ ] 完成 [Web 2D 与专业 Agent GUI PRD](./prd-web2d-opencodegui.md) 的首批契约；
+- [ ] 完成 [Web 2D 专业 Agent GUI MVP](./mvp-web2d-opencodegui.md)；
+- [ ] 保存 `@程序员` Web 2D Bug 修复与 `@美术` 候选资产两个真实 CodeArts 实验；
+- [ ] 建立 Specialist Request、Finding 与 Handoff 的客户端无关契约后，再评估真实专业 Agent 委派；
+- [ ] 保持平台后端为可选导出能力，不让日常生产依赖平台编辑器连接。
 
 ## 第一轮：真实 CodeArts 闭环
 
@@ -87,7 +98,7 @@ Windows 本地已使用真实 Relay 验证 `submit → watch(SSE) → stop → �
 
 优先评估 Tauri 2 封装现有 React Workbench；Electron 作为生态成熟但体积更大的备选。渲染栈与桌面表面的决策、进入条件和验证要求已记录在 [ADR-0001](./decisions/0001-rendering-and-desktop-surfaces.md)。
 
-2026-07-20 起，用户指定 MIT 许可的 [OpenChamber](https://github.com/btriapitsyn/openchamber) 作为后续 GUI 的前端代码与交互基线，首个评估提交为 `31b43fbde90d368c5d131ec52e761d888466d597`。迁移优先复用其共享 React UI、布局、主题、组件和多运行时抽象，同时把 OpenCode SDK/session 状态替换为 GameForge Relay/RunEvent/reducer；PTY、Git/SSH、tunnel、Electron 特权边界和 Agent 循环不随 UI 默认引入。详见 [GUI 方向](./gui-direction.md)。
+2026-07-20 起，用户指定 MIT 许可的 [OpenChamber](https://github.com/openchamber/openchamber) 作为后续 GUI 基线；2026-07-21 重新核验官方仓库后，当前固定提交为 `f9ad0de3e5e7cf281dd4966391409f3e19de4e79`（1.16.2）。第一阶段不复制组件、不重画界面，也不替换其 OpenCode SDK/session 状态，而是原样运行 OpenChamber Web 并连接 CodeArts server；第二阶段优先从 OpenChamber 已有 Runtime API、MCP、commands 或插件边界接入 GameForge，只有公开边界不足时才评估最小上游改动。详见 [GUI 方向](./gui-direction.md)。
 
 桌面 GUI 不改变协议边界：CodeArts 仍是主智能体，Relay 仍只协调状态，MCP 仍是确定性工具。若 TUI 的共享 controller 尚未稳定，不开始桌面打包。
 
@@ -97,10 +108,17 @@ Windows 本地已使用真实 Relay 验证 `submit → watch(SSE) → stop → �
 - [x] 新增 `doctor:desktop`，检查 CSP、loopback dev URL、构建目录与最小权限边界；
 - [x] 在 Windows 11、MSVC 14.44、Rust/Cargo 1.88.0 和 WebView2 环境完成 `--no-bundle` release 构建；
 - [ ] 完成 OpenChamber 固定版本的源码、依赖许可证、安全面与构建体积清单；
-- [ ] 建立 OpenChamber UI 到 GameForge Relay/RunEvent/reducer 的 Runtime API adapter；
-- [ ] 分垂直切片迁移 UI，并通过现有 Workbench 的恢复、CSP、bundle、浏览器 smoke 与桌面门禁；
+- [x] 固定原版 OpenChamber 1.16.2，建立隔离 checkout、启动器和 CodeArts 兼容性探针；
+- [ ] 从 OpenChamber 的 Runtime API、MCP、commands 或插件边界接入 GameForge Relay/RunEvent；
+- [ ] 仅在公开扩展边界不足时评估最小上游改动，并通过恢复、CSP、bundle、浏览器 smoke 与桌面门禁；
 - [ ] 验证 macOS/Linux 原生构建与 WebView 行为；
 - [ ] 设计并验证安装包签名、更新公钥和发布流程；
 - [ ] 在明确需求与最小 scope 后才考虑文件选择器或系统通知 plugin。
 
 当前 spike 只证明“现有 Workbench 可被零 IPC 的 Tauri 壳编译为 Windows 可执行文件”，不等同于三平台发行就绪。详见 [桌面壳说明](./desktop.md) 与 `experiments/2026-07-18-tauri-desktop-spike/`。
+
+## Cocos Creator 3.8 LTS 对照结论
+
+2026-07-21 先完成 Cocos Creator 3.8 LTS 官方文档与仓库改动面对照，随后安装 Creator 3.8.8，以官方 Empty2D 模板创建固定场景和 TypeScript 游戏，使用 Creator CLI 构建 `bytedance-mini-game`，并在抖音 DevTool 4.5.4 中完成本地导入和模拟器运行。游戏以竖屏显示，点击开始后计时、生成、碰撞、计分和失败终态均真实推进；未执行平台 preview、真机、上传、提审或发布。
+
+这次 spike 只保留为外部编辑器兼容性证据，不再导向默认 Cocos 生产 target。Cocos 的 AssetDB、CLI、编辑器状态和 DevTool 链路会增加 Agent 连接与复现依赖；除非未来出现无法由 Web 2D 满足的明确需求并重新立项，否则不实现 Cocos MCP、编辑器桥或 GUI 状态集成。当前仓库的 LayaAir 能力也降为可选平台导出边界，产品主线以 [Web 2D 与专业 Agent GUI PRD](./prd-web2d-opencodegui.md) 为准。资料对照见 `experiments/2026-07-21-cocos-creator-3-8-comparison/`，真实回环证据见 `experiments/2026-07-21-cocos-creator-douyin-local-loop/`。

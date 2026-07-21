@@ -468,6 +468,7 @@ describe("GameForge MCP server", () => {
       runId: "run-1",
       prompt: "Create a complete browser arcade game.",
       language: "en-US" as const,
+      requestedSpecialists: [],
       status: "queued" as const,
       createdAt: "2026-07-16T08:00:00Z",
     };

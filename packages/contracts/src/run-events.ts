@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { gameSpecSchema } from "./game-spec.js";
+import { gameSpecSchema, orderCollectTelemetrySchema } from "./game-spec.js";
 import { projectIdSchema } from "./project-generation.js";
 import { runtimeAssetEntrySchema } from "./runtime-assets.js";
 import { assetIdSchema } from "./assets.js";
@@ -41,6 +41,9 @@ export const runStatusSchema = z.enum([
 
 export const runLogSourceSchema = z.enum(["agent", "tool", "build", "test", "visual"]);
 export const runLogLevelSchema = z.enum(["info", "success", "warning", "error"]);
+export const evidenceSurfaceSchema = z.enum(["web-preview", "web-visual", "minigame-logic", "douyin-build"]);
+export const evidenceStatusSchema = z.enum(["pending", "passed", "failed"]);
+export const douyinDevToolStatusSchema = z.enum(["not-run", "disconnected", "connected", "passed", "failed"]);
 
 export const gamePreviewUrlSchema = z.string().trim().max(2_048).url().superRefine((value, context) => {
   const url = new URL(value);
@@ -82,6 +85,7 @@ const gameplayScenarioSchema = z.strictObject({
   name: z.enum(["genre-win", "timeout-loss"]),
   outcome: z.enum(["won", "lost"]),
   actions: z.number().int().positive().max(100),
+  telemetry: orderCollectTelemetrySchema.optional(),
 });
 
 const eventBaseShape = {
@@ -174,6 +178,21 @@ export const runEventSchema = z.discriminatedUnion("type", [
     ]),
     durationMs: z.number().int().nonnegative().max(30_000),
     templateSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  }),
+  z.strictObject({
+    ...eventBaseShape,
+    type: z.literal("evidence.status"),
+    surface: evidenceSurfaceSchema,
+    status: evidenceStatusSchema,
+    projectId: projectIdSchema.optional(),
+    detail: z.string().trim().min(1).max(1_000).optional(),
+  }),
+  z.strictObject({
+    ...eventBaseShape,
+    type: z.literal("douyin.devtool.status"),
+    status: douyinDevToolStatusSchema,
+    projectId: projectIdSchema.optional(),
+    detail: z.string().trim().min(1).max(1_000).optional(),
   }),
   z.strictObject({
     ...eventBaseShape,

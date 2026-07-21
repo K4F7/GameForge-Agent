@@ -16,12 +16,50 @@ const baseSpec = {
   targetDurationSeconds: 30,
   gameplay: { collectibleCount: 2, hazardCount: 2, startingLives: 3, movementSpeed: 220 },
 };
+const orderCollectSpec = {
+  specVersion: "1.0" as const,
+  title: "花园订单冲刺",
+  locale: "zh-CN" as const,
+  genre: "arcade" as const,
+  mechanicProfile: "order-collect" as const,
+  theme: "garden" as const,
+  randomSeed: 19016,
+  inputActions: ["move-pointer", "restart"] as Array<"move-pointer" | "restart">,
+  objective: "在倒计时结束前收齐花园订单中的全部六件物品。",
+  controls: ["单指拖动篮子", "方向键移动", "结束后立即重开"],
+  winCondition: "在时限内收齐全部六件订单物品。",
+  loseCondition: "倒计时耗尽或三点生命全部失去。",
+  targetDurationSeconds: 75,
+  gameplay: { collectibleCount: 6 as const, hazardCount: 3 as const, startingLives: 3 as const, movementSpeed: 220 },
+};
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe("managed Laya gameplay verifier", () => {
+  it("proves shared-core win, timeout, and lives-depleted terminal states", async () => {
+    const temporary = await mkdtemp(path.join(tmpdir(), "gameforge-order-collect-proof-"));
+    roots.push(temporary);
+    const projectsRoot = path.join(temporary, "projects");
+    await new GameProjectGenerator({ outputRoot: projectsRoot }).execute({
+      projectId: "garden-order-proof", target: "douyin-mini-game", mode: "apply", spec: orderCollectSpec,
+    });
+
+    await expect(new ManagedLayaGameplayVerifier({ projectsRoot }).verify("garden-order-proof"))
+      .resolves.toMatchObject({
+        projectId: "garden-order-proof",
+        target: "douyin-mini-game",
+        genre: "arcade",
+        passed: true,
+        scenarios: [
+          { name: "genre-win", outcome: "won", actions: 6, telemetry: { endReason: "orders-complete", score: 6, lives: 3 } },
+          { name: "timeout-loss", outcome: "lost", telemetry: { endReason: "time-expired", score: 0, lives: 3 } },
+          { name: "lives-depleted-loss", outcome: "lost", actions: 3, telemetry: { endReason: "lives-depleted", score: 0, lives: 0 } },
+        ],
+      });
+  });
+
   it("proves genre wins and timeout losses for both mini-game targets", async () => {
     const temporary = await mkdtemp(path.join(tmpdir(), "gameforge-managed-laya-proof-"));
     roots.push(temporary);

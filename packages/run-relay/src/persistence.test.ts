@@ -19,6 +19,7 @@ describe("RelayStatePersistence", () => {
       runId: "run-persisted",
       prompt: "Create a browser game whose task survives a relay restart.",
       language: "en-US",
+      requestedSpecialists: ["artist", "programmer"],
     });
     first.taskInbox.claim(created.task.taskId, { agentId: "codearts" });
     first.taskInbox.appendRun("run-persisted", {
@@ -105,6 +106,7 @@ describe("RelayStatePersistence", () => {
     expect(second.taskInbox.get(created.task.taskId)).toMatchObject({
       status: "claimed",
       claimedBy: "codearts",
+      requestedSpecialists: ["programmer", "artist"],
     });
     expect(second.store.replay("run-persisted", 0).events.map((event) => event.type)).toEqual([
       "run.started",
@@ -118,6 +120,7 @@ describe("RelayStatePersistence", () => {
       runId: "run-persisted",
       prompt: "Create a browser game whose task survives a relay restart.",
       language: "en-US",
+      requestedSpecialists: ["programmer", "artist"],
     })).toMatchObject({
       task: { taskId: created.task.taskId, status: "claimed" },
       event: { type: "run.started", sequence: 1 },
@@ -130,6 +133,30 @@ describe("RelayStatePersistence", () => {
     expect(third.store.replay("run-persisted", 6).events).toEqual([
       expect.objectContaining({ type: "run.completed", sequence: 7 }),
     ]);
+  });
+
+  it("restores legacy tasks without specialist metadata as an empty set", async () => {
+    const file = await stateFile();
+    const persistence = new RelayStatePersistence(file);
+    const state = await persistence.load();
+    const created = state.taskInbox.create({
+      runId: "run-legacy-task",
+      prompt: "Create a browser game from a task stored before specialist metadata existed.",
+      language: "en-US",
+    });
+    await persistence.save(state.store, state.taskInbox);
+    const legacy = JSON.parse(await readFile(file, "utf8")) as {
+      tasks: Array<Record<string, unknown>>;
+    };
+    const task = legacy.tasks[0];
+    if (task === undefined) throw new Error("Expected one persisted task.");
+    delete task.requestedSpecialists;
+    await writeFile(file, JSON.stringify(legacy));
+
+    const restored = await new RelayStatePersistence(file).load();
+    expect(restored.taskInbox.get(created.task.taskId)).toMatchObject({
+      requestedSpecialists: [],
+    });
   });
 
   it("serializes concurrent save requests so the newest state wins", async () => {

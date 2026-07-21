@@ -44,6 +44,8 @@ export async function resolveRuntime(startDirectory: string, integration: "codea
 }
 
 export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<void> {
+  const nonInteractiveApproval = process.env.GAMEFORGE_CODEARTS_NONINTERACTIVE_ALLOW === "1";
+  const isolateExternalProviders = process.env.GAMEFORGE_CODEARTS_PROVIDER_ISOLATION === "1";
   const relayToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
   if (relayToken !== undefined) {
     const normalized = relayToken.trim();
@@ -53,6 +55,9 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
   }
   const layaAirCliPath = await optionalRegularFileEnvironment("GAMEFORGE_LAYAIR_CLI");
   const douyinMiniGameCliPath = await optionalRegularFileEnvironment("GAMEFORGE_DOUYIN_MINIGAME_CLI");
+  const minimaxApiKeyReference = optionalEnvironmentReference("MINIMAX_API_KEY");
+  const minimaxMusicModelReference = optionalEnvironmentReference("GAMEFORGE_MUSIC_MODEL");
+  const minimaxMusicLicenseReference = optionalEnvironmentReference("GAMEFORGE_MUSIC_LICENSE");
   const config = {
     $schema: "https://opencode.ai/config.json",
     lsp: false,
@@ -62,6 +67,13 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
         type: "local",
         command: ["node", "packages/mcp-server/dist/index.js"],
         environment: {
+          ...(isolateExternalProviders
+            ? {
+                DASHSCOPE_API_KEY: "",
+                FREESOUND_API_KEY: "",
+                VOLCENGINE_SPEECH_API_TOKEN: "",
+              }
+            : {}),
           GAMEFORGE_PROJECT_OUTPUT_ROOT: runtime.outputRoot,
           GAMEFORGE_RUN_RELAY_URL: runtime.relayUrl,
           ...(relayToken === undefined
@@ -71,15 +83,24 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
           ...(douyinMiniGameCliPath === undefined
             ? {}
             : { GAMEFORGE_DOUYIN_MINIGAME_CLI: douyinMiniGameCliPath }),
+          ...(minimaxApiKeyReference === undefined
+            ? {}
+            : { MINIMAX_API_KEY: minimaxApiKeyReference }),
+          ...(minimaxMusicModelReference === undefined
+            ? {}
+            : { GAMEFORGE_MUSIC_MODEL: minimaxMusicModelReference }),
+          ...(minimaxMusicLicenseReference === undefined
+            ? {}
+            : { GAMEFORGE_MUSIC_LICENSE: minimaxMusicLicenseReference }),
           GAMEFORGE_MCP_AUDIT_DIR: runtime.auditDirectory,
           GAMEFORGE_MODEL_ROUTING_POLICY: path.join(runtime.repoRoot, "config", "model-routing.example.json"),
         },
         enabled: true,
-        timeout: 10_000,
+        timeout: minimaxApiKeyReference === undefined ? 10_000 : 180_000,
       },
     },
     permission: {
-      "gameforge_*": "ask",
+      "gameforge_*": nonInteractiveApproval ? "allow" : "ask",
       "gameforge_validate_*": "allow",
       "gameforge_get_*": "allow",
       "gameforge_list_*": "allow",
@@ -88,6 +109,15 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
     },
   };
   await writeFile(runtime.configPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
+function optionalEnvironmentReference(name: string): string | undefined {
+  const input = process.env[name];
+  if (input === undefined) return undefined;
+  if (input.trim().length === 0 || /[\r\n]/.test(input)) {
+    throw new Error(`${name} must be unset or contain a non-empty value without newlines.`);
+  }
+  return `{env:${name}}`;
 }
 
 async function optionalRegularFileEnvironment(name: string): Promise<string | undefined> {

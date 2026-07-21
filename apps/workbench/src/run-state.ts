@@ -11,6 +11,13 @@ export type { RunEvent, RunPhase, RunStatus } from "@gameforge/contracts";
 export type RunStateAction = RunEvent | { type: "ui.reset" };
 
 export type PhaseStatus = "pending" | "running" | "repair" | "succeeded" | "failed";
+export type EvidenceSurface = "webPreview" | "webVisual" | "minigameLogic" | "douyinBuild";
+export type EvidenceStatus = "pending" | "passed" | "failed";
+export type DouyinDevToolState = {
+  status: "not-run" | "disconnected" | "connected" | "passed" | "failed";
+  projectId?: string;
+  detail?: string;
+};
 
 export type PhaseState = {
   id: RunPhase;
@@ -94,6 +101,8 @@ export type RunState = {
   gameplayVerification: GameplayVerificationState | null;
   build: BuildState | null;
   capabilities: GameforgeCapabilitySnapshot | null;
+  evidence: Record<EvidenceSurface, EvidenceStatus>;
+  douyinDevTool: DouyinDevToolState;
 };
 
 const phaseLabels: Record<RunPhase, string> = {
@@ -128,6 +137,13 @@ export function createInitialRunState(): RunState {
     gameplayVerification: null,
     build: null,
     capabilities: null,
+    evidence: {
+      webPreview: "pending",
+      webVisual: "pending",
+      minigameLogic: "pending",
+      douyinBuild: "pending",
+    },
+    douyinDevTool: { status: "not-run" },
   };
 }
 
@@ -190,10 +206,14 @@ export function runReducer(state: RunState, event: RunStateAction): RunState {
       return {
         ...eventState,
         preview: { projectId: event.projectId, url: event.url },
+        evidence: { ...state.evidence, webPreview: "passed" },
       };
     case "build.ready":
       return {
         ...eventState,
+        evidence: event.target === "douyin-mini-game"
+          ? { ...state.evidence, douyinBuild: "passed" }
+          : state.evidence,
         build: {
           projectId: event.projectId,
           target: event.target,
@@ -214,6 +234,7 @@ export function runReducer(state: RunState, event: RunStateAction): RunState {
     case "verification.ready":
       return {
         ...eventState,
+        evidence: { ...state.evidence, webVisual: event.passed ? "passed" : "failed" },
         verification: {
           projectId: event.projectId,
           passed: event.passed,
@@ -231,6 +252,7 @@ export function runReducer(state: RunState, event: RunStateAction): RunState {
     case "gameplay.verified":
       return {
         ...eventState,
+        evidence: { ...state.evidence, minigameLogic: "passed" },
         gameplayVerification: {
           projectId: event.projectId,
           target: event.target,
@@ -238,6 +260,25 @@ export function runReducer(state: RunState, event: RunStateAction): RunState {
           scenarios: event.scenarios,
           durationMs: event.durationMs,
           templateSha256: event.templateSha256,
+        },
+      };
+    case "evidence.status": {
+      const surface: EvidenceSurface = event.surface === "web-preview"
+        ? "webPreview"
+        : event.surface === "web-visual"
+          ? "webVisual"
+          : event.surface === "minigame-logic"
+            ? "minigameLogic"
+            : "douyinBuild";
+      return { ...eventState, evidence: { ...state.evidence, [surface]: event.status } };
+    }
+    case "douyin.devtool.status":
+      return {
+        ...eventState,
+        douyinDevTool: {
+          status: event.status,
+          ...(event.projectId === undefined ? {} : { projectId: event.projectId }),
+          ...(event.detail === undefined ? {} : { detail: event.detail }),
         },
       };
     case "voice.job.updated":

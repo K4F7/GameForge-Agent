@@ -45,6 +45,13 @@ const seedreamLicense = process.env.GAMEFORGE_IMAGE_LICENSE?.trim();
 const minimaxApiKey = process.env.MINIMAX_API_KEY?.trim();
 const minimaxMusicModel = process.env.GAMEFORGE_MUSIC_MODEL?.trim();
 const minimaxMusicLicense = process.env.GAMEFORGE_MUSIC_LICENSE?.trim();
+const supportedMinimaxMusicModels = new Set([
+  "music-2.6",
+  "music-2.6-free",
+  "music-3.0",
+  "music-3.0-free",
+] as const);
+type MinimaxMusicModel = typeof supportedMinimaxMusicModels extends Set<infer Model> ? Model : never;
 const seedreamReferenceHosts = process.env.GAMEFORGE_IMAGE_REFERENCE_HOSTS
   ?.split(",")
   .map((host) => host.trim())
@@ -139,8 +146,10 @@ if (minimaxApiKey !== undefined && minimaxApiKey.length > 0) {
   if (minimaxMusicLicense === undefined || minimaxMusicLicense.length === 0) {
     throw new Error("GAMEFORGE_MUSIC_LICENSE is required when MINIMAX_API_KEY is set.");
   }
-  if (minimaxMusicModel !== undefined && minimaxMusicModel !== "music-2.6" && minimaxMusicModel !== "music-2.6-free") {
-    throw new Error("GAMEFORGE_MUSIC_MODEL must be music-2.6 or music-2.6-free.");
+  if (minimaxMusicModel !== undefined && !supportedMinimaxMusicModels.has(minimaxMusicModel as MinimaxMusicModel)) {
+    throw new Error(
+      "GAMEFORGE_MUSIC_MODEL must be music-2.6, music-2.6-free, music-3.0, or music-3.0-free.",
+    );
   }
 }
 const server = createServer({
@@ -227,7 +236,7 @@ const server = createServer({
           license: minimaxMusicLicense as string,
           ...(minimaxMusicModel === undefined || minimaxMusicModel.length === 0
             ? {}
-            : { model: minimaxMusicModel as "music-2.6" | "music-2.6-free" }),
+            : { model: minimaxMusicModel as MinimaxMusicModel }),
         }),
       }),
 });

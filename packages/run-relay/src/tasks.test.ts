@@ -1,3 +1,4 @@
+import type { CreateGameTaskRequest } from "@gameforge/contracts";
 import { describe, expect, it } from "vitest";
 import { RunStore } from "./store.js";
 import { TaskInbox } from "./tasks.js";
@@ -10,8 +11,13 @@ describe("TaskInbox", () => {
       runId: "run-1",
       prompt: "制作一个可以收集装备并避开危险的小游戏。",
       language: "zh-CN",
+      requestedSpecialists: ["programmer", "artist"],
     });
-    expect(created.task).toMatchObject({ runId: "run-1", status: "queued" });
+    expect(created.task).toMatchObject({
+      runId: "run-1",
+      status: "queued",
+      requestedSpecialists: ["programmer", "artist"],
+    });
     expect(created.event).toMatchObject({
       type: "run.started",
       runId: "run-1",
@@ -23,19 +29,24 @@ describe("TaskInbox", () => {
 
   it("returns the authoritative task for an identical create retry and rejects changed content", () => {
     const inbox = new TaskInbox(new RunStore());
-    const input = {
+    const input: CreateGameTaskRequest = {
       runId: "run-retry",
       prompt: "Create a browser game with an idempotent task handoff.",
-      language: "en-US" as const,
+      language: "en-US",
       projectId: "managed-game",
+      requestedSpecialists: ["artist", "programmer"],
     };
     const first = inbox.create(input);
     const retried = inbox.create(input);
     expect(retried).toEqual(first);
     expect(retried.task.projectId).toBe("managed-game");
+    expect(retried.task.requestedSpecialists).toEqual(["programmer", "artist"]);
+    expect(inbox.create({ ...input, requestedSpecialists: ["programmer", "artist"] })).toEqual(first);
     expect(() => inbox.create({ ...input, projectId: "another-game" }))
       .toThrow("different task request");
     expect(() => inbox.create({ ...input, prompt: "Create a different browser game." }))
+      .toThrow("different task request");
+    expect(() => inbox.create({ ...input, requestedSpecialists: ["tester"] }))
       .toThrow("different task request");
   });
 

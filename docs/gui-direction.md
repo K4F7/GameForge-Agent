@@ -6,15 +6,21 @@
 
 ## 决策
 
-自 2026-07-20 起，GameForge 后续 GUI 以 [OpenChamber](https://github.com/btriapitsyn/openchamber) 作为前端代码与交互基线，不再只把 OpenCodeUI 当作视觉参考。首个评估基线固定为提交 [`31b43fbde90d368c5d131ec52e761d888466d597`](https://github.com/btriapitsyn/openchamber/commit/31b43fbde90d368c5d131ec52e761d888466d597)；正式引入源码时必须记录实际采用的上游提交与本地差异。
+自 2026-07-20 起，GameForge 后续 GUI 以 [OpenChamber](https://github.com/openchamber/openchamber) 作为前端代码与交互基线，不再只把 OpenCodeUI 当作视觉参考。2026-07-21 重新核验官方仓库后，当前固定基线为提交 [`f9ad0de3e5e7cf281dd4966391409f3e19de4e79`](https://github.com/openchamber/openchamber/commit/f9ad0de3e5e7cf281dd4966391409f3e19de4e79)（版本 1.16.2）；正式引入源码时必须记录实际采用的上游提交与本地差异。
 
-OpenChamber 的根许可证为 [MIT](https://github.com/btriapitsyn/openchamber/blob/main/LICENSE)，与 GameForge 当前许可证兼容。复制或修改其重要源码时，必须保留上游版权和许可文本，并单独审查实际引入依赖的许可证。
+OpenChamber 的根许可证为 [MIT](https://github.com/openchamber/openchamber/blob/main/LICENSE)，与 GameForge 当前许可证兼容。复制或修改其重要源码时，必须保留上游版权和许可文本，并单独审查实际引入依赖的许可证。
 
-本次“作为基础”表示优先复用和改造 OpenChamber 的共享 React UI、布局、主题、组件、状态组织与多运行时抽象。它不表示把 OpenCode 会话模型、Agent 循环或高权限本地能力变成 GameForge 核心。
+本次“作为基础”分两阶段实施。第一版优先原样运行固定版本的 OpenChamber Web GUI，通过其官方外部 OpenCode server 模式连接 CodeArts，不复制、不重画也不提前分叉上游 UI。后续 GameForge 能力优先使用 OpenChamber 已暴露的 Runtime API、MCP、命令和插件边界扩展；只有现有扩展点确实不足并完成差异审查后，才修改上游 UI。它不表示把 OpenCode 会话模型、Agent 循环或高权限本地能力变成 GameForge 核心。
+
+## 2026-07-21 范围收敛：共享 Task 与 `@专业角色`
+
+当前 GUI 迭代保持现有三栏 Workbench，不新增独立程序、美术、测试应用，也不要求先完成多页面专业工作台。用户在同一个“游戏需求”输入框中通过 `@策划`、`@程序员`、`@美术` 和 `@测试` 点名需要的专业分工；所有角色共享同一个 Project、Task、Run、Artifact 与 Verification 上下文。
+
+首阶段只实现结构化角色意图和可见历史，不宣称多个 Agent 已并行运行。CodeArts 仍是 Task 负责人；专业委派、交接和并行合并必须在后续建立独立契约与证据，不能在 GUI 或 MCP 中偷偷增加第二套 Agent 循环。产品需求与 MVP 见 [Web 2D 与专业 Agent GUI PRD](./prd-web2d-opencodegui.md) 和 [Web 2D 专业 Agent GUI MVP](./mvp-web2d-opencodegui.md)。
 
 ## 上游基线
 
-根据上游 [package.json](https://github.com/btriapitsyn/openchamber/blob/main/package.json) 与 [Agent Guide](https://github.com/btriapitsyn/openchamber/blob/main/AGENTS.md)，OpenChamber 当前是 Bun monorepo，主要包含：
+根据上游 [package.json](https://github.com/openchamber/openchamber/blob/main/package.json) 与 [Agent Guide](https://github.com/openchamber/openchamber/blob/main/AGENTS.md)，OpenChamber 当前是 Bun monorepo，主要包含：
 
 - `packages/ui`：React 共享 UI、状态、同步与运行时契约；
 - `packages/web`：浏览器界面、服务端与 CLI；
@@ -46,16 +52,34 @@ OpenChamber 的根许可证为 [MIT](https://github.com/btriapitsyn/openchamber/
 - 当前 Tauri 2 零 IPC 桌面壳继续保留。是否切换到 OpenChamber 的 Electron 壳属于独立架构决策，不能由前端迁移自动带入；
 - 当前不得在 GUI 中加入抖音小游戏 preview、上传、提审或发布。
 
+## 多专业工作台交互原则
+
+GameForge GUI 借鉴 DaVinci Resolve 的“页面工作流”，但不照搬节点图或视频时间线。GUI 面向同一个游戏项目提供多个可快速切换的专业工作台；切换页面表示切换当前工作的侧重点、工具密度和专业 Agent 上下文，而不是进入相互隔离的聊天会话。
+
+未来候选页面模型仍可为：`总览 | 程序 | 美术 | 音频 | 剧情 | 测试 | 合规 | 构建`。当前 MVP 不启用这些独立页面；只有 `@专业角色`、共享状态和结构化交接稳定后，才评估是否需要拆分页面。
+
+页面切换必须遵守以下原则：
+
+- 保持项目、场景和当前选中对象不变。同一个 Boss、关卡、对话或素材在不同页面中显示其程序、视觉、音频、剧情、测试和合规视角；
+- 工作台属于专业领域，Agent 是工作台中的助手，不能把 GUI 降级为多个 Agent 聊天标签；
+- 每个页面可以使用不同的中央编辑面：程序侧重代码、Diff、运行画面和日志，美术侧重画布与版本对比，音频侧重波形、循环和事件触发，剧情侧重正文、设定和条件，测试侧重复现证据，合规侧重规则依据和风险项；
+- 顶部项目/场景/对象上下文、底部页面切换和专业 Agent 面板保持稳定，让用户能够快速换页抠细节；
+- 测试问题、合规发现和专业修改使用结构化交接对象，携带目标对象、证据、期望结果和关联影响；不得依赖复制聊天原文完成跨页面交接；
+- 美术、音频和剧情修改默认形成候选版本或差异，未经显式确认不覆盖权威资产或文本；
+- 测试 Agent 负责发现与复验，实施修改仍由对应专业工作台中的 CodeArts 流程完成；合规 Agent 只报告已检查范围、证据与剩余风险，不宣称绝对合规。
+
+OpenChamber 适配时，应优先复用其共享布局、导航、Inspector、素材浏览和响应式组件来实现这些页面；OpenCode session/message 仍不得成为页面间共享上下文。跨页面共享状态应落在 GameForge 的 Project、Task、Run、Artifact、Finding 和 Verification 等客户端无关契约上。
+
 ## 实施顺序
 
 1. 固定上游版本，完成源码、依赖许可证、安全面和构建体积清单；
-2. 确定引入方式：优先把所需 OpenChamber UI 层迁入或适配到 `apps/workbench`，避免同时长期维护两套 GUI；
-3. 先建立 GameForge Runtime API adapter，把 OpenChamber 的 OpenCode SDK、session store 和同步层替换为 Relay/RunEvent/reducer；
-4. 迁移共享布局、主题、导航、时间线、证据面板、文件树与 Diff，保持现有 API 行为不变；
-5. 完成窄屏、键盘导航、触摸安全区、本地通知和断线恢复验证；
-6. 最后验证 Tauri Windows/macOS/Linux。PTY、Git/SSH、远程访问、Electron 或移动端均另立范围，不随基础迁移默认实施。
+2. 用忽略目录中的固定官方 checkout 运行原版 OpenChamber；GameForge 仓库只保存 bootstrap、serve 和 compatibility probe，不复制上游源码；
+3. 通过 `OPENCODE_HOST` / `OPENCODE_SKIP_START` 把 OpenChamber 连接到隔离数据目录中的 CodeArts headless server，并验证 project、session、provider/model、agent、MCP 与实时事件接口；
+4. 盘点 OpenChamber 已有 Runtime API、MCP、命令与插件扩展点，GameForge 新能力优先从这些边界接入；
+5. 只有扩展点不足时才建立最小补丁层，并保持固定上游提交、差异清单和可重放升级流程；
+6. 完成窄屏、键盘导航、触摸安全区、本地通知和断线恢复验证；桌面壳、PTY、Git/SSH、远程访问、Electron 或移动端均另立范围。
 
-迁移应按垂直切片进行，每个切片都保留可回滚路径。旧 Workbench 只有在新界面通过等价行为、恢复、安全和构建门禁后才能删除。
+接入应按垂直切片进行，每个切片都保留可回滚路径。旧 Workbench 已在仓库外保存完整工作树与 Git bundle；在原版 OpenChamber 通过等价行为、恢复、安全和构建门禁前，不删除仓库内现有实现。
 
 ## 验收条件
 

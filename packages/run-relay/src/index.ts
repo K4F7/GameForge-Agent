@@ -2,6 +2,7 @@
 
 import { createRunRelayServer } from "./server.js";
 import { RelayStatePersistence } from "./persistence.js";
+import { parseRelayAllowedOrigins } from "./allowed-origins.js";
 
 const host = "127.0.0.1";
 const portInput = process.env.GAMEFORGE_RUN_RELAY_PORT?.trim() ?? "8787";
@@ -13,12 +14,14 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) {
 
 const stateFile = process.env.GAMEFORGE_RUN_RELAY_STATE_FILE?.trim();
 const authToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
+const allowedOrigins = parseRelayAllowedOrigins(process.env.GAMEFORGE_RUN_RELAY_ALLOWED_ORIGINS);
 const persistence = stateFile === undefined || stateFile.length === 0
   ? undefined
   : new RelayStatePersistence(stateFile);
 const restored = persistence === undefined ? undefined : await persistence.load();
 const server = createRunRelayServer({
   ...(authToken === undefined ? {} : { authToken }),
+  ...(allowedOrigins === undefined ? {} : { allowedOrigins }),
   ...(restored === undefined ? {} : { store: restored.store, taskInbox: restored.taskInbox }),
   ...(persistence === undefined || restored === undefined
     ? {}

@@ -14,7 +14,7 @@ describe("DouyinRuntimeActionCoordinator", () => {
       async publishEvents(batch) {
         publications += 1;
         if (publications === 1) throw new Error("relay unavailable");
-        return { accepted: batch.events.length, lastSequence: batch.after + 1 };
+        return { accepted: batch.events.length, lastSequence: batch.after + batch.events.length };
       },
       async replayEvents(input) { return { runId: input.runId, after: input.after, events: [] }; },
     });
@@ -22,7 +22,7 @@ describe("DouyinRuntimeActionCoordinator", () => {
     await expect(coordinator.execute("action-0001", { action: "reload" }, run)).rejects.toThrow("relay unavailable");
     await expect(coordinator.execute("action-0001", { action: "reload" }, run)).resolves.toMatchObject({
       replayed: true,
-      relay: { accepted: 1, lastSequence: 4 },
+      relay: { accepted: 2, lastSequence: 5 },
     });
     expect(actions).toBe(1);
     expect(publications).toBe(2);
@@ -49,6 +49,13 @@ describe("DouyinRuntimeActionCoordinator", () => {
             source: "test" as const,
             level: "info" as const,
             message: "Douyin Runtime action reload (action-0004) completed.",
+          }, {
+            type: "douyin.devtool.status" as const,
+            runId: input.runId,
+            sequence: input.after + 2,
+            emittedAt: "2026-07-20T12:00:00Z",
+            status: "connected" as const,
+            detail: "Runtime action reload completed.",
           }],
         };
       },
@@ -58,8 +65,8 @@ describe("DouyinRuntimeActionCoordinator", () => {
       coordinator.execute("action-0004", { action: "reload" }, run),
       coordinator.execute("action-0004", { action: "reload" }, run),
     ]);
-    expect(first.relay).toEqual({ accepted: 1, lastSequence: 8 });
-    expect(second.relay).toEqual({ accepted: 1, lastSequence: 8 });
+    expect(first.relay).toEqual({ accepted: 2, lastSequence: 9 });
+    expect(second.relay).toEqual({ accepted: 2, lastSequence: 9 });
     expect({ actions, publications, replays }).toEqual({ actions: 1, publications: 1, replays: 1 });
   });
 

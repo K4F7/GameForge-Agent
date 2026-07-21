@@ -30,6 +30,13 @@ export type RunSummary = {
     lossActions: number;
     durationMs: number;
   };
+  evidence: {
+    webPreview: "pending" | "passed" | "failed";
+    webVisual: "pending" | "passed" | "failed";
+    minigameLogic: "pending" | "passed" | "failed";
+    douyinBuild: "pending" | "passed" | "failed";
+  };
+  douyinDevTool: "not-run" | "disconnected" | "connected" | "passed" | "failed";
   phases: Partial<Record<string, string>>;
   logs: string[];
 };
@@ -45,6 +52,8 @@ export function summarizeRun(events: readonly WireRunEvent[]): RunSummary | null
     assets: 0,
     phases: {},
     logs: [],
+    evidence: { webPreview: "pending", webVisual: "pending", minigameLogic: "pending", douyinBuild: "pending" },
+    douyinDevTool: "not-run",
   };
   const assetIds = new Set<string>();
   for (const event of events) {
@@ -61,7 +70,7 @@ export function summarizeRun(events: readonly WireRunEvent[]): RunSummary | null
         break;
       case "spec.ready": summary.locale = event.spec.locale ?? "zh-CN"; summary.title = event.spec.title; break;
       case "asset.ready": assetIds.add(event.entry.assetId); summary.assets = assetIds.size; break;
-      case "preview.ready": summary.previewUrl = event.url; break;
+      case "preview.ready": summary.previewUrl = event.url; summary.evidence.webPreview = "passed"; break;
       case "build.ready":
         summary.build = {
           projectId: event.projectId,
@@ -77,6 +86,7 @@ export function summarizeRun(events: readonly WireRunEvent[]): RunSummary | null
           ...(event.remoteOperations === undefined ? {} : { remoteOperations: event.remoteOperations }),
           ...(event.devToolVerification === undefined ? {} : { devToolVerification: event.devToolVerification }),
         };
+        if (event.target === "douyin-mini-game") summary.evidence.douyinBuild = "passed";
         break;
       case "verification.ready":
         summary.verification = {
@@ -85,6 +95,7 @@ export function summarizeRun(events: readonly WireRunEvent[]): RunSummary | null
           score: event.score,
           lives: event.lives,
         };
+        summary.evidence.webVisual = event.passed ? "passed" : "failed";
         break;
       case "gameplay.verified":
         summary.gameplayVerification = {
@@ -94,7 +105,15 @@ export function summarizeRun(events: readonly WireRunEvent[]): RunSummary | null
           lossActions: event.scenarios[1].actions,
           durationMs: event.durationMs,
         };
+        summary.evidence.minigameLogic = "passed";
         break;
+      case "evidence.status":
+        if (event.surface === "web-preview") summary.evidence.webPreview = event.status;
+        if (event.surface === "web-visual") summary.evidence.webVisual = event.status;
+        if (event.surface === "minigame-logic") summary.evidence.minigameLogic = event.status;
+        if (event.surface === "douyin-build") summary.evidence.douyinBuild = event.status;
+        break;
+      case "douyin.devtool.status": summary.douyinDevTool = event.status; break;
       case "log.appended": summary.logs = [...summary.logs, `[${event.level}] ${event.message}`].slice(-8); break;
     }
   }
@@ -107,6 +126,11 @@ export function formatSummary(summary: RunSummary): string {
     `Status: ${summary.status}  Sequence: ${summary.sequence}`,
     `Game: ${summary.title ?? "waiting"}  Locale: ${summary.locale ?? "waiting"}`,
     `Assets: ${summary.assets}  Preview: ${summary.previewUrl ?? "waiting"}`,
+    `Web Preview: ${summary.evidence.webPreview}`,
+    `Web Visual Verification: ${summary.evidence.webVisual}`,
+    `Mini-game Logic: ${summary.evidence.minigameLogic} [no-render]`,
+    `Douyin Build: ${summary.evidence.douyinBuild}`,
+    `Douyin DevTool: ${summary.douyinDevTool}`,
   ];
   if (summary.verification !== undefined) {
     lines.push(

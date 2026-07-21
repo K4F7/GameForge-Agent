@@ -99,13 +99,29 @@ async function runWorkbenchSmokeOnce(): Promise<SmokeReport> {
     if (initialPreviewSource !== previewUrl) {
       throw new Error(`Workbench smoke preview environment was not applied: ${initialPreviewSource ?? "missing"}`);
     }
-    await page.getByLabel("游戏需求").fill("Create a complete browser safety game with one verified collectible.");
+    const promptInput = page.getByRole("textbox", { name: "游戏需求", exact: true });
+    const programmerButton = page.getByRole("button", { name: "将 @程序员 添加到游戏需求" });
+    const artistButton = page.getByRole("button", { name: "将 @美术 添加到游戏需求" });
+    await promptInput.fill("Create a complete browser safety game with one verified collectible.");
+    await programmerButton.click();
+    await artistButton.click();
+    if (await programmerButton.getAttribute("aria-pressed") !== "true" ||
+        await artistButton.getAttribute("aria-pressed") !== "true") {
+      throw new Error("Workbench specialist buttons did not expose their active state.");
+    }
+    await page.getByText("已点名 2 位", { exact: true }).waitFor({ state: "visible" });
     await page.getByLabel("生成语言").selectOption("en-US");
     await page.getByLabel("Run ID").fill(runId);
     await page.getByRole("button", { name: "提交给 CodeArts" }).click();
+    if (!(await promptInput.isDisabled()) || !(await programmerButton.isDisabled()) || !(await artistButton.isDisabled())) {
+      throw new Error("Workbench task inputs were not locked while the Relay connection was active.");
+    }
 
     const client = new RunRelayClient({ baseUrl: relayUrl });
     const task = await waitForTask(client, runId);
+    if (task.requestedSpecialists.join(",") !== "programmer,artist") {
+      throw new Error(`Workbench submitted unexpected specialists: ${task.requestedSpecialists.join(",")}`);
+    }
     await client.claimTask(task.taskId, { agentId: "workbench-smoke" });
     await client.publishEvents({ runId, after: 1, events: fixtureEvents(runId, previewUrl) });
     const completed = await client.completeRun(runId);
@@ -116,6 +132,10 @@ async function runWorkbenchSmokeOnce(): Promise<SmokeReport> {
     }
 
     const assertions: string[] = [];
+    assertions.push("specialist buttons update Prompt and expose active state");
+    assertions.push("task inputs lock while Relay connection is active");
+    assertions.push("Relay Task preserves programmer and artist specialist metadata");
+    await expectText(page, "@程序员 @美术", assertions);
     await expectText(page, "Schema 有效", assertions);
     await expectText(page, "Smoke Safety Game", assertions);
     await expectText(page, "运行已到终态", assertions);

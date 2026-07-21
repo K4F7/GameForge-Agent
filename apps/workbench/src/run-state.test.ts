@@ -62,6 +62,27 @@ describe("runReducer", () => {
       },
     );
     expect(state.verification).toMatchObject({ passed: true, outcome: "won", score: 5 });
+    expect(state.evidence.webVisual).toBe("passed");
+  });
+
+  it("projects the five MVP evidence states independently", () => {
+    const events: RunEvent[] = [
+      { type: "run.started", runId: "run-1", sequence: 1 },
+      { type: "preview.ready", runId: "run-1", sequence: 2, projectId: "garden-order", url: "http://127.0.0.1:5173/" },
+      { type: "evidence.status", runId: "run-1", sequence: 3, surface: "web-visual", status: "failed", detail: "blank" },
+      { type: "evidence.status", runId: "run-1", sequence: 4, surface: "minigame-logic", status: "passed" },
+      { type: "evidence.status", runId: "run-1", sequence: 5, surface: "douyin-build", status: "passed" },
+      { type: "douyin.devtool.status", runId: "run-1", sequence: 6, projectId: "garden-order", status: "connected" },
+    ];
+    const state = events.reduce(runReducer, createInitialRunState());
+
+    expect(state.evidence).toEqual({
+      webPreview: "passed",
+      webVisual: "failed",
+      minigameLogic: "passed",
+      douyinBuild: "passed",
+    });
+    expect(state.douyinDevTool).toEqual({ status: "connected", projectId: "garden-order" });
   });
 
   it("tracks the MCP capability snapshot without inferring readiness", () => {

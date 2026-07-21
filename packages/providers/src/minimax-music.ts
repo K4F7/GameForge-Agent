@@ -13,7 +13,13 @@ const DEFAULT_TIMEOUT_MS = 5 * 60_000;
 const MAX_TIMEOUT_MS = 10 * 60_000;
 const RESPONSE_ENVELOPE_BYTES = 1024 * 1024;
 const OFFICIAL_ENDPOINT_HOSTS = new Set(["api.minimaxi.com", "api.minimax.io"]);
-const minimaxMusicModelSchema = z.enum(["music-2.6", "music-2.6-free"]);
+const minimaxMusicModelSchema = z.enum([
+  "music-2.6",
+  "music-2.6-free",
+  "music-3.0",
+  "music-3.0-free",
+]);
+type MinimaxMusicModel = z.infer<typeof minimaxMusicModelSchema>;
 
 export const minimaxMusicRequestSchema = z.strictObject({
   assetId: z.string().trim().min(1).max(160),
@@ -25,7 +31,7 @@ const minimaxMusicResponseSchema = z.object({
   data: z.object({
     audio: z.string().min(1),
     status: z.number().int(),
-  }),
+  }).nullable(),
   base_resp: z.object({
     status_code: z.number().int(),
     status_msg: z.string(),
@@ -37,7 +43,7 @@ const minimaxMusicResponseSchema = z.object({
     music_channel: z.number().int().positive().optional(),
     music_bitrate: z.number().int().positive().optional(),
     music_size: z.number().int().nonnegative().optional(),
-  }).optional(),
+  }).nullish(),
 });
 
 export type MinimaxMusicRequest = z.input<typeof minimaxMusicRequestSchema>;
@@ -53,7 +59,7 @@ export type MinimaxMusicFetchLike = (
 ) => Promise<Response>;
 export type MinimaxMusicProviderOptions = {
   apiKey: string;
-  model?: "music-2.6" | "music-2.6-free";
+  model?: MinimaxMusicModel;
   license: string;
   endpoint?: string;
   fetch?: MinimaxMusicFetchLike;
@@ -73,7 +79,7 @@ export class MinimaxMusicProvider
   readonly #license: string;
   readonly #maxOutputBytes: number;
   readonly #maxResponseBytes: number;
-  readonly #model: "music-2.6" | "music-2.6-free";
+  readonly #model: MinimaxMusicModel;
   readonly #timeoutMs: number;
 
   constructor(options: MinimaxMusicProviderOptions) {
@@ -133,7 +139,7 @@ export class MinimaxMusicProvider
       retry: { maxAttempts: 1 },
     });
     const parsed = minimaxMusicResponseSchema.parse(await readBoundedJson(response, this.#maxResponseBytes));
-    if (parsed.base_resp.status_code !== 0 || parsed.data.status !== 2) {
+    if (parsed.base_resp.status_code !== 0 || parsed.data === null || parsed.data.status !== 2) {
       throw new Error(`MiniMax music generation failed with provider status ${parsed.base_resp.status_code}.`);
     }
     const bytes = decodeHexAudio(parsed.data.audio, this.#maxOutputBytes);

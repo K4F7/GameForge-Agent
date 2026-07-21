@@ -1,9 +1,9 @@
-import { defaultProviderConfig, type MiniGameLocalHandoffManifest } from "@gameforge/contracts";
+import { defaultProviderConfig, type MiniGameLocalHandoffManifest, type OrderCollectTelemetry } from "@gameforge/contracts";
 import { describe, expect, it } from "vitest";
 import type { SoundSearchProvider } from "@gameforge/contracts";
 import type { FreesoundSearchRequest, FreesoundSearchResult } from "@gameforge/providers";
 import type { ProjectGenerationResult } from "@gameforge/contracts";
-import type { VerifyGameRequest } from "@gameforge/game-verifier";
+import type { VerificationReport, VerifyGameRequest } from "@gameforge/game-verifier";
 import {
   draftGameSpecTool,
   getProjectAssetsTool,
@@ -27,6 +27,7 @@ import {
   buildDouyinMiniGameTool,
   buildWechatMiniGameTool,
   verifyMiniGameGameplayTool,
+  verifyOrderCollectCrossRuntimeTool,
   validateAssetManifestTool,
   validateGameSpecTool,
   validateProviderConfigTool,
@@ -62,6 +63,52 @@ function handoffFixture(
     aggregateSha256: "f".repeat(64),
     remoteOperations: "forbidden",
     devToolVerification: "not-run",
+  };
+}
+
+function orderCollectTelemetry(options: Readonly<{
+  result: "won" | "lost";
+  endReason: "orders-complete" | "lives-depleted";
+  score?: number;
+  lives?: number;
+  orderCollected?: number;
+  remainingMs: number;
+}>): OrderCollectTelemetry {
+  const collected = options.orderCollected ?? 0;
+  return {
+    schemaVersion: "1.0",
+    mechanicProfile: "order-collect",
+    randomSeed: 19016,
+    elapsedMs: 75_000 - options.remainingMs,
+    remainingMs: options.remainingMs,
+    score: options.score ?? 0,
+    lives: options.lives ?? 3,
+    order: { collected, total: 6, remainingIds: Array.from({ length: 6 - collected }, (_, index) => `collectible-${collected + index + 1}`) },
+    result: options.result,
+    endReason: options.endReason,
+    player: { x: 270, y: 691.2 },
+    collectibles: [],
+    hazards: [],
+  };
+}
+
+function verificationReport<Status extends "won" | "lost">(
+  projectId: string,
+  status: Status,
+  simulation: OrderCollectTelemetry,
+): VerificationReport & { state: VerificationReport["state"] & { status: Status } } {
+  return {
+    projectId,
+    passed: true,
+    state: { status, score: simulation.score, lives: simulation.lives, remainingSeconds: simulation.remainingMs / 1_000, simulation },
+    screenshotPath: `D:\\proof-${status}.png`,
+    evidencePath: `.gameforge/verification/proof-${status}.png`,
+    canvas: { width: 540, height: 960 },
+    consoleErrors: [],
+    pageErrors: [],
+    failedRequests: [],
+    actionsExecuted: status === "won" ? 6 : 5,
+    durationMs: 100,
   };
 }
 
@@ -152,6 +199,46 @@ describe("validation tool handlers", () => {
     expect(parsed.gameplayEvent).toMatchObject({ type: "gameplay.verified", target: "wechat-mini-game" });
     expect(parsed.gameplayEvent).not.toHaveProperty("evidencePath");
     expect(parsed.gameplayEvent).not.toHaveProperty("canvas");
+  });
+
+  it("compares canonical Web and Laya terminal telemetry with an explicit time tolerance", async () => {
+    const win = orderCollectTelemetry({ result: "won", endReason: "orders-complete", score: 6, orderCollected: 6, remainingMs: 73_000 });
+    const loss = orderCollectTelemetry({ result: "lost", endReason: "lives-depleted", lives: 0, remainingMs: 72_000 });
+    const webReport = {
+      projectId: "order-web", passed: true as const,
+      win: verificationReport("order-web", "won", win),
+      loss: verificationReport("order-web", "lost", loss),
+    };
+    const result = await verifyOrderCollectCrossRuntimeTool(
+      {
+        async verify() { throw new Error("not used"); },
+        async verifyOrderCollectDualTerminal() { return webReport; },
+      },
+      {
+        async verify(projectId) {
+          return {
+            projectId, target: "douyin-mini-game" as const, genre: "arcade" as const, passed: true as const,
+            scenarios: [
+              { name: "genre-win" as const, outcome: "won" as const, actions: 6, telemetry: { ...win, remainingMs: 71_000 } },
+              { name: "timeout-loss" as const, outcome: "lost" as const, actions: 1 },
+              { name: "lives-depleted-loss" as const, outcome: "lost" as const, actions: 3, telemetry: { ...loss, remainingMs: 69_500 } },
+            ] as const,
+            durationMs: 25, templateSha256: "c".repeat(64),
+          };
+        },
+      },
+      { webProjectId: "order-web", miniGameProjectId: "order-mini", remainingMsTolerance: 2_500 },
+    );
+    const parsed = readJsonResult(result) as { passed: boolean; remainingMsTolerance: number; comparisons: Record<string, { matched: boolean; remainingMsDifference: number }> };
+    expect(result.isError).not.toBe(true);
+    expect(parsed).toMatchObject({
+      passed: true,
+      remainingMsTolerance: 2_500,
+      comparisons: {
+        win: { matched: true, remainingMsDifference: 2_000 },
+        livesDepletedLoss: { matched: true, remainingMsDifference: 2_500 },
+      },
+    });
   });
 
   it("returns validated game specifications", () => {
@@ -330,6 +417,7 @@ describe("validation tool handlers", () => {
             runId: input.runId,
             prompt: input.prompt,
             language: input.language ?? "zh-CN",
+            requestedSpecialists: input.requestedSpecialists ?? [],
             status: "queued",
             createdAt: "2026-07-18T12:00:00Z",
           },

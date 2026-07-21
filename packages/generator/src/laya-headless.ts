@@ -8,9 +8,11 @@ import {
   projectIdSchema,
   type GamePlatformTarget,
   type GameSpec,
+  type OrderCollectTelemetry,
 } from "@gameforge/contracts";
 import { transformSync } from "esbuild";
 import { douyinRuntimeSource } from "./douyin-template.js";
+import { orderCollectLayaRuntimeSource } from "./order-collect-laya-template.js";
 import { GAMEFORGE_GENERATOR_VERSION } from "./generator.js";
 
 type Genre = GameSpec["genre"];
@@ -23,12 +25,14 @@ type Telemetry = {
   player: { x: number; y: number };
   collectibles: Array<{ x: number; y: number }>;
   hazards: Array<{ x: number; y: number }>;
+  simulation?: OrderCollectTelemetry;
 };
 
 export type LayaGameplayScenario = {
-  name: "genre-win" | "timeout-loss";
+  name: "genre-win" | "timeout-loss" | "lives-depleted-loss";
   outcome: "won" | "lost";
   actions: number;
+  telemetry?: NonNullable<Telemetry["simulation"]>;
 };
 
 export type LayaGameplayVerificationReport = {
@@ -39,12 +43,17 @@ export type LayaGameplayVerificationReport = {
   scenarios: readonly [
     LayaGameplayScenario & { name: "genre-win"; outcome: "won" },
     LayaGameplayScenario & { name: "timeout-loss"; outcome: "lost" },
+  ] | readonly [
+    LayaGameplayScenario & { name: "genre-win"; outcome: "won" },
+    LayaGameplayScenario & { name: "timeout-loss"; outcome: "lost" },
+    LayaGameplayScenario & { name: "lives-depleted-loss"; outcome: "lost" },
   ];
   durationMs: number;
   templateSha256: string;
 };
 
 class FakeGraphics {
+  clear(): void {}
   drawRect(): void {}
   drawCircle(): void {}
   drawTexture(): void {}
@@ -148,7 +157,9 @@ type Runtime = {
   state(): Telemetry;
 };
 
-const TEMPLATE_SHA256 = createHash("sha256").update(douyinRuntimeSource, "utf8").digest("hex");
+function runtimeSourceFor(spec: GameSpec): string {
+  return spec.mechanicProfile === "order-collect" ? orderCollectLayaRuntimeSource : douyinRuntimeSource;
+}
 
 export class ManagedLayaGameplayVerifier {
   readonly #projectsRoot: string;
@@ -165,31 +176,75 @@ export class ManagedLayaGameplayVerifier {
     const { target, spec } = await readManagedInputs(this.#projectsRoot, projectId);
     const win = await startRuntime(spec);
     let actions = 0;
+    let winState: Telemetry | undefined;
     try {
       actions = exerciseGenreWin(win, spec.genre);
-      if (win.state().status !== "won") throw new Error(`Laya ${spec.genre} win scenario did not reach won telemetry.`);
+      winState = win.state();
+      if (winState.status !== "won") throw new Error(`Laya ${spec.genre} win scenario did not reach won telemetry.`);
     } finally {
       win.scene.onDestroy();
     }
     const loss = await startRuntime(spec);
+    let lossState: Telemetry | undefined;
     try {
       for (const hazard of loss.scene.hazards) { hazard.sprite.pos(20, 125); hazard.vx = 0; hazard.vy = 0; }
       loss.timer.advance(spec.targetDurationSeconds * 1000, 1_000);
-      if (loss.state().status !== "lost") throw new Error("Laya timeout scenario did not reach lost telemetry.");
+      lossState = loss.state();
+      if (lossState.status !== "lost") throw new Error("Laya timeout scenario did not reach lost telemetry.");
     } finally {
       loss.scene.onDestroy();
     }
+    const startingLives = spec.gameplay?.startingLives ?? 3;
+    let livesState: Telemetry | undefined;
+    if (spec.mechanicProfile === "order-collect") {
+      const lives = await startRuntime(spec);
+      try {
+        const hazard = lives.scene.hazards[0];
+        if (hazard === undefined) throw new Error("Laya lives-depleted scenario requires one hazard.");
+        hazard.vx = 0;
+        hazard.vy = 0;
+        for (let hit = 0; hit < startingLives; hit += 1) {
+          hazard.sprite.pos(lives.scene.player.x, lives.scene.player.y);
+          lives.timer.advance(hit === 0 ? 16 : 900, 16);
+        }
+        livesState = lives.state();
+        if (livesState.status !== "lost" || livesState.simulation?.endReason !== "lives-depleted") {
+          throw new Error("Laya lives-depleted scenario did not reach the expected terminal telemetry.");
+        }
+      } finally {
+        lives.scene.onDestroy();
+      }
+    }
+    const scenarios: LayaGameplayVerificationReport["scenarios"] = livesState?.simulation === undefined
+      ? [
+          {
+            name: "genre-win", outcome: "won", actions,
+            ...(winState?.simulation === undefined ? {} : { telemetry: winState.simulation }),
+          },
+          {
+            name: "timeout-loss", outcome: "lost", actions: 1,
+            ...(lossState?.simulation === undefined ? {} : { telemetry: lossState.simulation }),
+          },
+        ]
+      : [
+          {
+            name: "genre-win", outcome: "won", actions,
+            ...(winState?.simulation === undefined ? {} : { telemetry: winState.simulation }),
+          },
+          {
+            name: "timeout-loss", outcome: "lost", actions: 1,
+            ...(lossState?.simulation === undefined ? {} : { telemetry: lossState.simulation }),
+          },
+          { name: "lives-depleted-loss", outcome: "lost", actions: startingLives, telemetry: livesState.simulation },
+        ];
     return {
       projectId,
       target,
       genre: spec.genre,
       passed: true,
-      scenarios: [
-        { name: "genre-win", outcome: "won", actions },
-        { name: "timeout-loss", outcome: "lost", actions: 1 },
-      ],
+      scenarios,
       durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
-      templateSha256: TEMPLATE_SHA256,
+      templateSha256: createHash("sha256").update(runtimeSourceFor(spec), "utf8").digest("hex"),
     };
   }
 }
@@ -228,7 +283,7 @@ async function startRuntime(spec: GameSpec): Promise<Runtime> {
   const telemetryHost: { __GAMEFORGE_TEST__?: Telemetry } = {};
   const laya = {
     Scene: FakeScene, Sprite: FakeSprite, Text: FakeText, stage, timer,
-    Event: { KEY_DOWN: "keydown", KEY_UP: "keyup", MOUSE_DOWN: "mousedown" },
+    Event: { KEY_DOWN: "keydown", KEY_UP: "keyup", MOUSE_DOWN: "mousedown", MOUSE_MOVE: "mousemove" },
     Loader: { JSON: "json", IMAGE: "image" },
     loader: { load: async (resource: string): Promise<unknown> => {
       if (resource === "resources/game-spec.json") return spec;
@@ -239,7 +294,8 @@ async function startRuntime(spec: GameSpec): Promise<Runtime> {
     Browser: { window: telemetryHost },
     regClass: () => <T>(target: T): T => target,
   };
-  const transpiled = transformSync(douyinRuntimeSource, {
+  const source = runtimeSourceFor(spec);
+  const transpiled = transformSync(source, {
     loader: "ts", format: "cjs", target: "es2020",
     tsconfigRaw: { compilerOptions: { experimentalDecorators: true } },
   });
@@ -290,14 +346,6 @@ async function readManagedInputs(
     files: manifest.files.map(({ path: filePath, bytes, sha256 }) => ({ path: filePath, bytes, sha256 })),
   })).digest("hex");
   if (expectedPlanSha256 !== manifest.planSha256) throw new Error("Managed Laya project plan hash mismatch.");
-  const runtimeEntry = manifest.files.find((entry) => entry.path === "src/Main.ts");
-  if (runtimeEntry?.sha256 !== TEMPLATE_SHA256 || runtimeEntry.bytes !== Buffer.byteLength(douyinRuntimeSource, "utf8")) {
-    throw new Error("Managed Laya runtime does not match the verified template.");
-  }
-  const runtime = await readStableFile(project, "src/Main.ts", runtimeEntry.bytes);
-  if (createHash("sha256").update(runtime).digest("hex") !== TEMPLATE_SHA256) {
-    throw new Error("Managed Laya runtime hash mismatch.");
-  }
   const specEntry = manifest.files.find((entry) => entry.path === "assets/resources/game-spec.json");
   if (specEntry === undefined) throw new Error("Managed Laya GameSpec entry is missing.");
   const specBytes = await readStableFile(project, specEntry.path, specEntry.bytes);
@@ -305,7 +353,18 @@ async function readManagedInputs(
   if (specSha256 !== specEntry.sha256 || specSha256 !== manifest.specSha256) {
     throw new Error("Managed Laya GameSpec hash mismatch.");
   }
-  return { target: manifest.target, spec: gameSpecSchema.parse(JSON.parse(specBytes.toString("utf8")) as unknown) };
+  const spec = gameSpecSchema.parse(JSON.parse(specBytes.toString("utf8")) as unknown);
+  const expectedRuntimeSource = runtimeSourceFor(spec);
+  const expectedTemplateSha256 = createHash("sha256").update(expectedRuntimeSource, "utf8").digest("hex");
+  const runtimeEntry = manifest.files.find((entry) => entry.path === "src/Main.ts");
+  if (runtimeEntry?.sha256 !== expectedTemplateSha256 || runtimeEntry.bytes !== Buffer.byteLength(expectedRuntimeSource, "utf8")) {
+    throw new Error("Managed Laya runtime does not match the verified template.");
+  }
+  const runtime = await readStableFile(project, "src/Main.ts", runtimeEntry.bytes);
+  if (createHash("sha256").update(runtime).digest("hex") !== expectedTemplateSha256) {
+    throw new Error("Managed Laya runtime hash mismatch.");
+  }
+  return { target: manifest.target, spec };
 }
 
 async function readStableFile(root: string, relativePath: string, maximumBytes: number): Promise<Buffer> {

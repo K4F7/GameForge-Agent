@@ -248,6 +248,34 @@ describe("run event contracts", () => {
     expect(runEventSchema.safeParse({ ...event, mainPackageBytes: 4 * 1024 * 1024 + 1 }).success).toBe(false);
   });
 
+  it("keeps evidence and Douyin DevTool status independent from build evidence", () => {
+    expect(runEventSchema.safeParse({
+      type: "evidence.status",
+      runId: "run-1",
+      sequence: 5,
+      emittedAt,
+      projectId: "safety-sprint",
+      surface: "web-visual",
+      status: "failed",
+      detail: "Canvas was blank.",
+    }).success).toBe(true);
+    expect(runEventSchema.safeParse({
+      type: "douyin.devtool.status",
+      runId: "run-1",
+      sequence: 6,
+      emittedAt,
+      projectId: "safety-sprint",
+      status: "connected",
+    }).success).toBe(true);
+    expect(runEventSchema.safeParse({
+      type: "douyin.devtool.status",
+      runId: "run-1",
+      sequence: 6,
+      emittedAt,
+      status: "built",
+    }).success).toBe(false);
+  });
+
   it("accepts a secret-free MCP capability snapshot event", () => {
     expect(runEventSchema.safeParse({
       type: "capabilities.ready",

@@ -23,6 +23,8 @@ import path from "node:path";
 import { z } from "zod";
 import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
 import { douyinRuntimeSource } from "./douyin-template.js";
+import { orderCollectWebRuntimeSource } from "./order-collect-web-template.js";
+import { orderCollectLayaRuntimeSource } from "./order-collect-laya-template.js";
 
 export const GAMEFORGE_GENERATOR_VERSION = "0.13.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
@@ -410,7 +412,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePla
       assets: [],
     }, null, 2)}\n`),
     file("src/main.ts", loaderSource),
-    file("src/game.ts", runtimeSource),
+    file("src/game.ts", spec.mechanicProfile === "order-collect" ? orderCollectWebRuntimeSource : runtimeSource),
     file("tsconfig.json", `${JSON.stringify({
       compilerOptions: {
         target: "ES2023",
@@ -428,7 +430,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePla
       include: ["src", "vite.config.ts", "game-spec.json"],
     }, null, 2)}\n`),
     file("vite.config.ts", 'import { defineConfig } from "vite";\n\nexport default defineConfig({ base: "./", build: { manifest: true } });\n'),
-  ] : createLayaSourceFiles(projectId, specContent, target)).sort((left, right) => left.path.localeCompare(right.path));
+  ] : createLayaSourceFiles(projectId, spec, specContent, target)).sort((left, right) => left.path.localeCompare(right.path));
 
   const specSha256 = sha256(specContent);
   const planSha256 = sha256(JSON.stringify({
@@ -462,6 +464,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePla
 
 function createLayaSourceFiles(
   projectId: string,
+  spec: GameSpec,
   specContent: string,
   target: Exclude<GamePlatformTarget, "web">,
 ): GeneratedFile[] {
@@ -509,7 +512,7 @@ function createLayaSourceFiles(
       modules: { "laya.ui": false, "laya.d3": false },
       addons: {},
     }, null, 2)}\n`),
-    file("src/Main.ts", douyinRuntimeSource),
+    file("src/Main.ts", spec.mechanicProfile === "order-collect" ? orderCollectLayaRuntimeSource : douyinRuntimeSource),
     file("src/Main.ts.meta", `${JSON.stringify({ uuid: runtimeUuid }, null, 2)}\n`),
     file("tsconfig.json", `${JSON.stringify({
       compilerOptions: {

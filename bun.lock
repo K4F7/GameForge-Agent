@@ -165,6 +165,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@gameforge/contracts": "0.1.0",
+        "@gameforge/simulation-core": "0.1.0",
         "esbuild": "0.25.12",
         "zod": "4.4.3",
       },
@@ -188,6 +189,7 @@
         "@gameforge/minigame-validator": "0.1.0",
         "@gameforge/providers": "0.1.0",
         "@gameforge/run-relay": "0.1.0",
+        "@gameforge/simulation-core": "0.1.0",
         "@modelcontextprotocol/sdk": "1.29.0",
         "zod": "4.4.3",
       },
@@ -203,6 +205,8 @@
       "version": "0.1.0",
       "bin": {
         "gameforge-minigame-validate": "dist/cli.js",
+        "gameforge-douyin-cli-doctor": "dist/douyin-cli-doctor.js",
+        "gameforge-minigame-handoff": "dist/handoff-cli.js",
       },
       "dependencies": {
         "@gameforge/contracts": "0.1.0",
@@ -255,6 +259,14 @@
       "devDependencies": {
         "@types/node": "22.20.1",
         "tsx": "4.20.6",
+        "typescript": "7.0.2",
+        "vitest": "4.1.10",
+      },
+    },
+    "packages/simulation-core": {
+      "name": "@gameforge/simulation-core",
+      "version": "0.1.0",
+      "devDependencies": {
         "typescript": "7.0.2",
         "vitest": "4.1.10",
       },
@@ -350,6 +362,8 @@
     "@gameforge/providers": ["@gameforge/providers@workspace:packages/providers"],
 
     "@gameforge/run-relay": ["@gameforge/run-relay@workspace:packages/run-relay"],
+
+    "@gameforge/simulation-core": ["@gameforge/simulation-core@workspace:packages/simulation-core"],
 
     "@gameforge/tui": ["@gameforge/tui@workspace:apps/tui"],
 

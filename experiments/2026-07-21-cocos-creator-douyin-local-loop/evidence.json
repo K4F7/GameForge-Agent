@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "experimentId": "2026-07-21-cocos-creator-douyin-local-loop",
+  "date": "2026-07-21",
+  "platform": "windows",
+  "tools": {
+    "cocosDashboard": "2.2.1",
+    "cocosCreator": "3.8.8",
+    "douyinDevTool": "4.5.4"
+  },
+  "source": {
+    "template": "official-empty-2d",
+    "scene": "db://assets/scene.scene",
+    "script": "assets/scripts/GameBootstrap.ts",
+    "designResolution": {
+      "runtimeWidth": 720,
+      "runtimeHeight": 1280,
+      "buildSettingsWidth": 1280,
+      "buildSettingsHeight": 720
+    }
+  },
+  "build": {
+    "target": "bytedance-mini-game",
+    "success": true,
+    "successEvidence": "creator-build-finished-log-marker",
+    "exitCode": null,
+    "durationMs": 82000,
+    "artifactFileCount": 35,
+    "artifactTotalBytes": 11082428,
+    "artifactAggregateSha256": "8aea3b092a8c22e4d327523e0ac46932cdca3cb446c1b0e5a94a3a883398a6d9",
+    "warnings": [
+      "mainBundleCompressionType validation fallback",
+      "buildPath validation fallback to project://build",
+      "debug string validation fallback to boolean true"
+    ]
+  },
+  "assets": {
+    "bgmBytes": 4485656,
+    "effectBytes": 21062,
+    "licenseScope": "non-commercial-local-validation"
+  },
+  "devTool": {
+    "testAppId": true,
+    "imported": true,
+    "sceneLoaded": true,
+    "editorProblemErrors": 0,
+    "editorProblemWarnings": 0,
+    "consoleGameErrors": 0,
+    "consoleWarnings": 2,
+    "simulator": "iPhone 15 Pro",
+    "portraitRendered": true,
+    "interactionStarted": true,
+    "scoreObserved": 20,
+    "failureStateObserved": true,
+    "audioAudibilityManuallyConfirmed": false
+  },
+  "remoteOperations": {
+    "preview": false,
+    "deviceDebug": false,
+    "performanceTest": false,
+    "upload": false,
+    "review": false,
+    "publish": false
+  },
+  "externalProvidersCalled": [],
+  "humanPrerequisites": [
+    "Creator and DevTool installed",
+    "official Empty2D project created",
+    "DevTool login completed"
+  ],
+  "privacy": {
+    "absolutePathsRecorded": false,
+    "rawScreenshotsCommitted": false,
+    "rawLogsCommitted": false,
+    "credentialsRecorded": false
+  }
+}

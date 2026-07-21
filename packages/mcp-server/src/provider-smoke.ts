@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { gameforgeCapabilitySnapshotSchema } from "@gameforge/contracts";
+import { gameforgeCapabilitySnapshotSchema, gameSpecSchema } from "@gameforge/contracts";
 import { missingProviderEnvironment, parseProviderSelection, publicEvidence, type ProviderName } from "./provider-smoke-core.js";
 
 const args = process.argv.slice(2);
@@ -51,13 +51,22 @@ const transport = new StdioClientTransport({ command: process.execPath, args: [s
 const client = new Client({ name: "gameforge-provider-smoke", version: "1.0.0" });
 const results: Record<string, unknown> = {};
 
-async function call(name: string, input: Record<string, unknown>, evidenceName = name): Promise<Record<string, unknown>> {
+async function call(
+  name: string,
+  input: Record<string, unknown>,
+  evidenceName = name,
+  timeout = 60_000,
+): Promise<Record<string, unknown>> {
   const started = performance.now();
-  const result = await client.callTool({ name, arguments: input });
-  if (result.isError === true || !Array.isArray(result.content) || result.content[0]?.type !== "text") {
+  const result = await client.callTool({ name, arguments: input }, undefined, { timeout });
+  if (!Array.isArray(result.content) || result.content[0]?.type !== "text") {
     throw new Error(`${name} failed.`);
   }
   const parsed = JSON.parse(result.content[0].text) as Record<string, unknown>;
+  if (result.isError === true) {
+    const message = typeof parsed.message === "string" ? parsed.message : `${name} failed.`;
+    throw new Error(`${name} failed: ${message}`);
+  }
   results[evidenceName] = { elapsedMs: Math.round(performance.now() - started), result: publicEvidence(parsed) };
   return parsed;
 }
@@ -75,7 +84,23 @@ try {
     spec = drafted.spec as Record<string, unknown>;
   }
   if ((selected.includes("seedream") || selected.includes("freesound") || selected.includes("tts") || selected.includes("music")) && spec === undefined) {
-    throw new Error("Media smoke requires qwen in --providers so the temporary project is generated from a real validated GameSpec.");
+    spec = gameSpecSchema.parse({
+      title: "Provider Smoke Collection",
+      genre: "arcade",
+      objective: "收集三个星星并避开障碍。",
+      controls: ["方向键移动"],
+      winCondition: "收集全部星星。",
+      loseCondition: "倒计时结束。",
+      targetDurationSeconds: 45,
+      locale: "zh-CN",
+      gameplay: {
+        collectibleCount: 3,
+        hazardCount: 1,
+        startingLives: 3,
+        movementSpeed: 220,
+      },
+    });
+    report.specSource = "deterministic-validated-fixture";
   }
   if (spec !== undefined && selected.some((provider) => provider !== "qwen")) {
     await call("generate_game_project", { projectId, spec, mode: "apply" });
@@ -110,7 +135,7 @@ try {
       assetId: "smoke-music",
       prompt: "轻快、无歌词、适合中文休闲收集小游戏的无缝循环背景音乐",
       watermark: false,
-    });
+    }, "generate_music_asset", 180_000);
   }
   report.ok = true;
 } catch (error) {
