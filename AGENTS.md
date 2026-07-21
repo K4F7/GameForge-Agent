@@ -2,7 +2,9 @@
 
 ## 项目目标
 
-本仓库用于研究和验证 CodeArts Agent 的复杂软件工程能力。所有改动应具有明确需求、可复现步骤和可验证结果。
+本仓库用于研究和验证 CodeArts Agent 的复杂软件工程能力。当前产品只推进 Phaser Web 2D 游戏，由 CodeArts 担任主智能体，以 OpenChamber 作为唯一 GUI 与后续定制基线。所有改动应具有明确需求、可复现步骤和可验证结果。
+
+当前唯一对外生产 target 是 `web`。抖音、微信、DevTool、外部 Provider、LevelSpec、专业角色和真实多 Agent 委派均为 `paused` 或下一版本 TODO，不进入当前默认流程、GUI 或验收门禁。权威范围见 `docs/decisions/0003-web-first-openchamber.md`。
 
 ## CodeArts 客户端基线
 
@@ -11,7 +13,7 @@
 - CodeArts 与独立 OpenCode CLI 必须使用不同的数据目录。仓库内实验优先通过 `bun run codearts` / `bun run opencode` 启动；不得让不同迁移版本共同写 `%USERPROFILE%\.local\share\opencode\opencode.db`。认证文件、数据库及其备份都属于用户私有状态，不纳入仓库。
 - “已安装”不等于“端到端已验证”。只有真实 CodeArts 会话完成 Task 认领、确定性 MCP 工具调用、RunEvent 发布与 Workbench/浏览器验收后，才能记录为 CodeArts 集成通过。
 - 当前默认 Agent 路由只使用 CodeArts 内置且由 `codearts models` 实际列出的 DeepSeek/GLM target。OpenCode、Hy3、Kimi 或其他跨宿主模型只保留历史研究能力；没有用户新的明确授权，不得放入默认 fallback。
-- 百炼、Seedream、豆包语音、Freesound 与 MiniMax 适配器可保留，但当前不配置、不调用外部账号，生成游戏使用程序化/静音回退。
+- 百炼、Seedream、豆包语音、Freesound 与 MiniMax 适配器可保留，但当前状态为 `paused`，不配置、不调用外部账号，生成游戏使用程序化/静音回退。
 
 ## 工作方式
 
@@ -28,6 +30,7 @@
 - 业务代码统一使用TypeScript，并保持严格类型检查。
 - CodeArts是主智能体；MCP工具应保持确定性，不在工具内部重复实现Agent循环。
 - 游戏模板默认采用Phaser、Vite和程序化占位素材。
+- 创建项目后，CodeArts 可以直接修改 TypeScript、样式和测试；GameSpec 只承担创建基线与验收输入，不是后续代码修改的唯一来源。
 - 不提交密钥、令牌、账号信息或本地环境文件。
 - 新增功能必须同时给出可执行的验证方式。
 - 实验结果应记录输入任务、使用模型、耗时、工具调用、人工干预和最终结果。
@@ -38,7 +41,7 @@
 - 根目录 `AGENTS.md`：稳定项目规则、工程约束和安全边界；
 - `.codeartsdoer/skills/`：由 CodeArts 按需加载的游戏生产流程，不保存 Provider 密钥或复制 MCP 实现；
 - `packages/mcp-server/`：确定性工具边界，负责校验、生成、资产、预览、验收和 Run 协调，不实现 Agent 循环；
-- `apps/workbench/` 与 `apps/tui/`：只读状态投影与显式用户控制界面，不承担需求理解和自主执行；
+- OpenChamber：唯一产品 GUI，负责 Session 交互；`apps/workbench/` 暂时保留内部 adapter、状态投影与行为基线，`apps/tui/` 保留显式诊断控制；它们均不承担需求理解和自主执行；
 - `packages/opencode-plugin/`：可选的薄集成层，只做可用性提示、状态工具和通知，不承载 GameForge 核心业务。
 
 GameForge 核心不得实现为 OpenCode Plugin。CodeArts/OpenCode 适配器可以调用 Relay 与 MCP，但核心契约、生成器、资产存储、浏览器验收和事件状态必须保持客户端无关。
@@ -49,3 +52,4 @@ GameForge 核心不得实现为 OpenCode Plugin。CodeArts/OpenCode 适配器可
 - 执行来源不明的脚本前必须先检查内容。
 - 外部依赖应锁定版本并说明用途。
 - 当前不得执行抖音小游戏平台 preview、上传、提审或发布；`tt-minigame-ide-cli` 只允许对官方 `bin/tmg.js` 执行固定 `--version` 探针，DevTool 本地导入与模拟器证据另行记录。
+- 当前不得主动运行抖音、微信、DevTool 或外部 Provider 流程。恢复任何暂停能力都需要用户重新明确立项。

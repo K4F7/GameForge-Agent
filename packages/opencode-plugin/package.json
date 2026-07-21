@@ -1,6 +1,6 @@
 {
   "name": "@gameforge/opencode-plugin",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -15,7 +15,7 @@
     "test": "vitest run src"
   },
   "dependencies": {
-    "@gameforge/run-relay": "0.1.0",
+    "@gameforge/run-relay": "0.1.0-alpha.1",
     "@opencode-ai/plugin": "1.18.3"
   },
   "devDependencies": {

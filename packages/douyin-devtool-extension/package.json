@@ -2,7 +2,7 @@
   "name": "gameforge-douyin-devtool-extension",
   "displayName": "GameForge Douyin Bridge",
   "description": "Local-only bridge between GameForge and the Douyin Mini Game DevTool.",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "publisher": "gameforge",
   "private": true,
   "type": "commonjs",

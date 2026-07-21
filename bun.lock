@@ -10,7 +10,7 @@
     },
     "apps/desktop": {
       "name": "@gameforge/desktop",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "devDependencies": {
         "@types/node": "22.20.1",
         "typescript": "7.0.2",
@@ -19,7 +19,7 @@
     },
     "apps/game": {
       "name": "@gameforge/game",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "dependencies": {
         "phaser": "4.2.1",
       },
@@ -31,7 +31,7 @@
     },
     "apps/tui": {
       "name": "@gameforge/tui",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "bin": {
         "gameforge-tui": "dist/main.js",
       },
@@ -47,7 +47,7 @@
     },
     "apps/workbench": {
       "name": "@gameforge/workbench",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "dependencies": {
         "@gameforge/contracts": "0.1.0",
         "@gameforge/run-relay": "0.1.0",
@@ -65,7 +65,7 @@
     },
     "integrations": {
       "name": "@gameforge/integrations",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "dependencies": {
         "@gameforge/contracts": "0.1.0",
       },
@@ -77,13 +77,13 @@
     },
     "packages/asset-store": {
       "name": "@gameforge/asset-store",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "dependencies": {
-        "@gameforge/contracts": "0.1.0",
+        "@gameforge/contracts": "0.1.0-alpha.1",
         "zod": "4.4.3",
       },
       "devDependencies": {
-        "@gameforge/generator": "0.1.0",
+        "@gameforge/generator": "0.1.0-alpha.1",
         "@types/node": "22.20.1",
         "typescript": "7.0.2",
         "vitest": "4.1.10",
@@ -91,7 +91,7 @@
     },
     "packages/benchmark": {
       "name": "@gameforge/benchmark",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "bin": {
         "gameforge-benchmark": "dist/cli.js",
       },
@@ -108,7 +108,7 @@
     },
     "packages/bundle-budget": {
       "name": "@gameforge/bundle-budget",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "devDependencies": {
         "@types/node": "22.20.1",
         "typescript": "7.0.2",
@@ -117,7 +117,7 @@
     },
     "packages/contracts": {
       "name": "@gameforge/contracts",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "dependencies": {
         "zod": "4.4.3",
       },
@@ -128,7 +128,7 @@
     },
     "packages/douyin-devtool-extension": {
       "name": "gameforge-douyin-devtool-extension",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "dependencies": {
         "chrome-remote-interface": "0.34.0",
       },
@@ -144,17 +144,17 @@
     },
     "packages/game-verifier": {
       "name": "@gameforge/game-verifier",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "dependencies": {
         "@gameforge/contracts": "*",
-        "@gameforge/run-relay": "0.1.0",
+        "@gameforge/run-relay": "0.1.0-alpha.1",
         "phaser": "4.2.1",
         "playwright-core": "1.61.1",
         "vite": "8.1.4",
         "zod": "4.4.3",
       },
       "devDependencies": {
-        "@gameforge/generator": "0.1.0",
+        "@gameforge/generator": "0.1.0-alpha.1",
         "@types/node": "22.20.1",
         "typescript": "7.0.2",
         "vitest": "4.1.10",
@@ -162,10 +162,10 @@
     },
     "packages/generator": {
       "name": "@gameforge/generator",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "dependencies": {
-        "@gameforge/contracts": "0.1.0",
-        "@gameforge/simulation-core": "0.1.0",
+        "@gameforge/contracts": "0.1.0-alpha.1",
+        "@gameforge/simulation-core": "0.1.0-alpha.1",
         "esbuild": "0.25.12",
         "zod": "4.4.3",
       },
@@ -177,19 +177,19 @@
     },
     "packages/mcp-server": {
       "name": "@gameforge/mcp-server",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "bin": {
         "gameforge-mcp": "dist/index.js",
       },
       "dependencies": {
-        "@gameforge/asset-store": "0.1.0",
+        "@gameforge/asset-store": "0.1.0-alpha.1",
         "@gameforge/contracts": "*",
-        "@gameforge/game-verifier": "0.1.0",
-        "@gameforge/generator": "0.1.0",
-        "@gameforge/minigame-validator": "0.1.0",
-        "@gameforge/providers": "0.1.0",
-        "@gameforge/run-relay": "0.1.0",
-        "@gameforge/simulation-core": "0.1.0",
+        "@gameforge/game-verifier": "0.1.0-alpha.1",
+        "@gameforge/generator": "0.1.0-alpha.1",
+        "@gameforge/minigame-validator": "0.1.0-alpha.1",
+        "@gameforge/providers": "0.1.0-alpha.1",
+        "@gameforge/run-relay": "0.1.0-alpha.1",
+        "@gameforge/simulation-core": "0.1.0-alpha.1",
         "@modelcontextprotocol/sdk": "1.29.0",
         "zod": "4.4.3",
       },
@@ -202,14 +202,14 @@
     },
     "packages/minigame-validator": {
       "name": "@gameforge/minigame-validator",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "bin": {
         "gameforge-minigame-validate": "dist/cli.js",
         "gameforge-douyin-cli-doctor": "dist/douyin-cli-doctor.js",
         "gameforge-minigame-handoff": "dist/handoff-cli.js",
       },
       "dependencies": {
-        "@gameforge/contracts": "0.1.0",
+        "@gameforge/contracts": "0.1.0-alpha.1",
         "zod": "4.4.3",
       },
       "devDependencies": {
@@ -220,7 +220,7 @@
     },
     "packages/opencode-plugin": {
       "name": "@gameforge/opencode-plugin",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "dependencies": {
         "@gameforge/run-relay": "0.1.0",
         "@opencode-ai/plugin": "1.18.3",
@@ -233,7 +233,7 @@
     },
     "packages/providers": {
       "name": "@gameforge/providers",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "dependencies": {
         "@elevenlabs/elevenlabs-js": "2.58.0",
         "@gameforge/contracts": "*",
@@ -248,12 +248,12 @@
     },
     "packages/run-relay": {
       "name": "@gameforge/run-relay",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "bin": {
         "gameforge-run-relay": "dist/index.js",
       },
       "dependencies": {
-        "@gameforge/contracts": "0.1.0",
+        "@gameforge/contracts": "0.1.0-alpha.1",
         "zod": "4.4.3",
       },
       "devDependencies": {
@@ -265,7 +265,7 @@
     },
     "packages/simulation-core": {
       "name": "@gameforge/simulation-core",
-      "version": "0.1.0",
+      "version": "0.1.0-alpha.1",
       "devDependencies": {
         "typescript": "7.0.2",
         "vitest": "4.1.10",

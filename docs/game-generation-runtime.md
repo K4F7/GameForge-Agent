@@ -1,7 +1,10 @@
 # 确定性游戏生成与运行事件服务
 
+状态：accepted（Web 当前生效；平台与 Provider 部分 `paused`）
 更新日期：2026-07-18
 官方资料访问日期：2026-07-16
+
+当前产品只启用 `web` target、Phaser Web 2D、程序化/静音回退和真实 Chrome 验证。本文中的抖音、微信、外部 Provider 与 DevTool 章节保留实现与历史边界，但当前不主动执行；当前 MVP 入口见 [Web Game MVP](./mvp-web-game.md)。
 
 ## 目标与边界
 

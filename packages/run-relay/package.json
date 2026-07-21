@@ -1,6 +1,6 @@
 {
   "name": "@gameforge/run-relay",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "type": "module",
   "bin": {
@@ -28,7 +28,7 @@
     "test": "vitest run src"
   },
   "dependencies": {
-    "@gameforge/contracts": "0.1.0",
+    "@gameforge/contracts": "0.1.0-alpha.1",
     "zod": "4.4.3"
   },
   "devDependencies": {

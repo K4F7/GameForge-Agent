@@ -120,7 +120,7 @@ export type CreateServerOptions = {
 export function createServer(options: CreateServerOptions = {}): McpServer {
   const server = new McpServer({
     name: "gameforge",
-    version: "0.1.0",
+    version: "0.1.0-alpha.1",
   });
   const registerTool = <InputArgs extends Record<string, z.ZodType>>(
     name: string,

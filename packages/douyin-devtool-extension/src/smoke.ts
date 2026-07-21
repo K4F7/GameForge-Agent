@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const extensionsDirectory = resolve(temporaryRoot, "extensions");
   const installedExtensionDirectory = resolve(
     extensionsDirectory,
-    "gameforge.gameforge-douyin-devtool-extension-0.1.0",
+    "gameforge.gameforge-douyin-devtool-extension-0.1.0-alpha.1",
   );
   const token = randomBytes(32).toString("hex");
   const useExistingProfile = process.env.GAMEFORGE_DOUYIN_SMOKE_USE_EXISTING_PROFILE === "1";
@@ -166,7 +166,7 @@ function createExtensionRegistryEntry(extensionDirectory: string): Record<string
   const extensionUri = pathToFileURL(extensionDirectory);
   return {
     identifier: { id: "gameforge.gameforge-douyin-devtool-extension" },
-    version: "0.1.0",
+    version: "0.1.0-alpha.1",
     location: {
       $mid: 1,
       fsPath: extensionDirectory,
@@ -174,7 +174,7 @@ function createExtensionRegistryEntry(extensionDirectory: string): Record<string
       path: extensionUri.pathname,
       scheme: "file",
     },
-    relativeLocation: "gameforge.gameforge-douyin-devtool-extension-0.1.0",
+    relativeLocation: "gameforge.gameforge-douyin-devtool-extension-0.1.0-alpha.1",
     metadata: {
       isApplicationScoped: false,
       isMachineScoped: false,

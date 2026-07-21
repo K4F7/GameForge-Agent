@@ -1,8 +1,10 @@
-# GameForge Web 2D 与专业 Agent GUI PRD
+# GameForge Web 2D 与专业 Agent GUI PRD（已取代）
 
-状态：指定
+状态：superseded
 日期：2026-07-21
 产品中心：Web 2D + 单一 OpenCode 风格 GUI
+
+当前权威文档是 [Web Game PRD](./prd-web-game.md)。本文件保留专业角色和未来 GUI 研究，不作为 `0.1.0-alpha.1` 的当前范围依据；专业角色、Provider、LevelSpec 和多 Agent 委派进入下一版本 TODO。
 
 ## 产品定义
 

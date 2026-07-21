@@ -1,10 +1,10 @@
-# GameForge MVP 0.1 计划
+# GameForge 抖音小游戏 MVP 0.1（历史计划）
 
-状态：指定
+状态：paused
 日期：2026-07-21
 首发目标：`douyin-mini-game`
 
-关系说明：本文件保留抖音小游戏端到端闭环范围。该轮完成后的 Web 2D + GUI 产品 MVP 见 [Web 2D 专业 Agent GUI MVP](./mvp-web2d-opencodegui.md)。
+关系说明：本文件保留抖音小游戏端到端闭环的历史范围和恢复入口。当前产品已由 [Web Game MVP](./mvp-web-game.md) 取代；平台、DevTool 和真机流程不进入当前版本。
 
 ## 目标
 

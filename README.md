@@ -1,18 +1,18 @@
 # GameForge Agent
 
-基于华为云码道（CodeArts）代码智能体的全流程小游戏工程实验项目。
+基于华为云码道（CodeArts）代码智能体的 Phaser Web 2D 游戏工程项目。
 
-产品第一版以可发布的抖音小游戏为首要目标，微信小游戏为第二导出目标；现有 Phaser + Vite 浏览器项目是快速预览与自动验收基线，不等同于平台发布产物。平台范围与验收门槛见 [ADR-0002](docs/decisions/0002-domestic-mini-game-v1.md) 和 [国内小游戏平台调研](docs/domestic-mini-game-platforms.md)。
+当前版本：`0.1.0-alpha.1`。
 
-当前生成器已支持 `web`、`douyin-mini-game` 和 `wechat-mini-game`。两个小游戏 target 复用严格 GameSpec、五种 LayaAir 玩法和统一 Asset Store，但分别使用官方 CLI 的 `bytedancegame`/`wxgame` 构建目标、独立平台策略与 `tt.*`/`wx.*` capability 静态校验。CLI 构建通过不替代各自开发者工具与真机验收。
+当前产品中心固定为：CodeArts 是主智能体，Phaser Web 2D 是唯一生产运行时，OpenChamber 是唯一 GUI 与后续定制基线。当前唯一对外 target 是 `web`；抖音、微信、DevTool、外部 Provider 和专业角色能力均暂停，不进入当前默认流程与验收门禁。
 
-`verify_minigame_gameplay` 为抖音/微信受管源工程提供生产级逻辑验收：只执行与生成器固定模板 SHA-256 一致的 `Main.ts`，以隔离 VM、可控输入和时钟验证 genre 胜利与超时失败。它发布独立的 `gameplay.verified`，不包含 Canvas、截图或 DevTool 字段，因此不能被误读为视觉或设备证据。
+先阅读 [文档入口](docs/index.md)、[ADR-0003](docs/decisions/0003-web-first-openchamber.md)、[Web Game PRD](docs/prd-web-game.md) 和 [Web Game MVP](docs/mvp-web-game.md)。历史平台能力与实验仍保留，但不代表当前产品方向。
 
 当前阶段聚焦三件事：
 
-1. 以CodeArts Agent作为需求理解、规划和多智能体编排中枢。
-2. 使用TypeScript实现可审计、可测试的MCP工具和游戏模板。
-3. 建立可复现的CodeArts Agent配置、开发和评测流程。
+1. 跑通 OpenChamber → CodeArts → GameForge MCP → Phaser → Chrome → GUI 证据闭环。
+2. 支持 Web Project 的安全新建与持续修改。
+3. 建立可复现、分级且不夸大的构建、玩法、视觉和 CodeArts 闭环证据。
 
 ## 仓库结构
 
@@ -36,19 +36,23 @@
 ├── integrations/opencode/             # OpenCode动态启动适配
 ├── docs/
 │   ├── codearts-quickstart.md         # 安装与首次验证
+│   ├── index.md                       # 当前文档权威入口
+│   ├── prd-web-game.md                # 当前 Web Game 产品需求
+│   ├── mvp-web-game.md                # 当前 Web Game MVP
+│   ├── glossary.md                    # 核心术语与对象关系
+│   ├── acceptance-matrix.md           # Web 证据与版本门槛
+│   ├── versioning.md                  # SemVer 与晋级规则
 │   ├── comparison.md                 # 三种代码智能体对比
 │   ├── model-media-strategy.md       # 国产模型、生图、TTS与音效策略
 │   ├── model-evaluation-2026-07.md    # 国产 SOTA、权威榜单与 oh-my-openagent 评估
 │   ├── game-generation-runtime.md    # 项目生成器与事件服务
-│   ├── roadmap.md                    # CodeArts 实验与第二轮 TUI/GUI 计划
-│   ├── prd-web2d-opencodegui.md      # Web 2D 与 @专业角色 GUI 产品需求
-│   ├── mvp-web2d-opencodegui.md      # Web 2D 专业 Agent GUI MVP
+│   ├── roadmap.md                    # 当前与下一版本顺序
 │   ├── codearts-opencode-analysis.md # CodeArts 与 OpenCode 官方资料研判
 │   └── open-source-references.md      # 可借鉴的游戏Agent与前端开源项目
 └── experiments/                      # 后续基准任务与实验记录
 ```
 
-## 第一阶段里程碑
+## 历史里程碑
 
 - [x] 安装并通过 OAuth 登录 CodeArts Agent CLI/TUI
 - [x] 用 CodeArts 打开本仓库并加载项目级上下文
@@ -61,6 +65,7 @@
 ## 技术底座
 
 - CodeArts Agent：主智能体、规则、Skills和Agent Team。
+- OpenChamber：唯一 GUI、交互与后续定制基线。
 - TypeScript：全部业务代码与工具代码。
 - Phaser 4：浏览器2D游戏引擎。
 - MCP TypeScript SDK：向CodeArts暴露确定性工程工具。
@@ -71,18 +76,14 @@
 
 ```bash
 bun install --frozen-lockfile
-bun run build
-bun run bundle:check
+bun run check
 bun run test
-bun run audit
-bun run doctor
-bun run doctor:douyin
-bun run doctor:browser
-bun run doctor:desktop
+bun run build
 bun run workbench:smoke
 bun run dev:local
-bun run tui -- list
 ```
+
+以上四项是当前 Web MVP 的合并门禁。平台、DevTool、外部 Provider 和桌面发布命令属于暂停或后续范围，不在默认快速开始中主动执行。
 
 `bun run doctor` 会构建基础包与 MCP，然后用真实 Node stdio Client 检查运行时版本、Bun 单锁、生产入口、必需工具、本次 capability snapshot 及 ready 能力对应的条件工具。配置 Task Inbox 时还会执行一次 `{limit: 1}` 的只读 Relay 探测，因此不可达 URL 不会显示绿灯。它不调用云 API、不输出凭据；可在与 CodeArts 相同的环境变量下运行，以提前发现半配置和路径错误。
 
@@ -246,7 +247,7 @@ Workbench 的“Task 历史”只读获取 Relay 最近 20 项。选择后会清
 
 当前机器已安装 CodeArts Agent 客户端；真实 CodeArts 端到端验收不能由本地 MCP Client 替代。可执行步骤、已通过证据与第二轮 TUI/GUI TODO 见 [路线图](docs/roadmap.md)。
 
-2026-07-18 已使用 CodeArts 26.6.2 OAuth TUI 和临时隔离配置完成首个真实闭环：CodeArts 启动 `gameforge` stdio MCP、认领 Workbench Task、发布 capability 与英文 GameSpec、生成并构建 Phaser 项目、取得真实 Chrome `won` 证据、发布 preview/verification 并完成 Run。云 Provider 均未配置也未调用。详见 [`2026-07-18-codearts-real-e2e`](experiments/2026-07-18-codearts-real-e2e/result.md)。
+2026-07-18 已使用 CodeArts 26.6.2 OAuth TUI 和临时隔离配置完成历史 Workbench/CodeArts 闭环：CodeArts 启动 `gameforge` stdio MCP、认领 Workbench Task、发布 capability 与英文 GameSpec、生成并构建 Phaser 项目、取得真实 Chrome `won` 证据、发布 preview/verification 并完成 Run。云 Provider 均未配置也未调用。该证据不代表当前 OpenChamber 完整闭环已经完成，详见 [`2026-07-18-codearts-real-e2e`](experiments/2026-07-18-codearts-real-e2e/result.md)。
 
 先阅读 [CodeArts 快速开始](docs/codearts-quickstart.md)，然后在 CodeArts 智能体模式中输入：
 

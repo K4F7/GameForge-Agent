@@ -1,6 +1,6 @@
 {
   "name": "@gameforge/integrations",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
     "test": "vitest run shared/runtime.test.ts shared/model-routing.test.ts codearts/executable.test.ts codearts/server-config.test.ts openchamber/config.test.ts"
   },
   "dependencies": {
-    "@gameforge/contracts": "0.1.0"
+    "@gameforge/contracts": "0.1.0-alpha.1"
   },
   "devDependencies": {
     "@types/node": "22.20.1",

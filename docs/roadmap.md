@@ -1,10 +1,34 @@
 # GameForge Agent 路线图
 
+状态：in-progress
 更新日期：2026-07-21
 
-## 当前产品优先级：抖音小游戏 V1
+## 当前产品优先级：Web Game `0.1.0-alpha.1`
 
-第一版首要发布目标已从泛浏览器游戏收窄为抖音小游戏；微信小游戏是第二导出目标。浏览器 Phaser 项目继续承担快速预览和 Chrome 回归，但不能作为小游戏平台验收。决策与官方约束见 [ADR-0002](./decisions/0002-domestic-mini-game-v1.md)。
+当前只推进 Phaser Web 2D。CodeArts 是主智能体，OpenChamber 是唯一 GUI 与后续定制基线，`web` 是唯一对外生产 target。权威决策见 [ADR-0003](./decisions/0003-web-first-openchamber.md)，当前范围与门槛见 [Web Game PRD](./prd-web-game.md) 和 [Web Game MVP](./mvp-web-game.md)。
+
+- [ ] 从原版 OpenChamber 提交一个真实普通需求；
+- [ ] 由真实 CodeArts 调用 GameForge MCP 创建 Task/Run；
+- [ ] 创建、构建并预览一个 `arcade` Phaser Web Project；
+- [ ] 用真实 Chrome 完成玩法与视觉验证；
+- [ ] 在 OpenChamber 中展示预览、日志和证据；
+- [ ] 通过显式 `projectId` 完成一次同 Project 修改与复验；
+- [ ] 实际运行并通过 `check`、`test`、`build` 和覆盖新 GUI 链路的 `workbench:smoke`；
+- [ ] 保存输入、模型、耗时、MCP 调用、人工干预和最终结果后进入 `0.1.0-beta.1`。
+
+只读 OpenChamber/CodeArts 兼容探针不等于上述闭环已经完成。
+
+## 下一版本 TODO
+
+1. 最高优先级：重排文档目录与信息架构；
+2. 外部 Provider 接入、许可与凭据边界；
+3. LevelSpec 与地图/实体规格；
+4. `@专业角色`、Specialist Request、Finding 和 Handoff；
+5. 真实多 Agent 委派、冲突和并行合并。
+
+## 暂停的历史平台路线
+
+以下内容保留历史实现和证据，但状态统一为 `paused`。当前不运行平台、DevTool、真机、上传、提审或发布流程。恢复必须由用户重新明确立项；历史决策与官方约束见 [ADR-0002](./decisions/0002-domestic-mini-game-v1.md)。
 
 - [x] 为生成请求、计划和 Manifest 增加显式 `web` / `douyin-mini-game` / `wechat-mini-game` target；旧请求默认 `web`，未实现平台 target 会明确失败；
 - [x] 完成 Phaser 4 抖音小游戏无 DOM 兼容性 spike；动态导入与初始化触发广泛浏览器依赖，按 ADR 停止 shim 路线；
@@ -28,15 +52,14 @@
 
 2026-07-20 首次探针确认当前 Windows 环境安装抖音开发者工具 4.5.4 且客户端可启动，但未登录时停在前置管理页；证据见 `experiments/2026-07-20-douyin-devtool-login-gate/`。用户随后自行完成登录并进入项目工作区，受控实验完成本地导入、编译器与模拟器验收；证据见 `experiments/2026-07-20-douyin-devtool-local-validation/`。
 
-## 抖音 MVP 后产品中心：Web 2D + 单一 GUI
+## GUI 主线的历史过渡说明
 
-当前抖音小游戏 MVP 只负责关闭一次平台端到端验证，不继续扩大 Cocos、LayaAir IDE 或平台 GUI 集成。GUI 第一版直接运行固定版本的原版 OpenChamber，并通过其 OpenCode-compatible server 接口连接 CodeArts；GameForge 的 Task/Run、预览、Diff、资产候选与验证证据留到后续通过 Runtime API、MCP 或插件接入。
+平台实验之后，产品中心已正式转为 Phaser Web 2D 与原版 OpenChamber。专业角色不属于当前 MVP，旧 PRD/MVP 已被当前 [Web Game PRD](./prd-web-game.md) 与 [Web Game MVP](./mvp-web-game.md) 取代。
 
-- [ ] 完成 [Web 2D 与专业 Agent GUI PRD](./prd-web2d-opencodegui.md) 的首批契约；
-- [ ] 完成 [Web 2D 专业 Agent GUI MVP](./mvp-web2d-opencodegui.md)；
-- [ ] 保存 `@程序员` Web 2D Bug 修复与 `@美术` 候选资产两个真实 CodeArts 实验；
-- [ ] 建立 Specialist Request、Finding 与 Handoff 的客户端无关契约后，再评估真实专业 Agent 委派；
-- [ ] 保持平台后端为可选导出能力，不让日常生产依赖平台编辑器连接。
+- [x] 固定 OpenChamber 上游版本并完成只读兼容探针；
+- [ ] 完成 OpenChamber 原生 Session 与 GameForge Relay 投影的双通道闭环；
+- [ ] 保持平台后端暂停，不让日常生产依赖平台编辑器；
+- [ ] 下一版本再恢复专业角色与外部 Provider 设计。
 
 ## 第一轮：真实 CodeArts 闭环
 

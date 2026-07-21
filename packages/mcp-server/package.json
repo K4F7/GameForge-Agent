@@ -1,6 +1,6 @@
 {
   "name": "@gameforge/mcp-server",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "type": "module",
   "bin": {
@@ -19,14 +19,14 @@
     "test": "vitest run src"
   },
   "dependencies": {
-    "@gameforge/asset-store": "0.1.0",
+    "@gameforge/asset-store": "0.1.0-alpha.1",
     "@gameforge/contracts": "*",
-    "@gameforge/generator": "0.1.0",
-    "@gameforge/game-verifier": "0.1.0",
-    "@gameforge/minigame-validator": "0.1.0",
-    "@gameforge/providers": "0.1.0",
-    "@gameforge/run-relay": "0.1.0",
-    "@gameforge/simulation-core": "0.1.0",
+    "@gameforge/generator": "0.1.0-alpha.1",
+    "@gameforge/game-verifier": "0.1.0-alpha.1",
+    "@gameforge/minigame-validator": "0.1.0-alpha.1",
+    "@gameforge/providers": "0.1.0-alpha.1",
+    "@gameforge/run-relay": "0.1.0-alpha.1",
+    "@gameforge/simulation-core": "0.1.0-alpha.1",
     "@modelcontextprotocol/sdk": "1.29.0",
     "zod": "4.4.3"
   },

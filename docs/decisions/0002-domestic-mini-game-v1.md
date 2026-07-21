@@ -1,8 +1,10 @@
-# ADR-0002：第一版面向国内小游戏平台
+# ADR-0002：第一版面向国内小游戏平台（当前暂停）
 
-状态：接受  
+状态：superseded
 日期：2026-07-18
 修订：2026-07-21，补充 Cocos Creator 3.8 LTS 对照；当前阶段禁止平台 preview、上传、提审和发布
+
+实施状态：`paused`。当前产品中心与默认 target 已由 [ADR-0003](./0003-web-first-openchamber.md) 改为 Phaser Web 2D 与 `web`；本 ADR 保留平台后端、静态门禁和历史实验决策，不进入当前默认流程。
 
 ## 决策
 

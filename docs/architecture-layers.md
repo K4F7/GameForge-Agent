@@ -1,5 +1,6 @@
 # GameForge Agent 分层架构
 
+状态：accepted
 更新日期：2026-07-18
 
 ## 四个稳定层次
@@ -9,7 +10,9 @@
 | 规则 | `AGENTS.md`、`.codeartsdoer/AGENTS.md` | 工程、安全和客户端行为约束 | 密钥、本机路径、动态会话状态 |
 | 生产流程 | `.codeartsdoer/skills/` | CodeArts 按需加载的步骤、恢复规则与验收条件 | Provider 实现、Agent 内嵌循环 |
 | 确定性工具 | `packages/mcp-server/` 及核心 packages | Schema、生成、资产、预览、验证、Relay 协调 | 需求理解、自动规划和自主重试循环 |
-| 状态界面 | `apps/workbench/`、`apps/tui/` | 展示事件、提交/停止等显式用户操作 | 冒充 CodeArts 认领或完成生产任务 |
+| 交互与状态界面 | OpenChamber、`apps/workbench/` adapter、`apps/tui/` | Session 交互、状态投影、提交/停止等显式用户操作 | 冒充 CodeArts 认领或完成生产任务 |
+
+OpenChamber 是唯一产品 GUI；`apps/workbench/` 只是迁移期间的内部 adapter、历史实现和 GameForge 专用投影，不是第二套视觉产品。OpenChamber 原生 Session 负责用户与 CodeArts 交互，GameForge adapter 读取 Relay 的 Project、Task、Run 和 Verification，两者不合并。
 
 `packages/opencode-plugin/` 和 `integrations/` 位于核心之外：它们只负责宿主适配、状态提示和启动配置。删除这些适配层后，MCP、Relay、生成器和浏览器验收仍应独立可用。
 

@@ -1,6 +1,6 @@
 [package]
 name = "gameforge-desktop"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 description = "Minimal Tauri shell for the GameForge Workbench"
 authors = ["sein."]
 edition = "2021"

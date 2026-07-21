@@ -1,8 +1,10 @@
-# GameForge Web 2D 专业 Agent GUI MVP
+# GameForge Web 2D 专业 Agent GUI MVP（已取代）
 
-状态：实施中
+状态：superseded
 日期：2026-07-21
 需求基线：[Web 2D 与专业 Agent GUI PRD](./prd-web2d-opencodegui.md)
+
+当前权威文档是 [Web Game MVP](./mvp-web-game.md)。本文件保留专业角色实验范围；`@策划`、`@程序员`、`@美术`、`@测试`、Specialist Request、Finding、Handoff 和真实多 Agent 委派不属于当前版本。
 
 ## 目标
 

@@ -1,6 +1,6 @@
 {
   "name": "@gameforge/workbench",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,8 +10,8 @@
     "test": "vitest run src"
   },
   "dependencies": {
-    "@gameforge/contracts": "0.1.0",
-    "@gameforge/run-relay": "0.1.0",
+    "@gameforge/contracts": "0.1.0-alpha.1",
+    "@gameforge/run-relay": "0.1.0-alpha.1",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },
