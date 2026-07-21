@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: write
   contents: write
   checks: read
   pull-requests: write
@@ -52,12 +53,6 @@ jobs:
               return;
             }
 
-            const labels = new Set(pr.labels.map((label) => label.name));
-            if (!labels.has("auto-merge")) {
-              core.notice("PR #" + pull_number + " has no auto-merge opt-in label; skipping.");
-              return;
-            }
-
             const { data: repository } = await github.rest.repos.get({ owner, repo });
             if (!repository.allow_auto_merge) {
               core.setFailed("Repository auto-merge is disabled.");
@@ -74,11 +69,7 @@ jobs:
               return;
             }
 
-            const requiredChecks = [
-              "bun (ubuntu-latest)",
-              "bun (windows-latest)",
-              "bun (macos-latest)",
-            ];
+            const requiredChecks = ["PR Gate"];
             const checkRuns = await github.paginate(github.rest.checks.listForRef, {
               owner,
               repo,
@@ -108,6 +99,33 @@ jobs:
                 (review.body ?? "").includes(reviewerMarker),
             );
             if (!hasCurrentGameForgeApproval) {
+              const hasCurrentGameForgeChangesRequested = reviews.some(
+                (review) =>
+                  review.user?.login === "github-actions[bot]" &&
+                  review.state === "CHANGES_REQUESTED" &&
+                  review.commit_id === pr.head.sha &&
+                  (review.body ?? "").includes(reviewerMarker),
+              );
+              if (run.name === "CI" && !hasCurrentGameForgeChangesRequested) {
+                const workflowRuns = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+                  owner,
+                  repo,
+                  event: "pull_request",
+                  head_sha: pr.head.sha,
+                  per_page: 100,
+                });
+                const reviewerRun = workflowRuns.find(
+                  (workflowRun) =>
+                    workflowRun.name === "GameForge PR Reviewer" &&
+                    workflowRun.head_sha === pr.head.sha &&
+                    workflowRun.status === "completed",
+                );
+                if (reviewerRun) {
+                  await github.rest.actions.reRunWorkflow({ owner, repo, run_id: reviewerRun.id });
+                  core.notice("Re-ran GameForge PR Reviewer after CI passed for PR #" + pull_number + ".");
+                  return;
+                }
+              }
               core.notice("No GameForge PR Reviewer approval exists for the current head SHA; skipping.");
               return;
             }
@@ -148,22 +166,6 @@ jobs:
             }
             if (pullRequest.autoMergeRequest) {
               core.notice("PR #" + pull_number + " already has auto-merge enabled.");
-              return;
-            }
-
-            if (pullRequest.mergeStateStatus === "CLEAN") {
-              const { data: mergeResult } = await github.rest.pulls.merge({
-                owner,
-                repo,
-                pull_number,
-                sha: pr.head.sha,
-                merge_method: "squash",
-              });
-              if (!mergeResult.merged) {
-                core.setFailed("GitHub declined the guarded squash merge for PR #" + pull_number + ": " + (mergeResult.message ?? "unknown reason"));
-                return;
-              }
-              core.notice("Squash merged clean PR #" + pull_number + " at " + pr.head.sha + ".");
               return;
             }
 
