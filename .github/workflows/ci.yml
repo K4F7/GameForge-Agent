@@ -11,9 +11,42 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  classify:
+    name: Classify PR
+    runs-on: ubuntu-latest
+    outputs:
+      docs-only: ${{ steps.changes.outputs.docs-only }}
+    steps:
+      - name: Classify changed files
+        id: changes
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            if (context.eventName !== "pull_request") {
+              core.setOutput("docs-only", "false");
+              return;
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+            const isOrdinaryDocumentation = (path) => {
+              if (path === "AGENTS.md" || path.startsWith(".github/") || path.startsWith(".codeartsdoer/skills/")) {
+                return false;
+              }
+              return path.endsWith(".md");
+            };
+            core.setOutput("docs-only", String(files.length > 0 && files.every((file) => isOrdinaryDocumentation(file.filename))));
+
   bun:
+    needs: classify
+    if: ${{ needs.classify.outputs.docs-only != 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -44,3 +77,25 @@ jobs:
           npm run test
           npm run build
           npm run bundle:check --if-present
+
+  pr-gate:
+    name: PR Gate
+    if: ${{ always() }}
+    needs: [classify, bun]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required CI result
+        shell: bash
+        run: |
+          if [[ "${{ needs.classify.result }}" != "success" ]]; then
+            echo "PR classification failed."
+            exit 1
+          fi
+          if [[ "${{ needs.classify.outputs.docs-only }}" == "true" ]]; then
+            echo "Ordinary documentation-only PR: full Bun CI is not required."
+            exit 0
+          fi
+          if [[ "${{ needs.bun.result }}" != "success" ]]; then
+            echo "Three-platform Bun CI did not pass."
+            exit 1
+          fi

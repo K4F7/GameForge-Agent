@@ -17,7 +17,7 @@
 ## Merge gate
 
 - [ ] The pull request is ready for review rather than Draft.
-- [ ] Required Bun CI checks pass on Linux, Windows, and macOS.
+- [ ] `PR Gate` passes. Ordinary documentation-only PRs intentionally skip full Bun CI.
 - [ ] `GameForge PR Reviewer` submitted an approving review.
 - [ ] Blocking review conversations are resolved.
-- [ ] Auto-merge is enabled with `gh pr merge --auto --squash` when this change is intended to merge automatically.
+- [ ] GitHub native squash auto-merge will be enabled automatically after every gate passes.
