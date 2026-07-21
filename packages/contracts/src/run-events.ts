@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { gameSpecSchema } from "./game-spec.js";
-import { projectIdSchema } from "./project-generation.js";
+import {
+  generatedProjectPlanSchema,
+  projectIdSchema,
+  projectUpdateSummarySchema,
+} from "./project-generation.js";
 import { runtimeAssetEntrySchema } from "./runtime-assets.js";
 import { assetIdSchema } from "./assets.js";
 import { signedJobHandleSchema } from "./providers.js";
@@ -84,6 +88,13 @@ const gameplayScenarioSchema = z.strictObject({
   actions: z.number().int().positive().max(100),
 });
 
+const mcpAuditCallSummarySchema = z.strictObject({
+  sequence: z.number().int().positive().max(10_000),
+  tool: z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+  durationMs: z.number().int().nonnegative().max(86_400_000),
+  outcome: z.enum(["success", "error"]),
+});
+
 const eventBaseShape = {
   runId: runIdSchema,
   sequence: z.number().int().positive(),
@@ -114,6 +125,21 @@ export const runEventSchema = z.discriminatedUnion("type", [
     projectId: projectIdSchema,
     manifestRevision: z.number().int().positive(),
     entry: runtimeAssetEntrySchema,
+  }),
+  z.strictObject({
+    ...eventBaseShape,
+    type: z.literal("project.generated"),
+    mode: z.enum(["dry-run", "apply"]),
+    operation: z.enum(["create", "update"]),
+    plan: generatedProjectPlanSchema,
+    update: projectUpdateSummarySchema.optional(),
+  }),
+  z.strictObject({
+    ...eventBaseShape,
+    type: z.literal("mcp.audit.ready"),
+    truncated: z.boolean(),
+    totalCalls: z.number().int().nonnegative().max(10_000),
+    calls: z.array(mcpAuditCallSummarySchema).max(200),
   }),
   z.strictObject({
     ...eventBaseShape,

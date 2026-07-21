@@ -24,6 +24,7 @@ import {
   modelTargetSchema,
   resolveAgentModelRoute,
   type ModelRoutingPolicy,
+  type RunEvent,
 } from "@gameforge/contracts";
 import {
   draftGameSpecRequestSchema,
@@ -89,7 +90,7 @@ import {
   type WechatProjectBuilder,
   type LayaGameplayVerifier,
 } from "./tools.js";
-import type { ToolAuditContextBinder, ToolAuditRecorder } from "./tool-audit.js";
+import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditSummaryProvider } from "./tool-audit.js";
 import type { DouyinBridgePort, DouyinRuntimeAction } from "./douyin-bridge-controller.js";
 import { DouyinRuntimeActionCoordinator } from "./douyin-runtime-action.js";
 
@@ -110,7 +111,7 @@ export type CreateServerOptions = {
   runRelayClient?: RunRelayToolClient;
   taskRelayClient?: TaskRelayToolClient;
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
-  toolAudit?: ToolAuditRecorder & Partial<ToolAuditContextBinder>;
+  toolAudit?: ToolAuditRecorder & Partial<ToolAuditContextBinder & ToolAuditSummaryProvider>;
   modelRoutingPolicy?: ModelRoutingPolicy;
   douyinBridgeController?: DouyinBridgePort;
 };
@@ -278,6 +279,32 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
             isError: true,
             content: [{ type: "text", text: "MCP audit context binding failed." }],
           };
+        }
+      },
+    );
+  }
+
+  if (options.toolAudit?.getSummary !== undefined) {
+    registerTool(
+      "get_mcp_audit_summary",
+      {
+        title: "Read the redacted MCP audit summary",
+        description: "Return a bounded Task/Run-bound audit projection containing only tool order, name, outcome, and duration. Arguments, results, paths, timestamps, session IDs, prompts, URLs, and credentials are excluded.",
+        inputSchema: {},
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+      async () => {
+        try {
+          const summary = await options.toolAudit!.getSummary!();
+          const auditEvent: Omit<Extract<RunEvent, { type: "mcp.audit.ready" }>, "runId" | "sequence" | "emittedAt"> = {
+            type: "mcp.audit.ready",
+            truncated: summary.truncated,
+            totalCalls: summary.totalCalls,
+            calls: [...summary.calls],
+          };
+          return { content: [{ type: "text", text: JSON.stringify({ auditEvent }, null, 2) }] };
+        } catch {
+          return { isError: true, content: [{ type: "text", text: "MCP audit summary is unavailable until the audit is bound to a Task and Run." }] };
         }
       },
     );

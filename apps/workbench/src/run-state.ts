@@ -5,6 +5,8 @@ import type {
   RunStatus,
   RuntimeAssetEntry,
   GameforgeCapabilitySnapshot,
+  GeneratedProjectPlan,
+  ProjectUpdateSummary,
 } from "@gameforge/contracts";
 
 export type { RunEvent, RunPhase, RunStatus } from "@gameforge/contracts";
@@ -79,6 +81,25 @@ export type BuildState = {
   stderrTruncated: boolean;
 };
 
+export type ProjectGenerationState = {
+  projectId: string;
+  mode: "dry-run" | "apply";
+  operation: "create" | "update";
+  plan: GeneratedProjectPlan;
+  update: ProjectUpdateSummary | null;
+};
+
+export type McpAuditState = {
+  truncated: boolean;
+  totalCalls: number;
+  calls: ReadonlyArray<{
+    sequence: number;
+    tool: string;
+    durationMs: number;
+    outcome: "success" | "error";
+  }>;
+};
+
 export type RunState = {
   runId: string | null;
   language: "zh-CN" | "en-US" | null;
@@ -89,11 +110,14 @@ export type RunState = {
   preview: PreviewState | null;
   spec: GameSpec | null;
   assets: ReadonlyArray<RuntimeAssetEntry>;
+  assetManifestRevision: number;
   voiceJobs: ReadonlyArray<VoiceJobState>;
   verification: VerificationState | null;
   gameplayVerification: GameplayVerificationState | null;
   build: BuildState | null;
   capabilities: GameforgeCapabilitySnapshot | null;
+  generation: ProjectGenerationState | null;
+  audit: McpAuditState | null;
 };
 
 const phaseLabels: Record<RunPhase, string> = {
@@ -123,11 +147,14 @@ export function createInitialRunState(): RunState {
     preview: null,
     spec: null,
     assets: [],
+    assetManifestRevision: 0,
     voiceJobs: [],
     verification: null,
     gameplayVerification: null,
     build: null,
     capabilities: null,
+    generation: null,
+    audit: null,
   };
 }
 
@@ -181,10 +208,31 @@ export function runReducer(state: RunState, event: RunStateAction): RunState {
     case "asset.ready":
       return {
         ...eventState,
+        assetManifestRevision: event.manifestRevision,
         assets: [
           ...state.assets.filter((asset) => asset.assetId !== event.entry.assetId),
           event.entry,
         ],
+      };
+    case "project.generated":
+      return {
+        ...eventState,
+        generation: {
+          projectId: event.plan.projectId,
+          mode: event.mode,
+          operation: event.operation,
+          plan: event.plan,
+          update: event.update ?? null,
+        },
+      };
+    case "mcp.audit.ready":
+      return {
+        ...eventState,
+        audit: {
+          truncated: event.truncated,
+          totalCalls: event.totalCalls,
+          calls: event.calls,
+        },
       };
     case "preview.ready":
       return {

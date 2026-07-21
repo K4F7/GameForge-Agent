@@ -615,8 +615,16 @@ export async function generateGameProjectTool(
 ): Promise<CallToolResult> {
   try {
     const result = await generator.execute(request);
+    const generationEvent: Omit<Extract<RunEvent, { type: "project.generated" }>, "runId" | "sequence" | "emittedAt"> = {
+      type: "project.generated",
+      mode: result.mode,
+      operation: result.operation,
+      plan: result.plan,
+      ...(result.update === undefined ? {} : { update: result.update }),
+    };
+    const { outputPath: _outputPath, ...safeResult } = result;
     return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify({ ...safeResult, generationEvent }, null, 2) }],
     };
   } catch (error) {
     return {

@@ -18,7 +18,7 @@ import { createWorkbenchRunId } from "./run-id.js";
 import { createMapView, createSceneNodes } from "./design-view.js";
 import { configuredPreviewOrigins, isAllowedPreviewUrl, previewFramePolicy, previewWindowRel, safePreviewUrl } from "./preview-security.js";
 import { createOpenChamberRuntimeView } from "./openchamber-adapter.js";
-import { OpenChamberRuntimeBrand, TaskRunNavigator } from "./openchamber-ui.js";
+import { OpenChamberContextPanel, OpenChamberRuntimeBrand, TaskRunNavigator } from "./openchamber-ui.js";
 
 const configuredPreviewUrl = gamePreviewUrlSchema.safeParse(
   import.meta.env.VITE_GAME_PREVIEW_URL ?? "http://localhost:5173/",
@@ -599,6 +599,8 @@ export function App(): React.JSX.Element {
           </div>
           <progress className="progress-track" value={progress} max={100} aria-label="阶段完成百分比" />
           <div className="progress-caption"><span>阶段进度</span><strong>{progress}%</strong></div>
+
+          <OpenChamberContextPanel context={openChamberRuntime.context} />
 
           {runState.build !== null && (
             <section className="verification-card passed build-card" aria-label={`${runState.build.target === "wechat-mini-game" ? "微信" : "抖音"}小游戏构建报告`}>

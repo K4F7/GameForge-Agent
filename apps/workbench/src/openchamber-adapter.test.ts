@@ -26,6 +26,33 @@ describe("createOpenChamberRuntimeView", () => {
         actionsExecuted: 4,
         durationMs: 200,
       },
+      assetManifestRevision: 2,
+      generation: {
+        projectId: "project-1",
+        mode: "apply" as const,
+        operation: "update" as const,
+        plan: {
+          generatorVersion: "0.12.0",
+          projectId: "project-1",
+          target: "web" as const,
+          specSha256: "a".repeat(64),
+          planSha256: "b".repeat(64),
+          files: [{ path: "src/main.ts", bytes: 128, sha256: "c".repeat(64) }],
+        },
+        update: {
+          currentPlanSha256: "d".repeat(64),
+          updatedPaths: ["src/main.ts"],
+          unchangedPaths: [],
+          preservedPaths: [],
+          deletedPaths: [],
+          conflicts: [],
+        },
+      },
+      audit: {
+        truncated: false,
+        totalCalls: 1,
+        calls: [{ sequence: 1, tool: "generate_game_project", durationMs: 20, outcome: "success" as const }],
+      },
     };
     const tasks = [{
       taskId: "task-00000000-0000-0000-0000-000000000001",
@@ -49,5 +76,8 @@ describe("createOpenChamberRuntimeView", () => {
     expect(view.tasks[0]!.title.endsWith("…")).toBe(true);
     expect(view.evidenceCount).toBe(1);
     expect(view.eventCount).toBe(1);
+    expect(view.context.project).toMatchObject({ projectId: "project-1", totalBytes: 128, update: { updated: 1, conflicts: 0 } });
+    expect(view.context.manifest.revision).toBe(2);
+    expect(view.context.audit?.calls[0]).toMatchObject({ tool: "generate_game_project" });
   });
 });

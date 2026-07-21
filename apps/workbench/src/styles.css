@@ -251,6 +251,33 @@ select:focus { border-color: rgba(86,229,202,.55); box-shadow: 0 0 0 3px rgba(86
 .verification-card dt { color: var(--muted); font-size: 7px; }.verification-card dd { margin: 2px 0 0; font-size: 9px; font-weight: 750; }
 .verification-card code { display: block; overflow: hidden; color: #9dacbf; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
 .verification-card small { display: block; margin-top: 6px; color: var(--muted); font-size: 7px; text-align: right; }
+.oc-context-panel { margin-top: 13px; border-top: 1px solid var(--line); }
+.oc-context-panel > header { display: flex; justify-content: space-between; padding: 10px 1px 0; color: var(--muted); }
+.oc-context-panel > header span { font-size: 7px; font-weight: 850; letter-spacing: 1.2px; }
+.oc-context-panel > header small { color: var(--orange); font-size: 7px; }
+.oc-context-card { margin-top: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 7px; background: #0b1017; }
+.oc-context-card.warning { border-color: rgba(255,189,91,.4); }
+.oc-context-title, .oc-context-summary { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.oc-context-title strong { color: #cbd6e7; font-size: 8px; letter-spacing: .8px; }
+.oc-context-title span { color: var(--cyan); font-size: 7px; text-transform: uppercase; }
+.oc-context-card.warning .oc-context-title span { color: var(--amber); }
+.oc-context-card p { margin: 8px 0 0; color: var(--muted); font-size: 8px; line-height: 1.5; }
+.oc-context-card p code { color: #b9c7da; }
+.oc-context-summary { margin-top: 8px; }
+.oc-context-summary b { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.oc-context-summary span { color: var(--muted); font-size: 7px; white-space: nowrap; }
+.oc-context-card dl { display: grid; grid-template-columns: repeat(4,1fr); gap: 4px; margin: 8px 0; }
+.oc-context-card dl div { min-width: 0; padding: 5px 3px; border: 1px solid var(--line); border-radius: 4px; text-align: center; }
+.oc-context-card dt { color: var(--muted); font-size: 6px; }.oc-context-card dd { margin: 2px 0 0; font-size: 8px; font-weight: 750; }
+.oc-context-card ul, .oc-audit-list { margin: 7px 0 0; padding: 0; list-style: none; }
+.oc-context-card ul li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-top: 1px solid rgba(64,62,60,.5); }
+.oc-context-card ul code { overflow: hidden; color: #aebcd0; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.oc-context-card ul span { color: var(--muted); font-size: 6px; white-space: nowrap; }
+.oc-context-card > small { display: block; margin-top: 6px; color: var(--muted); font-size: 7px; }
+.oc-context-hash { display: block; margin-top: 6px; overflow: hidden; color: #66758a; font-size: 6px; text-overflow: ellipsis; white-space: nowrap; }
+.oc-audit-list li { display: grid; grid-template-columns: 18px minmax(0,1fr) auto; gap: 5px; padding: 4px 0; border-top: 1px solid rgba(64,62,60,.5); }
+.oc-audit-list span { color: #66758a; font-size: 7px; }.oc-audit-list code { overflow: hidden; color: #b8c5d8; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.oc-audit-list em { color: var(--cyan); font-size: 7px; font-style: normal; }.oc-audit-list li.error em { color: var(--red); }
 .timeline-list { margin: 17px 0 0; padding: 0; list-style: none; }
 .timeline-list li { position: relative; display: grid; grid-template-columns: 27px 1fr auto; gap: 9px; min-height: 59px; }
 .timeline-list li:not(:last-child)::after { content: ""; position: absolute; left: 13px; top: 29px; bottom: 3px; width: 1px; background: var(--line); }

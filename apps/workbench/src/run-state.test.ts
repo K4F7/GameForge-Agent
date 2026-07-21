@@ -2,6 +2,48 @@ import { describe, expect, it } from "vitest";
 import { createInitialRunState, runReducer, type RunEvent } from "./run-state.js";
 
 describe("runReducer", () => {
+  it("projects generation plans, update diffs, and redacted audit summaries", () => {
+    const started = runReducer(createInitialRunState(), { type: "run.started", runId: "run-context", sequence: 1 });
+    const generated = runReducer(started, {
+      type: "project.generated",
+      runId: "run-context",
+      sequence: 2,
+      mode: "apply",
+      operation: "update",
+      plan: {
+        generatorVersion: "0.12.0",
+        projectId: "context-game",
+        target: "web",
+        specSha256: "a".repeat(64),
+        planSha256: "b".repeat(64),
+        files: [{ path: "src/main.ts", bytes: 128, sha256: "c".repeat(64) }],
+      },
+      update: {
+        currentPlanSha256: "d".repeat(64),
+        updatedPaths: ["src/main.ts"],
+        unchangedPaths: [],
+        preservedPaths: [],
+        deletedPaths: [],
+        conflicts: [],
+      },
+    });
+    const audited = runReducer(generated, {
+      type: "mcp.audit.ready",
+      runId: "run-context",
+      sequence: 3,
+      truncated: false,
+      totalCalls: 1,
+      calls: [{ sequence: 1, tool: "generate_game_project", durationMs: 22, outcome: "success" }],
+    });
+
+    expect(audited.generation).toMatchObject({ projectId: "context-game", update: { updatedPaths: ["src/main.ts"] } });
+    expect(audited.audit).toEqual({
+      truncated: false,
+      totalCalls: 1,
+      calls: [{ sequence: 1, tool: "generate_game_project", durationMs: 22, outcome: "success" }],
+    });
+  });
+
   it("restores the requested language from the authoritative start event", () => {
     expect(runReducer(createInitialRunState(), {
       type: "run.started",

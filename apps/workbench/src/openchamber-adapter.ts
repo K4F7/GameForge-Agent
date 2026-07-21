@@ -24,6 +24,34 @@ export type OpenChamberRuntimeView = {
   tasks: ReadonlyArray<OpenChamberTaskItem>;
   evidenceCount: number;
   eventCount: number;
+  context: {
+    project: null | {
+      projectId: string;
+      target: string;
+      generatorVersion: string;
+      mode: "dry-run" | "apply";
+      operation: "create" | "update";
+      planSha256: string;
+      totalBytes: number;
+      files: ReadonlyArray<{ path: string; bytes: number }>;
+      update: null | {
+        updated: number;
+        unchanged: number;
+        preserved: number;
+        deleted: number;
+        conflicts: number;
+      };
+    };
+    manifest: {
+      revision: number;
+      assets: ReadonlyArray<{ assetId: string; kind: string; path: string; origin: string }>;
+    };
+    audit: null | {
+      totalCalls: number;
+      truncated: boolean;
+      calls: ReadonlyArray<{ sequence: number; tool: string; durationMs: number; outcome: "success" | "error" }>;
+    };
+  };
 };
 
 const taskStatusLabels: Record<GameTask["status"], string> = {
@@ -64,6 +92,35 @@ export function createOpenChamberRuntimeView(input: {
       Number(runState.verification !== null) +
       Number(runState.gameplayVerification !== null),
     eventCount: runState.logs.length,
+    context: {
+      project: runState.generation === null ? null : {
+        projectId: runState.generation.projectId,
+        target: runState.generation.plan.target,
+        generatorVersion: runState.generation.plan.generatorVersion,
+        mode: runState.generation.mode,
+        operation: runState.generation.operation,
+        planSha256: runState.generation.plan.planSha256,
+        totalBytes: runState.generation.plan.files.reduce((total, file) => total + file.bytes, 0),
+        files: runState.generation.plan.files.map(({ path, bytes }) => ({ path, bytes })),
+        update: runState.generation.update === null ? null : {
+          updated: runState.generation.update.updatedPaths.length,
+          unchanged: runState.generation.update.unchangedPaths.length,
+          preserved: runState.generation.update.preservedPaths.length,
+          deleted: runState.generation.update.deletedPaths.length,
+          conflicts: runState.generation.update.conflicts.length,
+        },
+      },
+      manifest: {
+        revision: runState.assetManifestRevision,
+        assets: runState.assets.map((asset) => ({
+          assetId: asset.assetId,
+          kind: asset.kind,
+          path: asset.path,
+          origin: asset.provenance.origin,
+        })),
+      },
+      audit: runState.audit,
+    },
   };
 }
 

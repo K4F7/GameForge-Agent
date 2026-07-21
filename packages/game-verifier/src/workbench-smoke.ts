@@ -126,6 +126,11 @@ async function runWorkbenchSmokeOnce(): Promise<SmokeReport> {
     await expectText(page, "验收通过", assertions);
     await expectText(page, "构建通过", assertions);
     await expectText(page, "LayaAir 3.4.0", assertions);
+    await expectText(page, "PROJECT CONTEXT", assertions);
+    await expectText(page, "src/Main.ts", assertions);
+    await expectText(page, "UPDATE DIFF", assertions);
+    await expectText(page, "2 CALLS", assertions);
+    await expectText(page, "generate_game_project", assertions);
     const progress = await page.getByLabel("阶段完成百分比").getAttribute("value");
     if (progress !== "100") throw new Error(`Workbench progress was not complete: ${progress ?? "missing"}`);
     assertions.push("phase progress is 100%");
@@ -190,25 +195,37 @@ function fixtureEvents(runId: string, previewUrl: string): WireRunEvent[] {
         mimeType: "audio/wav", bytes: 128, sha256, provenance: { assetId: "collect", kind: "sound",
           origin: "retrieved", provider: "freesound", sourceUrl: "https://freesound.org/s/42/",
           license: "CC0", sha256 } } },
-    { type: "phase.completed", runId, sequence: 4, emittedAt, phase: "spec", detail: "GameSpec validated" },
-    { type: "phase.completed", runId, sequence: 5, emittedAt, phase: "template", detail: "Managed template selected" },
-    { type: "phase.completed", runId, sequence: 6, emittedAt, phase: "assets", detail: "Runtime assets prepared" },
-    { type: "phase.completed", runId, sequence: 7, emittedAt, phase: "code", detail: "Managed source generated" },
-    { type: "phase.completed", runId, sequence: 8, emittedAt, phase: "build", detail: "Managed build passed" },
-    { type: "build.ready", runId, sequence: 9, emittedAt, projectId: "workbench-smoke",
+    { type: "project.generated", runId, sequence: 4, emittedAt, mode: "apply", operation: "update",
+      plan: { generatorVersion: "0.12.0", projectId: "workbench-smoke", target: "douyin-mini-game",
+        specSha256: sha256, planSha256: "b".repeat(64), files: [
+          { path: "src/Main.ts", bytes: 4096, sha256: "c".repeat(64) },
+          { path: ".gameforge/manifest.json", bytes: 512, sha256: "d".repeat(64) },
+        ] },
+      update: { currentPlanSha256: "e".repeat(64), updatedPaths: ["src/Main.ts"],
+        unchangedPaths: [".gameforge/manifest.json"], preservedPaths: [], deletedPaths: [], conflicts: [] } },
+    { type: "mcp.audit.ready", runId, sequence: 5, emittedAt, truncated: false, totalCalls: 2, calls: [
+      { sequence: 1, tool: "claim_game_task", durationMs: 8, outcome: "success" },
+      { sequence: 2, tool: "generate_game_project", durationMs: 24, outcome: "success" },
+    ] },
+    { type: "phase.completed", runId, sequence: 6, emittedAt, phase: "spec", detail: "GameSpec validated" },
+    { type: "phase.completed", runId, sequence: 7, emittedAt, phase: "template", detail: "Managed template selected" },
+    { type: "phase.completed", runId, sequence: 8, emittedAt, phase: "assets", detail: "Runtime assets prepared" },
+    { type: "phase.completed", runId, sequence: 9, emittedAt, phase: "code", detail: "Managed source generated" },
+    { type: "phase.completed", runId, sequence: 10, emittedAt, phase: "build", detail: "Managed build passed" },
+    { type: "build.ready", runId, sequence: 11, emittedAt, projectId: "workbench-smoke",
       target: "douyin-mini-game", cliVersion: "3.4.0", passed: true, fileCount: 16,
       totalBytes: 1_108_438, mainPackageBytes: 1_108_438, subpackages: [], deviceOrientation: "portrait",
       capabilities: { network: false, login: false, share: false, ads: false, payments: false },
       allowedNetworkHosts: [], assetManifestRevision: 1, assetCount: 1,
       stdoutTruncated: false, stderrTruncated: false },
-    { type: "phase.completed", runId, sequence: 10, emittedAt, phase: "test", detail: "Automated tests passed" },
-    { type: "phase.completed", runId, sequence: 11, emittedAt, phase: "visual", detail: "Browser verification passed" },
-    { type: "preview.ready", runId, sequence: 12, emittedAt, projectId: "workbench-smoke", url: previewUrl },
-    { type: "verification.ready", runId, sequence: 13, emittedAt, projectId: "workbench-smoke", passed: true,
+    { type: "phase.completed", runId, sequence: 12, emittedAt, phase: "test", detail: "Automated tests passed" },
+    { type: "phase.completed", runId, sequence: 13, emittedAt, phase: "visual", detail: "Browser verification passed" },
+    { type: "preview.ready", runId, sequence: 14, emittedAt, projectId: "workbench-smoke", url: previewUrl },
+    { type: "verification.ready", runId, sequence: 15, emittedAt, projectId: "workbench-smoke", passed: true,
       outcome: "won", score: 1, lives: 3, remainingSeconds: 42,
       evidencePath: ".gameforge/verification/workbench-smoke.png", canvas: { width: 960, height: 540 },
       diagnostics: { consoleErrors: 0, pageErrors: 0, failedRequests: 0 }, actionsExecuted: 2, durationMs: 250 },
-    { type: "log.appended", runId, sequence: 14, emittedAt, source: "agent", level: "success",
+    { type: "log.appended", runId, sequence: 16, emittedAt, source: "agent", level: "success",
       message: "Deterministic Workbench browser smoke completed." },
   ];
 }

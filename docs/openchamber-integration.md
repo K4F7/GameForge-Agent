@@ -31,8 +31,15 @@ bun run bundle:check
 bun run desktop:check
 ```
 
-初步接入完成后，下一垂直切片是把 Manifest、生成计划、update diff 和脱敏
-MCP Audit 映射到 OpenChamber 风格的右侧上下文面板。
+第二个垂直切片已把 Manifest、生成计划、update diff 和脱敏 MCP Audit 映射到
+OpenChamber 风格的右侧上下文面板。生成工具返回不含主机路径的
+`project.generated` 事件草稿；绑定 Task/Run 后，`get_mcp_audit_summary` 返回最多
+200 条只含工具名、顺序、状态和耗时的 `mcp.audit.ready` 事件草稿。两者仍由
+CodeArts 按权威 cursor 显式发布，Workbench 不读取本机文件或绕过 Relay。
+
+审计投影明确排除参数、结果、Prompt、URL、绝对路径、时间戳、session ID、账号和
+密钥；项目投影只接受规范化相对路径及受限文件清单。未发布对应事件时，面板显示
+等待状态，不从日志推断或伪造计划、差异和审计结果。
 
 本地 Workbench 不使用默认 `4173` 端口时，可为 Relay 显式增加安全来源：
 

@@ -29,7 +29,18 @@ export interface ToolAuditContextBinder {
   bindContext(taskId: string, runId: string): Promise<McpToolAuditContext>;
 }
 
-export class McpToolAuditRecorder implements ToolAuditRecorder, ToolAuditContextBinder {
+export type ToolAuditSummary = {
+  runId: string;
+  truncated: boolean;
+  totalCalls: number;
+  calls: ReadonlyArray<Pick<McpToolAuditCall, "sequence" | "tool" | "durationMs" | "outcome">>;
+};
+
+export interface ToolAuditSummaryProvider {
+  getSummary(): Promise<ToolAuditSummary>;
+}
+
+export class McpToolAuditRecorder implements ToolAuditRecorder, ToolAuditContextBinder, ToolAuditSummaryProvider {
   readonly #auditPath: string;
   readonly #audit: McpToolAudit;
   #nextSequence = 1;
@@ -134,6 +145,24 @@ export class McpToolAuditRecorder implements ToolAuditRecorder, ToolAuditContext
     if (conflict) throw new Error("MCP tool audit is already bound to another Task or Run.");
     if (this.#failed || bound === undefined) throw new Error("MCP tool audit context could not be persisted.");
     return bound;
+  }
+
+  async getSummary(): Promise<ToolAuditSummary> {
+    await this.#queue;
+    if (this.#failed) throw new Error("MCP tool audit is unavailable.");
+    if (this.#audit.context === undefined) throw new Error("MCP tool audit is not bound to a Task and Run.");
+    const calls = this.#audit.calls.slice(-200).map(({ sequence, tool, durationMs, outcome }) => ({
+      sequence,
+      tool,
+      durationMs,
+      outcome,
+    }));
+    return {
+      runId: this.#audit.context.runId,
+      truncated: this.#audit.truncated || this.#audit.calls.length > calls.length,
+      totalCalls: this.#audit.calls.length,
+      calls,
+    };
   }
 }
 

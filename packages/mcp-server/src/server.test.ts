@@ -6,7 +6,7 @@ import type { SoundSearchProvider } from "@gameforge/contracts";
 import type { FreesoundSearchRequest, FreesoundSearchResult } from "@gameforge/providers";
 import { createServer } from "./server.js";
 import type { ProjectGenerationResult } from "@gameforge/contracts";
-import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditToken } from "./tool-audit.js";
+import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditSummaryProvider, ToolAuditToken } from "./tool-audit.js";
 import path from "node:path";
 import { loadModelRoutingPolicy } from "./model-routing.js";
 
@@ -71,7 +71,7 @@ describe("GameForge MCP server", () => {
     const completed: Array<{ token: ToolAuditToken; outcome: "success" | "error" }> = [];
     let sequence = 0;
     let auditContext: { taskId: string; runId: string; boundAt: string } | undefined;
-    const toolAudit: ToolAuditRecorder & ToolAuditContextBinder = {
+    const toolAudit: ToolAuditRecorder & ToolAuditContextBinder & ToolAuditSummaryProvider = {
       begin(tool) {
         sequence += 1;
         return { sequence, tool, startedAt: new Date().toISOString(), monotonicStart: performance.now() };
@@ -84,6 +84,20 @@ describe("GameForge MCP server", () => {
         auditContext ??= { taskId, runId, boundAt: new Date().toISOString() };
         return auditContext;
       },
+      async getSummary() {
+        if (auditContext === undefined) throw new Error("not bound");
+        return {
+          runId: auditContext.runId,
+          truncated: false,
+          totalCalls: completed.length,
+          calls: completed.map(({ token, outcome }) => ({
+            sequence: token.sequence,
+            tool: token.tool,
+            durationMs: 1,
+            outcome,
+          })),
+        };
+      },
     };
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer({ toolAudit });
@@ -91,7 +105,10 @@ describe("GameForge MCP server", () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("bind_mcp_audit_context");
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(expect.arrayContaining([
+        "bind_mcp_audit_context",
+        "get_mcp_audit_summary",
+      ]));
       const bound = await client.callTool({
         name: "bind_mcp_audit_context",
         arguments: { taskId: "task-00000000-0000-0000-0000-000000000000", runId: "audit-run" },
@@ -103,10 +120,27 @@ describe("GameForge MCP server", () => {
       });
       expect(conflict.isError).toBe(true);
       await client.callTool({ name: "get_gameforge_capabilities", arguments: {} });
+      const summary = await client.callTool({ name: "get_mcp_audit_summary", arguments: {} });
+      expect(summary.isError).not.toBe(true);
+      if (!Array.isArray(summary.content) || summary.content[0]?.type !== "text") throw new Error("Expected audit summary text.");
+      expect(JSON.parse(summary.content[0].text)).toMatchObject({
+        auditEvent: {
+          type: "mcp.audit.ready",
+          truncated: false,
+          calls: [
+            { sequence: 1, tool: "bind_mcp_audit_context", outcome: "success" },
+            { sequence: 2, tool: "bind_mcp_audit_context", outcome: "error" },
+            { sequence: 3, tool: "get_gameforge_capabilities", outcome: "success" },
+          ],
+        },
+      });
+      expect(summary.content[0].text).not.toContain("audit-run");
+      expect(summary.content[0].text).not.toContain("boundAt");
       expect(completed).toMatchObject([
         { token: { sequence: 1, tool: "bind_mcp_audit_context" }, outcome: "success" },
         { token: { sequence: 2, tool: "bind_mcp_audit_context" }, outcome: "error" },
         { token: { sequence: 3, tool: "get_gameforge_capabilities" }, outcome: "success" },
+        { token: { sequence: 4, tool: "get_mcp_audit_summary" }, outcome: "success" },
       ]);
       expect(completed[0]?.token).not.toHaveProperty("arguments");
       expect(completed[0]?.token).not.toHaveProperty("result");
@@ -339,6 +373,7 @@ describe("GameForge MCP server", () => {
     const generated: ProjectGenerationResult = {
       mode: "dry-run",
       operation: "create",
+      outputPath: "D:/private/generated/safety-sprint",
       plan: {
         generatorVersion: "0.1.0",
         projectId: "safety-sprint",
@@ -372,6 +407,20 @@ describe("GameForge MCP server", () => {
         },
       });
       expect(result.isError).not.toBe(true);
+      if (!Array.isArray(result.content) || result.content[0]?.type !== "text") {
+        throw new Error("Expected project generation text.");
+      }
+      const payload = JSON.parse(result.content[0].text) as Record<string, unknown>;
+      expect(payload).toMatchObject({
+        generationEvent: {
+          type: "project.generated",
+          mode: "dry-run",
+          operation: "create",
+          plan: { target: "web" },
+        },
+      });
+      expect(payload).not.toHaveProperty("outputPath");
+      expect(result.content[0].text).not.toContain("D:/private");
     } finally {
       await client.close();
       await server.close();
