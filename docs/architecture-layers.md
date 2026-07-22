@@ -9,7 +9,7 @@
 | 规则 | `AGENTS.md`、`.codeartsdoer/AGENTS.md` | 工程、安全和客户端行为约束 | 密钥、本机路径、动态会话状态 |
 | 生产流程 | `.codeartsdoer/skills/` | CodeArts 按需加载的步骤、恢复规则与验收条件 | Provider 实现、Agent 内嵌循环 |
 | 确定性工具 | `packages/mcp-server/` 及核心 packages | Schema、生成、资产、预览、验证、Relay 协调 | 需求理解、自动规划和自主重试循环 |
-| 状态界面 | `apps/workbench/`、`apps/tui/` | 展示事件、提交/停止等显式用户操作 | 冒充 CodeArts 认领或完成生产任务 |
+| 外置 UI 验收 | `packages/ui-test-harness/` | 驱动相互独立的原版 CodeArts TUI 与原版 OpenChamber GUI | 提供产品 UI；改造被测界面；恢复已废弃的 `apps/tui/`、`apps/workbench/` 或 `apps/desktop/` |
 
 `packages/opencode-plugin/` 和 `integrations/` 位于核心之外：它们只负责宿主适配、状态提示和启动配置。删除这些适配层后，MCP、Relay、生成器和浏览器验收仍应独立可用。
 

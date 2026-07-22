@@ -1,0 +1,176 @@
+export const tuiKeys = [
+  "enter",
+  "escape",
+  "up",
+  "down",
+  "left",
+  "right",
+  "tab",
+  "backspace",
+  "delete",
+  "home",
+  "end",
+  "page-up",
+  "page-down",
+  "ctrl-c",
+  "ctrl-d",
+  "ctrl-l",
+] as const;
+
+export type TuiKey = (typeof tuiKeys)[number];
+export type HarnessMode = "headed/watch" | "headless";
+export type HarnessPhase = "idle" | "starting" | "running" | "observing" | "stopping" | "completed" | "failed";
+
+export type HarnessSession = {
+  sessionId: string;
+  startedAt: string;
+  mode: HarnessMode;
+};
+
+export type TuiOutputFrame = {
+  sessionId: string;
+  sequence: number;
+  data: string;
+};
+
+export type TuiSnapshot = {
+  sessionId: string;
+  status: "starting" | "running" | "exited" | "failed";
+  columns: number;
+  rows: number;
+  outputSequence: number;
+  lastChangedAt: string;
+  screen: string;
+};
+
+export type GuiDiagnostics = {
+  consoleErrors: readonly string[];
+  pageErrors: readonly string[];
+  failedRequests: readonly string[];
+};
+
+export type GuiSnapshot = {
+  url: string;
+  title: string;
+  capturedAt: string;
+  diagnostics: GuiDiagnostics;
+};
+
+export type TuiObserverSnapshot = {
+  kind: "independent-xterm";
+  sessionId: string;
+  visible: boolean;
+  status: "opening" | "open" | "closed" | "failed";
+  title: string;
+  capturedAt: string;
+};
+
+export type AuthoritySnapshot = {
+  taskId?: string;
+  runId?: string;
+  projectId?: string;
+  taskStatus?: string;
+  runStatus?: string;
+  eventSequence: number;
+  lastEventType?: string;
+  capturedAt: string;
+};
+
+export interface CodeArtsTuiDriver {
+  readonly kind: "codearts-original-tui";
+  start(options: { session: HarnessSession; columns: number; rows: number }): Promise<TuiSnapshot>;
+  read(): Promise<TuiSnapshot>;
+  subscribeOutput(listener: (frame: TuiOutputFrame) => void): () => void;
+  sendText(text: string, options: { appendEnter: boolean }): Promise<void>;
+  sendKey(key: TuiKey): Promise<void>;
+  resize(columns: number, rows: number): Promise<void>;
+  stop(reason: "completed" | "failed" | "cancelled"): Promise<void>;
+}
+
+export interface CodeArtsTuiObserverDriver {
+  readonly kind: "independent-xterm";
+  open(options: {
+    session: HarnessSession;
+    source: CodeArtsTuiDriver;
+    visible: boolean;
+    viewport: { width: number; height: number };
+  }): Promise<TuiObserverSnapshot>;
+  snapshot(): Promise<TuiObserverSnapshot>;
+  close(): Promise<void>;
+}
+
+export interface OpenChamberGuiDriver {
+  readonly kind: "openchamber-original-gui";
+  launch(options: { session: HarnessSession; mode: HarnessMode; viewport: { width: number; height: number } }): Promise<void>;
+  navigate(url: string): Promise<void>;
+  click(selector: string): Promise<void>;
+  fill(selector: string, value: string): Promise<void>;
+  press(selector: string, key: string): Promise<void>;
+  snapshot(label: string): Promise<GuiSnapshot>;
+  close(): Promise<void>;
+}
+
+export interface GameForgeAuthorityDriver {
+  readonly kind: "gameforge-authority";
+  snapshot(): Promise<AuthoritySnapshot>;
+}
+
+export type ActivitySample = {
+  sampledAt: string;
+  tuiOutputSequence: number;
+  authorityEventSequence: number;
+  authorityEventType?: string;
+  projectFingerprint?: string;
+};
+
+export interface EvidenceSink {
+  recordSession(session: HarnessSession): Promise<void>;
+  recordLifecycle(event: { sessionId: string; phase: HarnessPhase; at: string; detail?: string }): Promise<void>;
+  recordActivity(sample: ActivitySample): Promise<void>;
+  recordTuiInput(input: { kind: "text" | "key"; value: string; at: string }): Promise<void>;
+  recordTuiSnapshot(snapshot: TuiSnapshot): Promise<void>;
+  recordTuiObserverSnapshot(snapshot: TuiObserverSnapshot): Promise<void>;
+  recordGuiSnapshot(label: string, snapshot: GuiSnapshot): Promise<void>;
+  recordAuthoritySnapshot(snapshot: AuthoritySnapshot): Promise<void>;
+  finalize(result: HarnessResult): Promise<void>;
+}
+
+export type AuthorityGate = {
+  description: string;
+  timeoutMs: number;
+  accepts(snapshot: AuthoritySnapshot): boolean;
+};
+
+export type HarnessStep =
+  | { kind: "tui.text"; text: string; appendEnter: boolean }
+  | { kind: "tui.key"; key: TuiKey }
+  | { kind: "tui.resize"; columns: number; rows: number }
+  | { kind: "gui.navigate"; url: string }
+  | { kind: "gui.click"; selector: string }
+  | { kind: "gui.fill"; selector: string; value: string }
+  | { kind: "gui.press"; selector: string; key: string }
+  | { kind: "capture"; label: string }
+  | { kind: "authority.wait"; gate: AuthorityGate };
+
+export type HarnessScenario = {
+  name: string;
+  steps: readonly HarnessStep[];
+};
+
+export type HarnessOptions = {
+  mode: HarnessMode;
+  terminal: { columns: number; rows: number };
+  tuiObserverViewport: { width: number; height: number };
+  viewport: { width: number; height: number };
+  observationHoldMs: number;
+  activityPollMs: number;
+  inactivityTimeoutMs: number;
+};
+
+export type HarnessResult = {
+  status: "completed" | "failed";
+  scenario: string;
+  startedAt: string;
+  finishedAt: string;
+  failure?: string;
+};

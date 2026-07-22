@@ -533,7 +533,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       "list_game_tasks",
       {
         title: "List game build tasks",
-        description: "List one bounded snapshot of queued, claimed, or terminal Workbench tasks. CodeArts can resume its own claimed tasks; this never polls or executes them.",
+        description: "List one bounded snapshot of queued, claimed, or terminal GameForge tasks. CodeArts can resume its own claimed tasks; this never polls or executes them.",
         inputSchema: listGameTasksRequestSchema.shape,
       },
       async (request) => listGameTasksTool(taskRelayClient, request),
@@ -695,7 +695,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       {
         title: "Verify a generated game in a browser",
         description:
-          "Start one managed generated project locally, execute a bounded deterministic input script in system Chrome, capture browser diagnostics and a screenshot, then return the explicit game outcome. No repair or Agent loop runs inside this tool.",
+          "Start one managed generated project locally and execute a bounded deterministic input script in system Chrome. Pass inline actions for small probes, or scenario=won|lost to load that named script from .gameforge/verification-scenarios.json without embedding a long tool argument. Captures browser diagnostics and a screenshot, then returns the explicit game outcome. No repair or Agent loop runs inside this tool.",
         inputSchema: verifyGameRequestSchema.shape,
       },
       async (request) => verifyGameProjectTool(projectVerifier, request),

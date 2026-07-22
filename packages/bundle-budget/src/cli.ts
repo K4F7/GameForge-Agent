@@ -7,7 +7,6 @@ import { budgetIssues, measureBundle, type BundleLimits, type ViteManifest } fro
 const root = process.cwd();
 const targets: Array<{ name: string; dist: string; limits: BundleLimits }> = [
   { name: "game", dist: "apps/game/dist", limits: { initialRaw: 10_000, initialGzip: 5_000, asyncRaw: 1_450_000, asyncGzip: 380_000, totalRaw: 1_460_000, totalGzip: 385_000 } },
-  { name: "workbench", dist: "apps/workbench/dist", limits: { initialRaw: 400_000, initialGzip: 120_000, asyncRaw: 50_000, asyncGzip: 20_000, totalRaw: 400_000, totalGzip: 120_000 } },
 ];
 const report: Record<string, unknown> = { generatedAt: new Date().toISOString(), targets: {} };
 let failed = false;

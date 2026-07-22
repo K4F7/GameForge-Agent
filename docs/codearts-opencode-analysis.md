@@ -55,6 +55,6 @@ Windows 实验需要记录系统版本、代理环境变量以及旧版 `codeart
 
 - 保持官方 stdio MCP 配置；CodeArts 启动 Node MCP，Bun 继续负责依赖、workspace、检查、测试和构建。
 - 项目规则继续放在根 `AGENTS.md`，CodeArts 专用 Skills/Agents 放在 `.codeartsdoer/`。
-- 第二轮 TUI 优先复用 GameForge 自己的 Relay/RunEvent 协议，不依赖 OpenCode 私有 Session API，避免绑定未证实的内部实现。
+- 外置 UI 测试框架复用 GameForge Relay/RunEvent 协议，不依赖 OpenCode 私有 Session API；被测 TUI 是 CodeArts 原版界面，不再实现 GameForge 自建 TUI。
 - OpenCode 对照实验继续使用公开 CLI、项目配置、XDG data 和标准 MCP；提交记录不读取或导出 OpenCode 私有 Session/认证正文。
 - 如果后续找到 CodeArts 本地 Server/API，只作为可选适配器，不改变“CodeArts 主智能体、MCP 确定性”的架构边界。

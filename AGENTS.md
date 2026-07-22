@@ -9,7 +9,7 @@
 - 当前研究环境已经安装 CodeArts Agent 客户端；后续实验应优先使用该真实客户端完成任务认领、MCP 调用和结果验收，不再把“尚未安装”作为默认前提。
 - 当前观察表明 CodeArts Agent 是基于 OpenCode 修改的客户端。涉及配置目录、会话格式、工具协议或其他实现细节时，可以把 OpenCode 作为代码阅读与兼容性研究线索，但不得仅凭上游行为推断 CodeArts 行为；最终结论仍须以当前安装版本的实际运行证据或华为云官方文档为准。
 - CodeArts 与独立 OpenCode CLI 必须使用不同的数据目录。仓库内实验优先通过 `bun run codearts` / `bun run opencode` 启动；不得让不同迁移版本共同写 `%USERPROFILE%\.local\share\opencode\opencode.db`。认证文件、数据库及其备份都属于用户私有状态，不纳入仓库。
-- “已安装”不等于“端到端已验证”。只有真实 CodeArts 会话完成 Task 认领、确定性 MCP 工具调用、RunEvent 发布与 Workbench/浏览器验收后，才能记录为 CodeArts 集成通过。
+- “已安装”不等于“端到端已验证”。只有真实 CodeArts 会话完成 Task 认领、确定性 MCP 工具调用、RunEvent 发布与浏览器验收后，才能记录为 CodeArts 集成通过。
 - 当前默认 Agent 路由只使用 CodeArts 内置且由 `codearts models` 实际列出的 DeepSeek/GLM target。OpenCode、Hy3、Kimi 或其他跨宿主模型只保留历史研究能力；没有用户新的明确授权，不得放入默认 fallback。
 - 百炼、Seedream、豆包语音、Freesound 与 MiniMax 适配器可保留，但当前不配置、不调用外部账号，生成游戏使用程序化/静音回退。
 
@@ -38,7 +38,7 @@
 - 根目录 `AGENTS.md`：稳定项目规则、工程约束和安全边界；
 - `.codeartsdoer/skills/`：由 CodeArts 按需加载的游戏生产流程，不保存 Provider 密钥或复制 MCP 实现；
 - `packages/mcp-server/`：确定性工具边界，负责校验、生成、资产、预览、验收和 Run 协调，不实现 Agent 循环；
-- `apps/workbench/` 与 `apps/tui/`：只读状态投影与显式用户控制界面，不承担需求理解和自主执行；
+- `packages/ui-test-harness/`：外置验收控制契约，只驱动原版 CodeArts TUI 与原版 OpenChamber GUI，不提供产品 UI；旧 `apps/tui/`、`apps/workbench/` 与 `apps/desktop/` 均已删除，不得恢复为产品入口；
 - `packages/opencode-plugin/`：可选的薄集成层，只做可用性提示、状态工具和通知，不承载 GameForge 核心业务。
 
 GameForge 核心不得实现为 OpenCode Plugin。CodeArts/OpenCode 适配器可以调用 Relay 与 MCP，但核心契约、生成器、资产存储、浏览器验收和事件状态必须保持客户端无关。

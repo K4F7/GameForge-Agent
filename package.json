@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "build:foundation": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/generator build && bun run --filter @gameforge/providers build && bun run --filter @gameforge/asset-store build && bun run --filter @gameforge/run-relay build && bun run --filter @gameforge/game-verifier build && bun run --filter @gameforge/minigame-validator build",
-    "build": "bun run build:foundation && bun run --filter @gameforge/game build && bun run --filter @gameforge/workbench build && bun run --filter @gameforge/tui build && bun run --filter @gameforge/desktop build && bun run --filter @gameforge/benchmark build && bun run --filter @gameforge/bundle-budget build && bun run --filter @gameforge/opencode-plugin build && bun run --filter gameforge-douyin-devtool-extension build && bun run --filter @gameforge/integrations build && bun run --filter @gameforge/mcp-server build",
+    "build": "bun run build:foundation && bun run --filter @gameforge/game build && bun run --filter @gameforge/benchmark build && bun run --filter @gameforge/bundle-budget build && bun run --filter @gameforge/opencode-plugin build && bun run --filter gameforge-douyin-devtool-extension build && bun run --filter @gameforge/integrations build && bun run --filter @gameforge/mcp-server build && bun run --filter @gameforge/ui-test-harness build",
     "check": "bun run build:foundation && bun run --filter '*' check",
     "test": "bun run build:foundation && bun run --filter @gameforge/mcp-server build && bun run --filter '*' test",
     "audit": "bun audit --prod",
@@ -22,35 +22,30 @@
     "douyin:e2e": "bun run --filter @gameforge/mcp-server douyin:e2e",
     "douyin:host-smoke": "bun run --filter @gameforge/mcp-server douyin:host-smoke",
     "doctor:browser": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/game-verifier build && node packages/game-verifier/dist/browser-doctor.js",
-    "doctor:desktop": "bun run --filter @gameforge/workbench build && bun run --filter @gameforge/desktop doctor",
-    "workbench:smoke": "bun run build:foundation && bun run --filter @gameforge/workbench check && bun run --filter @gameforge/game-verifier smoke:workbench",
-    "desktop:check": "bun run --filter @gameforge/desktop check && bun run --filter @gameforge/desktop test && bun run doctor:desktop",
-    "desktop:build": "bun run --filter @gameforge/desktop tauri build --no-bundle",
     "provider:smoke": "bun run build:foundation && bun run --filter @gameforge/mcp-server build && node packages/mcp-server/dist/provider-smoke.js",
     "dev:game": "bun run --filter @gameforge/game dev",
-    "dev:workbench": "bun run --filter @gameforge/workbench dev",
     "dev:mcp": "bun run --filter @gameforge/mcp-server dev",
     "dev:douyin-bridge": "bun run --filter @gameforge/mcp-server douyin:bridge-host",
     "dev:relay": "bun run --filter @gameforge/run-relay dev",
-    "tui": "bun run --filter @gameforge/tui start",
     "integrations:check": "bun run --filter @gameforge/integrations check",
     "integrations:test": "bun run --filter @gameforge/integrations test",
     "codearts": "bun integrations/codearts/launch.ts",
     "opencode": "bun integrations/opencode/launch.ts",
     "benchmark": "bun packages/benchmark/src/cli.ts",
-    "bundle:check": "bun run --filter @gameforge/game build && bun run --filter @gameforge/workbench build && bun packages/bundle-budget/src/cli.ts",
+    "bundle:check": "bun run --filter @gameforge/game build && bun packages/bundle-budget/src/cli.ts",
     "minigame:validate": "bun packages/minigame-validator/src/cli.ts",
     "minigame:handoff": "bun packages/minigame-validator/src/handoff-runner.ts",
-    "dev:local": "bun run --parallel dev:relay dev:game dev:workbench dev:douyin-bridge",
+    "dev:local": "bun run --parallel dev:relay dev:game dev:douyin-bridge",
     "start:mcp": "node packages/mcp-server/dist/index.js",
     "start:douyin-bridge": "node packages/mcp-server/dist/douyin-bridge-host.js",
     "start:relay": "node packages/run-relay/dist/index.js"
+  },
+  "overrides": {
+    "@hono/node-server": "2.0.11"
   },
   "engines": {
     "node": ">=22.12.0",
     "bun": ">=1.3.14"
   },
-  "devDependencies": {
-    "@tauri-apps/cli": "2.11.4"
-  }
+  "devDependencies": {}
 }

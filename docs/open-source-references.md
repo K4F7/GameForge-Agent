@@ -26,7 +26,7 @@
 - [BloxBot](https://github.com/paralov/app-bloxbot-ai)：只参考 Tauri/React GUI、OpenCode sidecar 生命周期、会话和路径管理；GameForge 核心仍不得实现为 OpenCode Plugin。
 - [Phaser 官方 Skills](https://github.com/phaserjs/phaser/tree/master/skills)：作为 Phaser 生成规则的官方上游，优先于第三方模板中的经验性规则。
 
-这些仓库都只提供局部抓手。当前尚未发现同时覆盖 CodeArts、国产模型、确定性 MCP、Phaser/LayaAir、抖音小游戏、Relay、TUI/Workbench 和浏览器验收的开源项目；这一组合是 GameForge 的明确差异化。借鉴代码前仍须逐项核验当时版本、许可证、第三方素材和模型条款。
+这些仓库都只提供局部抓手。当前尚未发现同时覆盖 CodeArts、国产模型、确定性 MCP、Phaser/LayaAir、抖音小游戏、Relay、原版 TUI/GUI 自动操作和浏览器验收的开源项目；这一组合是 GameForge 的明确差异化。借鉴代码前仍须逐项核验当时版本、许可证、第三方素材和模型条款。
 
 ## 已完成的详细调研
 

@@ -1,5 +1,7 @@
 # GameForge Agent 路线图
 
+> 2026-07-22 状态说明：本文件保留已经发生的历史里程碑。第二轮 `apps/tui`、`apps/workbench` 与 `apps/desktop` 后续均已从 Git 删除，下面带这些名称的完成项不是当前入口。当前 UI 工作转为外置测试框架，目标是分别驱动原版 CodeArts TUI 与原版 OpenChamber GUI。
+
 更新日期：2026-07-20
 
 ## 当前产品优先级：抖音小游戏 V1
@@ -87,7 +89,7 @@ Windows 本地已使用真实 Relay 验证 `submit → watch(SSE) → stop → �
 
 优先评估 Tauri 2 封装现有 React Workbench；Electron 作为生态成熟但体积更大的备选。渲染栈与桌面表面的决策、进入条件和验证要求已记录在 [ADR-0001](./decisions/0001-rendering-and-desktop-surfaces.md)。
 
-2026-07-20 起，用户指定 MIT 许可的 [OpenChamber](https://github.com/btriapitsyn/openchamber) 作为后续 GUI 的前端代码与交互基线，首个评估提交为 `31b43fbde90d368c5d131ec52e761d888466d597`。迁移优先复用其共享 React UI、布局、主题、组件和多运行时抽象，同时把 OpenCode SDK/session 状态替换为 GameForge Relay/RunEvent/reducer；PTY、Git/SSH、tunnel、Electron 特权边界和 Agent 循环不随 UI 默认引入。详见 [GUI 方向](./gui-direction.md)。
+2026-07-20 曾以 MIT 许可的 [OpenChamber](https://github.com/btriapitsyn/openchamber) 作为 GUI 评估基线，首个评估提交为 `31b43fbde90d368c5d131ec52e761d888466d597`。2026-07-22 已删除派生 Workbench，后续只把 OpenChamber 上游原版作为外置 GUI 被测对象；当前方向见 [外置测试框架设计](./ui-test-harness-design.md)。
 
 桌面 GUI 不改变协议边界：CodeArts 仍是主智能体，Relay 仍只协调状态，MCP 仍是确定性工具。若 TUI 的共享 controller 尚未稳定，不开始桌面打包。
 
@@ -103,4 +105,4 @@ Windows 本地已使用真实 Relay 验证 `submit → watch(SSE) → stop → �
 - [ ] 设计并验证安装包签名、更新公钥和发布流程；
 - [ ] 在明确需求与最小 scope 后才考虑文件选择器或系统通知 plugin。
 
-当前 spike 只证明“现有 Workbench 可被零 IPC 的 Tauri 壳编译为 Windows 可执行文件”，不等同于三平台发行就绪。详见 [桌面壳说明](./desktop.md) 与 `experiments/2026-07-18-tauri-desktop-spike/`。
+该历史 spike 只证明当时的 Workbench 可被零 IPC Tauri 壳编译为 Windows 可执行文件，不等同于三平台发行就绪；代码现已删除，证据保留在 `experiments/2026-07-18-tauri-desktop-spike/`。

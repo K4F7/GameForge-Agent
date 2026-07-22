@@ -87,7 +87,7 @@ $env:GAMEFORGE_RUN_RELAY_STATE_FILE="D:\GameForgeState\relay-state.json"
 bun run dev:local
 ```
 
-`dev:local` 使用 Bun 并行启动示例游戏、Workbench、Run Relay 和持久 Douyin Bridge Host，不启动 stdio MCP。然后在 CodeArts IDE 中依次进入“设置 → MCP工具 → 配置MCP”，打开官方 `mcp_settings.json`。根据官方 `mcpServers` 通用模板添加以下配置；把两个示例绝对路径替换为本机路径，Windows JSON 路径中的反斜杠必须写成 `\\`：
+`dev:local` 使用 Bun 并行启动示例游戏、Run Relay 和持久 Douyin Bridge Host，不启动 GUI 或 stdio MCP。然后在 CodeArts IDE 中依次进入“设置 → MCP工具 → 配置MCP”，打开官方 `mcp_settings.json`。根据官方 `mcpServers` 通用模板添加以下配置；把两个示例绝对路径替换为本机路径，Windows JSON 路径中的反斜杠必须写成 `\\`：
 
 ```json
 {
@@ -123,13 +123,13 @@ GAMEFORGE_DOUYIN_MINIGAME_CLI=<tt-minigame-ide-cli 2.1.1 包内 bin/tmg.js 的�
 
 这里使用 Node 承载正式 MCP 和 Playwright Core；依赖安装、workspace 命令、检查和构建仍统一由 Bun 完成。官方配置要求 `command` 必填，`args` 和 `env` 可选，且所有环境变量值必须是字符串。保存后在“已安装”页签重启 `gameforge` MCP；官方文档明确指出修改环境变量后需要重启才能立即生效。
 
-OpenCode-compatible 启动器把客户端工作目录固定为仓库根，并只生成本地 MCP 官方字段 `type`、`command`、`environment`、`enabled`、`timeout`；CodeArts 26.6.2 会拒绝非标准 `cwd`。变量未设置时动态配置不注入 token 引用；显式设置为空白会在写配置前 fail-closed，非空 token 继续执行 32–512 字符校验。
+OpenCode-compatible 启动器把客户端工作目录固定为仓库根，并只生成本地 MCP 官方字段 `type`、`command`、`environment`、`enabled`、`timeout`；CodeArts 26.6.2 会拒绝非标准 `cwd`。客户端 MCP timeout 固定为 180 秒，使有 120 秒内部硬界限的浏览器验收能够返回，同时工具自身仍负责更短的确定性超时。变量未设置时动态配置不注入 token 引用；显式设置为空白会在写配置前 fail-closed，非空 token 继续执行 32–512 字符校验。
 
 通过 `bun run codearts` 使用动态配置时，可在新终端显式设置 `GAMEFORGE_LAYAIR_CLI`。启动器只接受绝对、已存在、非符号链接的普通文件并将路径写入被忽略的临时配置；未设置时不猜测用户目录或 PATH，显式空白会直接拒绝。MCP 启动后仍会独立核验 CLI 版本精确为 3.4.0，并把官方 wrapper 解析到已核验的固定 `Resources/cli-main.js`，不经 shell 执行 wrapper。
 
 `GAMEFORGE_MCP_AUDIT_DIR` 默认关闭；配置绝对目录后，每次 MCP 启动会创建一个唯一 JSON 会话文件。文件只含工具名、顺序、时间、耗时和结果状态，不含调用参数或返回值。`bun run codearts`/`bun run opencode` 启动器会自动使用仓库忽略目录；手工配置时不要指向同步盘或公开目录。单次隔离实验也可改用未存在的绝对 `GAMEFORGE_MCP_AUDIT_FILE`，两者不能同时配置。
 
-若 Relay 进程启用了 `GAMEFORGE_RUN_RELAY_TOKEN`，CodeArts 启动环境与 Relay 必须使用同一个至少 32 字符的值；手工 MCP 配置可在本机私有 `env` 中增加该项，但不得提交。仓库生成的 OpenCode 配置只保存 `{env:GAMEFORGE_RUN_RELAY_TOKEN}` 引用。Workbench 不接收此秘密；带认证的浏览器访问必须通过同源认证代理。
+若 Relay 进程启用了 `GAMEFORGE_RUN_RELAY_TOKEN`，CodeArts 启动环境与 Relay 必须使用同一个至少 32 字符的值；手工 MCP 配置可在本机私有 `env` 中增加该项，但不得提交。仓库生成的 OpenCode 配置只保存 `{env:GAMEFORGE_RUN_RELAY_TOKEN}` 引用。浏览器 GUI 不接收此秘密；带认证的浏览器访问必须通过同源认证代理。
 
 此基础配置不包含任何密钥，会注册规格校验、项目生成、任务/Run、浏览器验收与预览工具。当前阶段只使用 CodeArts 内置模型，不配置或调用 Qwen、Seedream、Freesound、MiniMax 或火山 TTS 外部账号；这些适配器与 README 变量只保留给未来获得新授权后的显式实验。不要把填入真实值的 `mcp_settings.json` 提交到仓库。是否配置成功以 CodeArts 实际列出的工具为准，不以前端 Provider 标签为准。
 
@@ -138,15 +138,15 @@ OpenCode-compatible 启动器把客户端工作目录固定为仓库根，并只
 1. 在 CodeArts 中确认可见 `create_game_task`、`list_game_tasks`、`claim_game_task` 和 `replay_game_run`；
 2. 选择一种 Task 入口：
    - 纯 CLI/TUI：经客户端 `ask` 确认后调用一次 `create_game_task`，传入新的唯一 `runId`、用户原始 `prompt`、明确的 `language`，迭代项目再显式传 `projectId`；保存完整请求，响应不确定时只用相同参数重试；
-   - 状态界面：打开 `http://127.0.0.1:4173/`，提交 Prompt 并记录 Task ID 与 Run ID；页面刷新后可读取历史，但 Workbench 不是 CodeArts 无 GUI 流程的前置条件。
+   - 当前仓库没有状态界面入口；原版 OpenChamber GUI 的测试接入由外置测试框架另行实现。
 3. 调用一次不带 status 的 `list_game_tasks`；若存在 `claimedBy: "codearts"` 的相关 Task，优先幂等恢复，否则认领刚创建或明确匹配当前需求的 queued Task。不得认领无关任务；认领结果中的可选 `projectId` 决定 update/create，禁止从 Prompt 或目录猜测；
 4. 以 `agentId: "codearts"` 调用 `claim_game_task`。若已注册 `bind_mcp_audit_context`，经 `ask` 后以认领返回的 Task/Run ID 绑定一次审计，相同绑定可幂等恢复；
-5. 按 `gameforge-build` Skill 完成规格、生成、验收和目标平台构建。Workbench/TUI 只负责观察状态，不参与 Agent 规划；
+5. 按 `gameforge-build` Skill 完成规格、生成、验收和目标平台构建。外置测试框架只负责操作和观察，不参与 Agent 规划；
 6. 有状态界面时，确认它显示真实规格、素材和本次生成项目，而不是演示数据；纯 CLI 流程则以连续 RunEvent 回放和托管产物为证据。
 
 `create_game_task` 的 MCP annotations 声明它是封闭域内、非破坏性且相同参数幂等的写入操作；annotations 只是客户端提示，不是授权。OpenCode 模板仍将 `create_*` 设为 `ask`，CodeArts 也应保留对应人工确认。相同 run ID 携带不同 Prompt、language 或 projectId 会返回 `task_run_conflict`；不得静默轮换 ID 后继续。
 
-双语验收时，在 Workbench 选择 `English (US)` 后提交新的 Run。CodeArts 读取 Task 后应把两个字段原样传递：
+双语验收时，创建明确使用 `en-US` 的新 Task。CodeArts 读取 Task 后应把两个字段原样传递：
 
 ```text
 draft_game_spec({ prompt: task.prompt, language: task.language })
@@ -154,7 +154,7 @@ draft_game_spec({ prompt: task.prompt, language: task.language })
 
 确认 `spec.ready.spec.locale` 为 `en-US`、预览 HUD 显示 `Progress`/`Lives`，且浏览器 `document.documentElement.lang` 为 `en-US`。再用新 Run 做一次中文对照。Provider 会拒绝 locale 与请求 language 不一致的模型输出。
 
-本仓库的本地 MCP Client、Relay 和浏览器实验不能代替真实 CodeArts 使用。第一阶段脱敏记录应至少证明：CodeArts 客户端版本、登录状态、已安装 `gameforge` MCP、Task ID/Run ID、`claim_game_task` 的 agent ID、实际工具调用摘要、最终 `run.completed` 与 Workbench/浏览器证据。该项已于 2026-07-18 使用 CodeArts 26.6.2 OAuth TUI 首次通过，记录见 `experiments/2026-07-18-codearts-real-e2e/`；该次 Task 由 Workbench 创建，本次媒体能力未启用，因此不证明真实云 Provider 调用。
+本仓库的本地 MCP Client、Relay 和浏览器实验不能代替真实 CodeArts 使用。第一阶段脱敏记录应至少证明：CodeArts 客户端版本、登录状态、已安装 `gameforge` MCP、Task ID/Run ID、`claim_game_task` 的 agent ID、实际工具调用摘要、最终 `run.completed` 与浏览器证据。2026-07-18 曾使用 CodeArts 26.6.2 OAuth TUI 完成历史闭环，记录见 `experiments/2026-07-18-codearts-real-e2e/`；该次 Task 由现已删除的 Workbench 创建，本次媒体能力未启用，因此不证明当前 UI 框架或真实云 Provider 调用。
 
 同日又使用非交互 CodeArts、内置 `huaweicloud-maas/GLM-5.1` 和临时无持久化 Relay，真实完成 `create_game_task → claim_game_task → replay_game_run`。MCP Audit 记录三个成功调用，Relay 只有唯一 `run.started`；CodeArts 未修改项目或调用媒体 Provider。记录见 `experiments/2026-07-18-codearts-headless-task-create/`。这证明无 GUI Task 启动协议，不等同于完整小游戏生产、平台构建或真机验收。
 
@@ -162,7 +162,7 @@ draft_game_spec({ prompt: task.prompt, language: task.language })
 
 官方 MCP 页面访问日期：2026-07-16。
 
-仓库已用真实 MCP SDK 客户端验证上述 `node + dist/index.js + env` stdio 方式可以握手并列出无密钥基础工具；`bun run dev:local` 也已取得游戏、Workbench 和 Relay 三个 HTTP 200。可复现记录见 `experiments/2026-07-16-local-bootstrap/`。
+仓库已用真实 MCP SDK 客户端验证上述 `node + dist/index.js + env` stdio 方式可以握手并列出无密钥基础工具；历史 `dev:local` 三服务结果见 `experiments/2026-07-16-local-bootstrap/`，当前命令不再启动 Workbench。
 
 Run Relay 的可选状态文件已通过真实生产进程两次重启验证；记录见 `experiments/2026-07-16-relay-persistence/`。
 

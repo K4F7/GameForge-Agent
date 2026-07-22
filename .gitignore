@@ -10,7 +10,7 @@ coverage/
 output/
 *.tsbuildinfo
 *.log
-apps/desktop/src-tauri/target/
 .codeartsdoer/skills/ProjectSkillStatus.txt
+.codeartsdoer/.codebase/
 .opencode/AGENTS.md
 .DS_Store
