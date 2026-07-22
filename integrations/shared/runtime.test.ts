@@ -56,11 +56,12 @@ describe("integration runtime", () => {
       delete process.env.GAMEFORGE_DOUYIN_MINIGAME_CLI;
       await writeRuntimeConfig(runtime);
       const config = JSON.parse(await readFile(runtime.configPath, "utf8")) as {
-        mcp: { gameforge: { environment: Record<string, string>; cwd?: unknown } };
+        mcp: { gameforge: { environment: Record<string, string>; cwd?: unknown; timeout: number } };
       };
       expect(path.isAbsolute(runtime.auditDirectory)).toBe(true);
       expect(runtime.auditDirectory).toContain(path.join("integrations", "codearts", "mcp-audit"));
       expect(config.mcp.gameforge.cwd).toBeUndefined();
+      expect(config.mcp.gameforge.timeout).toBe(180_000);
       expect(config.mcp.gameforge.environment.GAMEFORGE_RUN_RELAY_TOKEN).toBeUndefined();
       expect(config.mcp.gameforge.environment.GAMEFORGE_LAYAIR_CLI).toBeUndefined();
       expect(config.mcp.gameforge.environment.GAMEFORGE_DOUYIN_MINIGAME_CLI).toBeUndefined();
@@ -69,6 +70,11 @@ describe("integration runtime", () => {
       if (policyPath === undefined) throw new Error("Expected generated model routing policy path.");
       expect(path.isAbsolute(policyPath)).toBe(true);
       await expect(access(policyPath)).resolves.toBeUndefined();
+
+      await writeRuntimeConfig(runtime, { permissionMode: "full-access" });
+      const fullAccessConfig = JSON.parse(await readFile(runtime.configPath, "utf8")) as { permission: unknown };
+      expect(fullAccessConfig.permission).toBe("allow");
+      await writeRuntimeConfig(runtime);
 
       process.env.GAMEFORGE_RUN_RELAY_TOKEN = "   ";
       await expect(writeRuntimeConfig(runtime)).rejects.toThrow("must be unset or contain between 32 and 512");

@@ -9,33 +9,33 @@ describe("committed model routing example", () => {
     const text = await readFile(file, "utf8");
     const policy = modelRoutingPolicySchema.parse(JSON.parse(text) as unknown);
     expect(policy.agent.orchestration.primary).toMatchObject({
-      provider: "deepseek",
-      model: "huaweicloud-maas/deepseek-v3.2",
+      provider: "zhipu",
+      model: "huaweicloud-maas/GLM-5.1",
     });
     expect(policy.tools.image.primary.provider).toBe("volcengine-ark");
     expect(policy.agent.story.primary).toMatchObject({
-      provider: "zhipu",
-      model: "huaweicloud-maas/Glm-5-internal",
+      provider: "deepseek",
+      model: "huaweicloud-maas/deepseek-v3.2",
     });
     expect(resolveAgentModelRoute(policy.agent.story, [policy.agent.story.primary])).toMatchObject({
       status: "selected",
       source: "task-route-primary",
-      target: { model: "huaweicloud-maas/Glm-5-internal" },
+      target: { model: "huaweicloud-maas/deepseek-v3.2" },
     });
     expect(resolveAgentModelRoute(policy.agent.story, [{
       ...policy.agent.story.primary,
-      model: "huaweicloud-maas/GLM-5-INTERNAL",
+      model: "huaweicloud-maas/DEEPSEEK-V3.2",
     }])).toMatchObject({ status: "unavailable" });
     const codingFallback = policy.agent.coding.fallbacks.at(-1);
     if (codingFallback === undefined) throw new Error("Expected a committed CodeArts coding fallback.");
     expect(codingFallback).toMatchObject({
-      provider: "zhipu",
-      model: "huaweicloud-maas/GLM-4.7-SFT-Harmony",
+      provider: "deepseek",
+      model: "huaweicloud-maas/deepseek-v3.2",
     });
     expect(resolveAgentModelRoute(policy.agent.coding, [codingFallback])).toMatchObject({
       status: "selected",
       source: "task-route-fallback",
-      target: { provider: "zhipu", model: "huaweicloud-maas/GLM-4.7-SFT-Harmony" },
+      target: { provider: "deepseek", model: "huaweicloud-maas/deepseek-v3.2" },
     });
     const agentTargets = Object.values(policy.agent).flatMap((route) =>
       route === undefined ? [] : [route.primary, ...route.fallbacks]

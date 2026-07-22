@@ -43,7 +43,10 @@ export async function resolveRuntime(startDirectory: string, integration: "codea
   };
 }
 
-export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<void> {
+export async function writeRuntimeConfig(
+  runtime: IntegrationRuntime,
+  options: { permissionMode?: "scoped" | "full-access" } = {},
+): Promise<void> {
   const relayToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
   if (relayToken !== undefined) {
     const normalized = relayToken.trim();
@@ -53,6 +56,15 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
   }
   const layaAirCliPath = await optionalRegularFileEnvironment("GAMEFORGE_LAYAIR_CLI");
   const douyinMiniGameCliPath = await optionalRegularFileEnvironment("GAMEFORGE_DOUYIN_MINIGAME_CLI");
+  const permissionMode = options.permissionMode ?? "scoped";
+  const permission = permissionMode === "full-access" ? "allow" : {
+    "gameforge_*": "ask",
+    "gameforge_validate_*": "allow",
+    "gameforge_get_*": "allow",
+    "gameforge_list_*": "allow",
+    "gameforge_replay_*": "allow",
+    "gameforge_query_*": "allow",
+  };
   const config = {
     $schema: "https://opencode.ai/config.json",
     lsp: false,
@@ -75,17 +87,12 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
           GAMEFORGE_MODEL_ROUTING_POLICY: path.join(runtime.repoRoot, "config", "model-routing.example.json"),
         },
         enabled: true,
-        timeout: 10_000,
+        // Browser verification has its own bounded 120 s deadline. The client
+        // transport must remain alive long enough to receive that result.
+        timeout: 180_000,
       },
     },
-    permission: {
-      "gameforge_*": "ask",
-      "gameforge_validate_*": "allow",
-      "gameforge_get_*": "allow",
-      "gameforge_list_*": "allow",
-      "gameforge_replay_*": "allow",
-      "gameforge_query_*": "allow",
-    },
+    permission,
   };
   await writeFile(runtime.configPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
 }
