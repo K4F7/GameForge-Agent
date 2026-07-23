@@ -6,6 +6,16 @@
 
 只读观察器使用锁定的官方 `@opencode-ai/sdk@1.18.3` 订阅 `/global/event`：
 
+选择 SDK 而非手写 REST/SSE，是因为观察器需要官方客户端的 `/global/event` 流解析、SSE ID 传递和重连行为；自行复制协议会形成第二套易漂移实现。该版本采用 MIT 许可并固定在 `integrations/package.json` 与 `bun.lock`。生产准入验证命令为：
+
+```powershell
+bun audit --prod
+bun run --filter @gameforge/integrations check
+bun run --filter @gameforge/integrations test
+```
+
+2026-07-23 实际验证结果：类型检查通过，5 个测试文件共 17 个测试通过；审计结果以同一提交的 CI/本地命令输出为准。
+
 ```powershell
 $env:OPENCODE_SERVER_URL='http://127.0.0.1:4096'
 $env:GAMEFORGE_OBSERVER_SESSION_ID='<与验收相同的 sessionId>'

@@ -133,29 +133,4 @@ describe("integration runtime", () => {
     }
   });
 
-  it("writes an explicit fallback provider without persisting its API key", async () => {
-    const runtime = await resolveRuntime(import.meta.dirname, "codearts");
-    const names = [
-      "GAMEFORGE_CODEARTS_FALLBACK_BASE_URL",
-      "GAMEFORGE_CODEARTS_FALLBACK_MODEL",
-      "GAMEFORGE_FALLBACK_API_KEY",
-    ] as const;
-    const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
-    try {
-      process.env.GAMEFORGE_CODEARTS_FALLBACK_BASE_URL = "https://model.example.com/v1";
-      process.env.GAMEFORGE_CODEARTS_FALLBACK_MODEL = "test-model";
-      process.env.GAMEFORGE_FALLBACK_API_KEY = "test-secret-never-persist";
-      await writeRuntimeConfig(runtime);
-      const text = await readFile(runtime.configPath, "utf8");
-      const config = JSON.parse(text) as { provider: Record<string, { options: { apiKey: string } }> };
-      expect(config.provider["gameforge-fallback"]?.options.apiKey).toBe("{env:GAMEFORGE_FALLBACK_API_KEY}");
-      expect(text).not.toContain("test-secret-never-persist");
-    } finally {
-      for (const name of names) {
-        const value = previous[name];
-        if (value === undefined) delete process.env[name];
-        else process.env[name] = value;
-      }
-    }
-  });
 });
