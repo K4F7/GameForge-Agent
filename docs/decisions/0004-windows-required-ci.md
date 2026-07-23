@@ -28,3 +28,4 @@ UI Test Harness 使用真实 Windows ConPTY 启动 CodeArts，并以 Playwright 
 2. 该 job 通过后 `PR Gate` 成功；未通过时 Gate 的日志明确报告 Windows Bun CI 失败。
 3. PR #17 的新 head SHA 在 Windows job 与 `PR Gate` 上均为成功，且不因缺少 Linux/macOS Playwright 浏览器而失败。
 4. 手写的 `.github/workflows/ci.yml` 通过 `actionlint`。
+5. Draft PR 转为 Ready 时，`ready_for_review` 同时触发 CI 与 Reviewer，不允许出现只有 Reviewer、没有 `PR Gate` 的状态。

@@ -9,7 +9,7 @@ Git commit、GitHub PR、required checks、review 和 GitHub 原生 auto-merge �
 3. `CI` 对变更文件进行确定性分类：
    - 普通文档 PR 只修改 Markdown，且不包含任何目录下的 `AGENTS.md`、`.github/**`、`.codeartsdoer/skills/**`，跳过三平台 Bun job；
    - 其他 PR 仅在 Windows 上执行完整 Bun 验证；Windows 是当前支持真实 ConPTY 与 Playwright 浏览器验收的唯一必需平台。
-4. 始终存在的 `PR Gate` 汇总分类和 CI 结果。分支保护只要求稳定的 `PR Gate` context，不直接要求可能被跳过的 matrix context。
+4. CI 与 Reviewer 都监听 `opened`、`ready_for_review`、`synchronize` 和 `reopened`；Draft PR 转为 Ready 时两者必须同时启动。始终存在的 `PR Gate` 汇总分类和 CI 结果。分支保护只要求稳定的 `PR Gate` context，不直接要求可能被跳过的 matrix context。
 5. `GameForge PR Reviewer` 审查当前 Head SHA。只有 `PR Gate` 成功且没有阻断项时才提交 `APPROVE`。
 6. Reviewer 提交 `REQUEST_CHANGES` 后，`GameForge PR Comment Fixer` 自动修复、验证并 push。最多自动修复两轮；之后仍有阻断项则停止并保留未解决线程。
 7. 每次 push 都使旧批准失效，并重新执行 CI 和 Reviewer。
