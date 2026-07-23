@@ -10,7 +10,7 @@ if: ${{ vars.GAMEFORGE_GH_AW_ENABLED == 'true' && github.event.pull_request.draf
 
 engine:
   id: codex
-  model: gpt-5.6-sol
+  model: grok-4.5
   env:
     OPENAI_BASE_URL: "https://api.sein.moe/v1/"
     CODEX_API_KEY: "unused-by-openai-proxy"
