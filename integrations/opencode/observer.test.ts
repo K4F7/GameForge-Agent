@@ -26,4 +26,10 @@ describe("OpenCodeObserver", () => {
     const observer = new OpenCodeObserver({ outputFile, observerSessionId: "session-1", source: async () => (async function* () {})() });
     await expect(observer.observe(new AbortController().signal)).rejects.toThrow("not contiguous");
   });
+  it("rejects resuming evidence with a different run", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-observer-")); roots.push(root); const outputFile = path.join(root, "events.ndjson");
+    await new OpenCodeObserver({ outputFile, observerSessionId: "session-1", runId: "run-1", source: async () => (async function* () { yield frame("evt-1"); })() }).observe(new AbortController().signal);
+    const observer = new OpenCodeObserver({ outputFile, observerSessionId: "session-1", runId: "run-2", source: async () => (async function* () {})() });
+    await expect(observer.observe(new AbortController().signal)).rejects.toThrow("another run");
+  });
 });

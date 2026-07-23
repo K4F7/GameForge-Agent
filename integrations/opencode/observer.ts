@@ -39,6 +39,7 @@ export class OpenCodeObserver {
     for (const event of events) {
       if (event.sequence !== expected++) throw new Error("OpenCode evidence sequence is not contiguous");
       if (event.observerSessionId !== this.#sessionId) throw new Error("OpenCode evidence belongs to another observer session");
+      if (event.runId !== this.#runId) throw new Error("OpenCode evidence belongs to another run");
       if (event.sseId !== null) this.#seenSseIds.add(event.sseId);
     }
     this.#sequence = events.length;

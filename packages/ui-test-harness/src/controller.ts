@@ -79,7 +79,7 @@ export class UiTestController {
       if (guiLaunched) { await this.captureGui(session, "failed").catch(() => undefined); failureCaptured = true; }
     }
 
-    await outputQueue;
+    await outputQueue.catch((error) => { failure ??= error; });
     if (tuiStarted) {
       const finalTui = await this.drivers.tui.read().catch(() => undefined);
       if (finalTui !== undefined) await this.drivers.evidence.recordTuiSnapshot(finalTui);

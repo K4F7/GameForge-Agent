@@ -133,6 +133,19 @@ describe("UiTestController", () => {
     expect(guiClosed).toBe(true);
     expect(finalized).toMatchObject({ status: "failed" });
   });
+
+  it("finalizes and cleans up when queued TUI evidence fails", async () => {
+    const calls: string[] = []; const sessionId = "output-failure-session"; let finalized: HarnessResult | undefined;
+    const tui = { kind: "codearts-original-tui" as const, async start() { calls.push("tui:start"); return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput(callback: (frame: any) => void) { callback({ sequence: 1, text: "output" }); return () => calls.push("tui:unsubscribe"); }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() { calls.push("tui:stop"); } };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() { calls.push("xterm:close"); } };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() { calls.push("gui:launch"); }, async navigate() {}, async click() {}, async fill() {}, async press() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() { calls.push("gui:close"); } };
+    const evidence = { async recordSession() {}, async recordLifecycle() {}, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() { throw new Error("evidence disk full"); }, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize(result: HarnessResult) { finalized = result; } };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 1, runStatus: "completed", capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headless", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, activityPollMs: 1, inactivityTimeoutMs: 100 });
+    await expect(controller.run({ name: "output-failure", steps: [] })).resolves.toMatchObject({ status: "failed", failure: "evidence disk full" });
+    expect(calls).toEqual(["tui:start", "gui:launch", "gui:close", "xterm:close", "tui:stop", "tui:unsubscribe"]);
+    expect(finalized).toMatchObject({ status: "failed" });
+  });
 });
 
 function tuiSnapshot(sessionId: string): TuiSnapshot {
