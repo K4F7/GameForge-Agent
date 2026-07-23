@@ -12,6 +12,7 @@ export type RelayAuthorityOptions = {
 export class RelayAuthorityDriver implements GameForgeAuthorityDriver {
   readonly kind = "gameforge-authority" as const;
   readonly #client: RunRelayClient;
+  #lastEvent: Awaited<ReturnType<RunRelayClient["replayEvents"]>>["events"][number] | undefined;
 
   constructor(private readonly options: RelayAuthorityOptions) {
     this.#client = new RunRelayClient({
@@ -24,9 +25,10 @@ export class RelayAuthorityDriver implements GameForgeAuthorityDriver {
   async snapshot(): Promise<AuthoritySnapshot> {
     const [task, events] = await Promise.all([
       this.#client.getTask(this.options.taskId),
-      this.#replayAll(),
+      this.#replayNew(),
     ]);
-    const last = events.events.at(-1);
+    const last = events.at(-1) ?? this.#lastEvent;
+    this.#lastEvent = last;
     return {
       taskId: task.taskId,
       runId: task.runId,
@@ -39,13 +41,13 @@ export class RelayAuthorityDriver implements GameForgeAuthorityDriver {
     };
   }
 
-  async #replayAll() {
+  async #replayNew() {
     const events = [] as Awaited<ReturnType<RunRelayClient["replayEvents"]>>["events"];
-    let after = 0;
+    let after = this.#lastEvent?.sequence ?? 0;
     while (true) {
       const page = await this.#client.replayEvents({ runId: this.options.runId, after });
       events.push(...page.events);
-      if (page.events.length < 1_000) return { events };
+      if (page.events.length < 1_000) return events;
       after = page.events.at(-1)!.sequence;
     }
   }

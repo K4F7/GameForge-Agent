@@ -41,7 +41,7 @@
 
 OpenChamber 不承载 CodeArts 终端、测试状态或证据面板。最终通过/失败与证据位置写入外置报告。
 
-## 当前代码状态
+## 2026-07-22 交接时的代码状态（历史快照）
 
 `packages/ui-test-harness/` 已建立可审查的第一层框架：
 
@@ -51,7 +51,7 @@ OpenChamber 不承载 CodeArts 终端、测试状态或证据面板。最终通�
 - `EvidenceSink`：记录生命周期、输入、TUI/GUI 快照、活动和权威状态；
 - `UiTestController`：执行声明式步骤、权威门禁、观察保留与综合活动看门狗。
 
-当前刻意没有 `run` CLI，也没有具体 PTY、Playwright、Relay 或 Evidence 适配器，因此导入该包不会启动进程、浏览器或测试会话。先由用户检查拓扑，再实现可运行适配器。
+当时刻意没有 `run` CLI，也没有具体 PTY、Playwright、Relay 或 Evidence 适配器。2026-07-23 已实现这些适配器与显式 CLI；导入包仍不会自动启动进程、浏览器或测试会话。
 
 此前未跟踪的 `packages/codearts-session-host/` 原型源码已经删除，仅可能残留被 `.gitignore` 排除的本机构建产物；它不是当前 Git 实现，也不能作为验收依据。
 

@@ -10,5 +10,6 @@ const runId = process.env.GAMEFORGE_RUN_ID?.trim() || undefined;
 const outputFile = path.join(path.dirname(runtime.configPath), "sessions", observerSessionId, "opencode-events.ndjson");
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort()); process.once("SIGTERM", () => controller.abort());
-process.stdout.write(`${JSON.stringify({ observerSessionId, runId, baseUrl, outputFile })}\n`);
-await new OpenCodeObserver({ outputFile, observerSessionId, ...(runId === undefined ? {} : { runId }), source: createSdkEventSource({ baseUrl, directory: runtime.repoRoot }) }).observe(controller.signal);
+const source = createSdkEventSource({ baseUrl, directory: runtime.repoRoot });
+process.stdout.write(`${JSON.stringify({ observerSessionId, runId, baseUrl: new URL(baseUrl).origin, outputFile })}\n`);
+await new OpenCodeObserver({ outputFile, observerSessionId, ...(runId === undefined ? {} : { runId }), source }).observe(controller.signal);

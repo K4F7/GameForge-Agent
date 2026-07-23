@@ -13,8 +13,11 @@ export async function projectFingerprint(projectRoot: string): Promise<string> {
       const target = path.join(directory, entry.name);
       if (entry.isDirectory()) await visit(target);
       else if (entry.isFile()) {
-        const info = await stat(target);
-        entries.push(`${path.relative(projectRoot, target).replaceAll("\\", "/")}:${info.size}:${info.mtimeMs}`);
+        const info = await stat(target).catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return undefined;
+          throw error;
+        });
+        if (info !== undefined) entries.push(`${path.relative(projectRoot, target).replaceAll("\\", "/")}:${info.size}:${info.mtimeMs}`);
       }
     }
   };

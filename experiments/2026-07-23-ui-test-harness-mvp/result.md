@@ -32,4 +32,4 @@
 - CodeArts/MCP/Authority 成功；OpenChamber 最终发现 4 个 console error 和 2 个 failed request（缺失动态静态资源与 manifest），健康门禁按预期将场景判为失败。
 - 这证明工具不会用 Authority completed 掩盖 GUI 回归。被测 OpenChamber 资源问题不在本次测试工具修改范围内。
 
-原版 OpenChamber 探针固定 `1.16.2`、commit `31b43fbde90d368c5d131ec52e761d888466d597`、MIT。正式运行应先 `bun run build:web`，再在未占用 loopback 端口执行 `node packages/web/bin/cli.js serve --foreground --port <port>`；不得以 HMR smoke 代替生产浏览器验收。
+原版 OpenChamber 探针固定 `1.16.2`、commit `31b43fbde90d368c5d131ec52e761d888466d597`、MIT。正式运行应先 `cd vendor/openchamber`，再执行 `bun run build:web`，并在同一工作目录的未占用 loopback 端口执行 `node packages/web/bin/cli.js serve --foreground --port <port>`；不得以 HMR smoke 代替生产浏览器验收。

@@ -2,7 +2,7 @@
 
 > 状态：已被 2026-07-22 的 UI 表面清理决策取代。本文只保留当时选择 TUI、Workbench 与 Tauri spike 的历史理由；对应代码和当前文档入口均已删除。
 
-状态：接受  
+状态：已废弃（由 ADR-0004 取代）
 日期：2026-07-18
 
 ## 决策
@@ -43,8 +43,8 @@ Tauri 能复用 Workbench 且安装体积较小，但系统 WebView 差异、Rus
 
 当时的 Web Workbench CSP、预览 origin allowlist、iframe 权限和桌面最小权限基线已经随产品代码退役；历史实验记录不等于 Tauri 三平台 WebView、签名或更新机制已经验收。
 
-## 验证
+## 历史验证（不再作为当前门禁）
 
 - `apps/game/package.json` 只保留 Phaser 默认依赖；核心 packages 不新增渲染或桌面依赖。
-- `bun run check && bun run test && bun run build` 在三平台 CI 执行。
+- 当时要求 `bun run check && bun run test && bun run build` 在三平台 CI 执行；当前 required CI 政策以 ADR-0004 的 Windows-only 门禁为准。
 - 新 3D 或桌面实现必须新建 ADR 和实验记录，不能修改本 ADR 来掩盖对照结果。

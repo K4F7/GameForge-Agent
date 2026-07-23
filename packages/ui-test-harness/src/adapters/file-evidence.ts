@@ -7,6 +7,9 @@ import type {
 
 const MAX_VT_BYTES = 16 * 1024 * 1024;
 const MAX_NDJSON_BYTES = 8 * 1024 * 1024;
+const MAX_MCP_AUDIT_FILES = 256;
+const MAX_MCP_AUDIT_FILE_BYTES = 256 * 1024;
+const MAX_MCP_AUDIT_TOTAL_BYTES = 8 * 1024 * 1024;
 
 export class FileEvidenceSink implements EvidenceSink {
   #vtBytes = 0;
@@ -65,11 +68,19 @@ export class FileEvidenceSink implements EvidenceSink {
   async #consolidateMcpAudit(): Promise<void> {
     const directory = path.join(this.sessionRoot, "mcp-audit");
     const names = await readdir(directory).catch(() => []);
-    const records = [];
-    for (const name of names.sort()) {
-      const content = await readFile(path.join(directory, name), "utf8").catch(() => undefined);
-      if (content !== undefined) records.push({ file: name, content: redact(content) });
+    const records = []; let totalBytes = 0;
+    for (const name of names.sort().slice(0, MAX_MCP_AUDIT_FILES)) {
+      const data = await readFile(path.join(directory, name)).catch(() => undefined);
+      if (data === undefined) continue;
+      const remaining = MAX_MCP_AUDIT_TOTAL_BYTES - totalBytes;
+      if (remaining <= 0) { await this.#recordTruncation("mcp-audit.json", MAX_MCP_AUDIT_TOTAL_BYTES); break; }
+      const limit = Math.min(MAX_MCP_AUDIT_FILE_BYTES, remaining);
+      const truncated = data.byteLength > limit;
+      const content = data.subarray(0, limit).toString("utf8"); totalBytes += Buffer.byteLength(content);
+      records.push({ file: name, content: redact(content), ...(truncated ? { truncated: true } : {}) });
+      if (truncated) await this.#recordTruncation(`mcp-audit/${name}`, limit);
     }
+    if (names.length > MAX_MCP_AUDIT_FILES) await this.#recordTruncation("mcp-audit.json:file-count", MAX_MCP_AUDIT_FILES);
     await writeJson(path.join(this.sessionRoot, "mcp-audit.json"), records);
   }
 }

@@ -1,4 +1,4 @@
-import { mkdir, open, readFile } from "node:fs/promises";
+import { mkdir, open, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { createOpencodeClient, type GlobalEvent } from "@opencode-ai/sdk";
 
@@ -14,9 +14,16 @@ export class OpenCodeObserver {
     this.#runId = options.runId; this.#source = options.source; this.#now = options.now ?? (() => new Date().toISOString());
   }
   async observe(signal: AbortSignal): Promise<void> {
-    await mkdir(path.dirname(this.#outputFile), { recursive: true, mode: 0o700 }); await this.#restoreCursor();
-    const stream = await this.#source(signal); const file = await open(this.#outputFile, "a", 0o600);
+    await mkdir(path.dirname(this.#outputFile), { recursive: true, mode: 0o700 });
+    const lockFile = `${this.#outputFile}.lock`;
+    const lock = await open(lockFile, "wx", 0o600).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "EEXIST") throw new Error(`OpenCode evidence already has an active writer: ${this.#outputFile}`);
+      throw error;
+    });
     try {
+      await this.#restoreCursor();
+      const stream = await this.#source(signal); const file = await open(this.#outputFile, "a", 0o600);
+      try {
       for await (const frame of stream) {
         if (signal.aborted) break;
         if (frame.sseId !== undefined && this.#seenSseIds.has(frame.sseId)) continue;
@@ -27,7 +34,8 @@ export class OpenCodeObserver {
         await file.appendFile(`${JSON.stringify(event)}\n`, "utf8");
         if (frame.sseId !== undefined) this.#seenSseIds.add(frame.sseId);
       }
-    } finally { await file.close(); }
+      } finally { await file.close(); }
+    } finally { await lock.close(); await unlink(lockFile).catch(() => undefined); }
   }
   async replay(after = 0): Promise<ObservedOpenCodeEvent[]> {
     if (!Number.isSafeInteger(after) || after < 0) throw new Error("after must be a non-negative safe integer");

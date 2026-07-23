@@ -61,7 +61,7 @@ Patch 至少提供以下两种明确模式：
 ## 安全边界
 
 - 可见模式不扩大 CodeArts、MCP 或浏览器的权限范围。
-- 只允许访问 loopback Workbench、Relay、Viewer 和受管游戏预览地址。
+- 只允许访问 loopback OpenChamber、Relay、Viewer 和受管游戏预览地址；不得恢复或访问已退役的 Workbench。
 - 不得部署、远程发布或执行抖音小游戏 preview、上传、提审、发布。
 - 不得调用未授权的外部素材或模型 Provider。
 - Viewer token 不得出现在页面正文、截图文件名、普通日志或最终报告中。

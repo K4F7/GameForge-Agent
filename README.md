@@ -52,13 +52,13 @@ bun run opencode
 
 ## UI 自动验收
 
-当前只交付可检查的框架契约，不提供运行命令，也不会自动启动测试会话。设计与剩余选择见：
+当前已交付可运行适配器与显式 CLI；它只在用户主动运行时启动隔离测试会话。设计、运行记录与剩余风险见：
 
 - [外置测试框架设计](docs/ui-test-harness-design.md)
 - [CodeArts / OpenChamber 验收交接](docs/codearts-live-acceptance-handoff-2026-07-22.md)
 - [可见无人值守 Patch 要求](docs/codearts-visible-unattended-patch-requirements-2026-07-22.md)
 
-框架计划支持：
+框架当前支持：
 
 - 真实 ConPTY 中的 CodeArts TUI 文本和枚举按键注入；
 - 真实浏览器中的 OpenChamber 导航、点击、输入与按键；
