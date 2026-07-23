@@ -1,6 +1,6 @@
 # GameForge Agent 分层架构
 
-更新日期：2026-07-18
+更新日期：2026-07-23
 
 ## 四个稳定层次
 
@@ -12,6 +12,14 @@
 | 外置 UI 验收 | `packages/ui-test-harness/` | 驱动相互独立的原版 CodeArts TUI 与原版 OpenChamber GUI | 提供产品 UI；改造被测界面；恢复已废弃的 `apps/tui/`、`apps/workbench/` 或 `apps/desktop/` |
 
 `packages/opencode-plugin/` 和 `integrations/` 位于核心之外：它们只负责宿主适配、状态提示和启动配置。删除这些适配层后，MCP、Relay、生成器和浏览器验收仍应独立可用。
+
+## 产品化目标边界
+
+仓库当前不提供自建产品 TUI、Workbench 或桌面壳。CodeArts/OpenCode 宿主适配与 `packages/ui-test-harness/` 外置验收层和本地后端保持单仓、多制品边界，并共享 `packages/contracts/` 的版本化公开协议。原版 CodeArts TUI 与原版 OpenChamber GUI 只要求 Task、Run、MCP Audit 和证据关联等业务语义一致，不要求镜像交互或界面。
+
+本地后端是唯一状态权威，负责 Task/Run、并发控制、MCP Audit 和事件发布。CLI 与 GUI 通过公开协议自动发现或拉起后端；同一 Task 的竞争状态变更由后端拒绝其中一个并返回可解释的冲突结果。后端应在有限兼容窗口内支持当前与上一稳定客户端契约版本。
+
+当前质量门的公开入口是根级 `verify:backend`、`verify:cli`、`verify:gui`、`verify:compat` 与聚合命令 `verify`。`verify:cli` 覆盖 CodeArts/OpenCode 启动适配，`verify:gui` 覆盖外置 UI harness 的构建、类型、依赖准入与测试，`verify:compat` 执行 MCP 工作流集成测试；真实 CodeArts/OpenChamber 可见验收仍需显式运行并记录证据。
 
 ## 为什么核心不是 OpenCode Plugin
 
