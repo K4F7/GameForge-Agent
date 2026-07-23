@@ -2,7 +2,7 @@
 
 `bun run opencode` 使用同一套 GameForge MCP/Relay 边界启动 OpenCode。该适配器用于同任务对照实验，不代表 GameForge 核心依赖 OpenCode。
 
-启动器通过 `OPENCODE_CONFIG` 隔离 GameForge MCP 配置，并在调用方没有显式设置时把 `XDG_DATA_HOME` 指向 `.gameforge-validation/integrations/opencode/data`。这会同时隔离 `auth.json`；启动器不会复制或输出认证材料。CodeArts 仍使用独立的 `KERNEL_DATA_DIR`，两端不得共享数据库文件。
+启动器通过 `OPENCODE_CONFIG` 隔离 GameForge MCP 配置，并始终把 `XDG_DATA_HOME` 指向 `.gameforge-validation/integrations/opencode/data`，覆盖调用方已有值。这会同时隔离 `auth.json`；启动器不会复制或输出认证材料。CodeArts 仍使用独立的 `KERNEL_DATA_DIR`，两端不得共享数据库文件。
 
 只读观察器使用锁定的官方 `@opencode-ai/sdk@1.18.3` 订阅 `/global/event`：
 

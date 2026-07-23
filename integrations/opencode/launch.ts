@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { bindChildLifecycle, resolveRuntime, writeRuntimeConfig } from "../shared/runtime.js";
+import { isolatedOpenCodeEnvironment } from "./environment.js";
 
 const runtime = await resolveRuntime(import.meta.dirname, "opencode");
 await writeRuntimeConfig(runtime);
@@ -13,9 +14,8 @@ const child = spawn(executable, args.length === 0 ? [runtime.repoRoot] : args, {
   cwd: runtime.repoRoot,
   stdio: "inherit",
   env: {
-    ...process.env,
+    ...isolatedOpenCodeEnvironment(process.env, runtime.dataDirectory),
     OPENCODE_CONFIG: runtime.configPath,
-    ...(process.env.XDG_DATA_HOME?.trim() ? {} : { XDG_DATA_HOME: runtime.dataDirectory }),
   },
 });
 bindChildLifecycle(child);
