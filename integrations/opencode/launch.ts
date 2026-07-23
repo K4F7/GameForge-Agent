@@ -15,7 +15,7 @@ const child = spawn(executable, args.length === 0 ? [runtime.repoRoot] : args, {
   env: {
     ...process.env,
     OPENCODE_CONFIG: runtime.configPath,
-    ...(process.env.XDG_DATA_HOME?.trim() ? {} : { XDG_DATA_HOME: runtime.dataDirectory }),
+    XDG_DATA_HOME: runtime.dataDirectory,
   },
 });
 bindChildLifecycle(child);

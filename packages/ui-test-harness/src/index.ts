@@ -8,3 +8,4 @@ export * from "./adapters/headless.js";
 export * from "./adapters/xterm-observer.js";
 export * from "./adapters/playwright-openchamber.js";
 export * from "./adapters/relay-authority.js";
+export * from "./adapters/project-fingerprint.js";

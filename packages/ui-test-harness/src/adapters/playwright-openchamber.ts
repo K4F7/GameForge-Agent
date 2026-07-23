@@ -44,7 +44,7 @@ export class PlaywrightOpenChamberDriver implements OpenChamberGuiDriver {
   #requirePage(): Page { if (this.#page === undefined) throw new Error("OpenChamber browser has not launched."); return this.#page; }
   #requireSession(): HarnessSession { if (this.#session === undefined) throw new Error("OpenChamber session has not launched."); return this.#session; }
   async #launchBrowser(mode: HarnessMode): Promise<Browser> {
-    return chromium.launch({ headless: mode === "headless", timeout: 30_000, ...(this.options.browserChannel === undefined ? {} : { channel: this.options.browserChannel }) });
+    return chromium.launch({ headless: mode === "headless", timeout: 30_000, channel: this.options.browserChannel ?? "chrome" });
   }
   async #launchRemote(mode: HarnessMode): Promise<string> {
     const helper = fileURLToPath(new URL("./playwright-server.js", import.meta.url));

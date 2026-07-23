@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-const browser = await chromium.launch({ headless: process.argv.includes("--headless"), timeout: 30_000 });
+const browser = await chromium.launch({ headless: process.argv.includes("--headless"), timeout: 30_000, channel: "chrome" });
 let page: Page | undefined; const diagnostics: { consoleErrors: string[]; pageErrors: string[]; failedRequests: string[] } = { consoleErrors: [], pageErrors: [], failedRequests: [] };
 const server = createServer(async (request, response) => {
   try { const body = await new Promise<{ command: string; value: any }>((resolve) => { let text = ""; request.on("data", (chunk) => text += chunk); request.on("end", () => resolve(JSON.parse(text || "{}"))); }); const { command, value } = body;

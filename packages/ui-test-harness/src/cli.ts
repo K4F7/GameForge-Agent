@@ -7,6 +7,7 @@ import { RunRelayClient } from "@gameforge/run-relay/client";
 import { ConPtyCodeArtsDriver } from "./adapters/conpty-codearts.js";
 import { FileEvidenceSink } from "./adapters/file-evidence.js";
 import { PlaywrightOpenChamberDriver } from "./adapters/playwright-openchamber.js";
+import { fingerprintProject } from "./adapters/project-fingerprint.js";
 import { RelayAuthorityDriver } from "./adapters/relay-authority.js";
 import { XtermTuiObserverDriver } from "./adapters/xterm-observer.js";
 import type { HarnessResult } from "./contracts.js";
@@ -21,6 +22,7 @@ const relay = new RunRelayClient({
 });
 const runId = options.runId ?? `ui-harness-${Date.now()}-${randomUUID().slice(0, 8)}`;
 const projectId = options.projectId ?? `ui-harness-${randomUUID().slice(0, 8)}`;
+const projectRoot = path.resolve(process.env.GAMEFORGE_PROJECT_OUTPUT_ROOT?.trim() || path.join(repoRoot, ".gameforge-validation", "integrations", "projects"), projectId);
 const created = options.taskId === undefined
   ? await relay.createTask({ runId, projectId, language: "zh-CN", prompt: options.taskPrompt })
   : { task: await relay.getTask(options.taskId) };
@@ -50,6 +52,7 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
   const controller = new UiTestController({
     tui, authority, evidence,
     tuiObserver: new XtermTuiObserverDriver(),
+    projectFingerprint: () => fingerprintProject(projectRoot),
     gui: new PlaywrightOpenChamberDriver({ sessionRoot, baseUrl: options.openChamberUrl, ...(options.browserChannel === undefined ? {} : { browserChannel: options.browserChannel }) }),
   }, {
     sessionId,
@@ -91,7 +94,7 @@ function parseArguments(args: string[]): {
     experiment: value("--experiment", `ui-harness-${new Date().toISOString().replace(/[:.]/g, "-")}`),
     relayUrl: value("--relay-url", process.env.GAMEFORGE_RUN_RELAY_URL?.trim() ?? "http://127.0.0.1:8787/"),
     taskPrompt: value("--task-prompt", "执行一次最小确定性 MCP 验收，不生成游戏，不调用外部 Provider，然后完成 Run。"),
-    agentId: value("--agent-id", "codearts-ui-harness"),
+    agentId: value("--agent-id", "codearts"),
     inactivityTimeoutMs: positiveInteger(value("--inactivity-timeout-ms", "120000")),
     totalTimeoutMs: positiveInteger(value("--total-timeout-ms", "900000")),
     mode: headed ? "headed/watch" : "headless",

@@ -44,10 +44,14 @@ export class UiTestController {
     let guiLaunched = false;
     let failureCaptured = false;
     let unsubscribeOutput: (() => void) | undefined;
+    let outputWrites = Promise.resolve();
+    let outputWriteFailure: unknown;
 
     try {
       unsubscribeOutput = this.drivers.tui.subscribeOutput((frame) => {
-        void this.drivers.evidence.recordTuiOutput(frame);
+        outputWrites = outputWrites.then(() => this.drivers.evidence.recordTuiOutput(frame)).catch((error: unknown) => {
+          outputWriteFailure ??= error;
+        });
       });
       tuiStarted = true;
       const tui = await this.drivers.tui.start({ session, ...this.options.terminal });
@@ -78,6 +82,9 @@ export class UiTestController {
       if (guiLaunched) { await this.captureGui(session, "failed").catch(() => undefined); failureCaptured = true; }
     }
 
+    unsubscribeOutput?.();
+    await outputWrites;
+    if (failure === undefined && outputWriteFailure !== undefined) failure = outputWriteFailure;
     if (tuiStarted) {
       const finalTui = await this.drivers.tui.read().catch(() => undefined);
       if (finalTui !== undefined) await this.drivers.evidence.recordTuiSnapshot(finalTui);
@@ -91,7 +98,6 @@ export class UiTestController {
       tuiStarted ? this.drivers.tui.stop(failure === undefined ? "completed" : "failed") : Promise.resolve(),
     ]);
     const cleanupFailure = cleanup.find((result) => result.status === "rejected");
-    unsubscribeOutput?.();
     if (failure === undefined && cleanupFailure?.status === "rejected") failure = cleanupFailure.reason;
 
     const result: HarnessResult = {
