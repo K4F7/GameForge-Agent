@@ -17,8 +17,9 @@
     "check": "tsc --noEmit",
     "test": "vitest run src",
     "verify:dependencies": "bun scripts/verify-dependencies.ts",
-    "run:headless": "bun run build && bun dist/cli.js --headless",
-    "run:headed": "bun run build && bun dist/cli.js --headed"
+    "build:runtime": "bun --cwd ../.. run build:foundation && bun --cwd ../.. run --filter @gameforge/mcp-server build && bun run build",
+    "run:headless": "bun run build:runtime && bun dist/cli.js --headless",
+    "run:headed": "bun run build:runtime && bun dist/cli.js --headed"
   },
   "devDependencies": {
     "@types/node": "22.20.1",
