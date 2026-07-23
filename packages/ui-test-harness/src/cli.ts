@@ -10,6 +10,7 @@ import { PlaywrightOpenChamberDriver } from "./adapters/playwright-openchamber.j
 import { RelayAuthorityDriver } from "./adapters/relay-authority.js";
 import { XtermTuiObserverDriver } from "./adapters/xterm-observer.js";
 import { projectFingerprint } from "./adapters/project-fingerprint.js";
+import { safeEvidenceSegment, safeRelayUrl } from "./cli-safety.js";
 import type { HarnessResult } from "./contracts.js";
 import { UiTestController } from "./controller.js";
 
@@ -90,8 +91,8 @@ function parseArguments(args: string[]): {
   const sessionId = optionalValue(args, "--session-id");
   if ([taskId, existingRunId, existingProjectId].filter((entry) => entry !== undefined).length % 3 !== 0) throw new Error("--task-id, --run-id and --project-id must be provided together.");
   return {
-    experiment: value("--experiment", `ui-harness-${new Date().toISOString().replace(/[:.]/g, "-")}`),
-    relayUrl: value("--relay-url", process.env.GAMEFORGE_RUN_RELAY_URL?.trim() ?? "http://127.0.0.1:8787/"),
+    experiment: safeEvidenceSegment(value("--experiment", `ui-harness-${new Date().toISOString().replace(/[:.]/g, "-")}`), "--experiment"),
+    relayUrl: safeRelayUrl(value("--relay-url", process.env.GAMEFORGE_RUN_RELAY_URL?.trim() ?? "http://127.0.0.1:8787/")),
     taskPrompt: value("--task-prompt", "执行一次最小确定性 MCP 验收，不生成游戏，不调用外部 Provider，然后完成 Run。"),
     agentId: value("--agent-id", "codearts"),
     projectsRoot: value("--projects-root", process.env.GAMEFORGE_PROJECT_OUTPUT_ROOT?.trim() ?? path.join(repoRoot, ".gameforge-validation", "integrations", "projects")),
@@ -101,7 +102,7 @@ function parseArguments(args: string[]): {
     openChamberUrl: value("--openchamber-url", process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() ?? "http://127.0.0.1:5173/"),
     ...(browserChannel === undefined ? {} : { browserChannel }),
     observationHoldMs: positiveInteger(value("--observation-hold-ms", "10000")),
-    ...(sessionId === undefined ? {} : { sessionId }),
+    ...(sessionId === undefined ? {} : { sessionId: safeEvidenceSegment(sessionId, "--session-id") }),
     ...(taskId === undefined ? {} : { taskId, runId: existingRunId!, projectId: existingProjectId! }),
   };
 }
