@@ -225,7 +225,7 @@ describe("local CodeArts workflow boundary", () => {
     }
   });
 
-  it("carries one Workbench task through claim, replay, generation, preview, and completion", async () => {
+  it("carries one GameForge task through claim, replay, generation, preview, and completion", async () => {
     const relayBaseUrl = await startRelay();
     const projectsRoot = await mkdtemp(path.join(tmpdir(), "gameforge-workflow-"));
     temporaryRoots.push(projectsRoot);

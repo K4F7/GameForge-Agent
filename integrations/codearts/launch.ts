@@ -4,7 +4,8 @@ import { bindChildLifecycle, resolveRuntime, writeRuntimeConfig } from "../share
 import { codeArtsSpawnCommand, resolveCodeArtsLaunchTarget } from "./executable.js";
 
 const runtime = await resolveRuntime(import.meta.dirname, "codearts");
-await writeRuntimeConfig(runtime);
+const fullAccess = process.env.GAMEFORGE_CODEARTS_FULL_ACCESS === "1";
+await writeRuntimeConfig(runtime, { permissionMode: fullAccess ? "full-access" : "scoped" });
 const args = process.argv.slice(2);
 const launchTarget = await resolveCodeArtsLaunchTarget({
   home: userHome(),

@@ -58,7 +58,7 @@ OpenAI 2026 年抽查 138 题，报告至少 59.4% 存在测试会拒绝功能�
 - Qwen2.5-VL-72B 官方模型卡：MMMU 70.2、MMMU-Pro 51.1、DocVQA 96.4。与 Seed 报告设置可能不同，不直接做差值排名。
 - Kimi K3 官方确认原生视觉和 1M context，但截至访问日没有官方公开 MMMU 数字；第三方未核验的 81.6 不进入决策。
 
-所以 `vision` 的评估顺序是：宿主可用 K3 → Seed1.5-VL → GLM-4.6V/Qwen-VL，并用固定 Workbench/游戏截图集验证错误发现率和误报率。
+所以 `vision` 的评估顺序是：宿主可用 K3 → Seed1.5-VL → GLM-4.6V/Qwen-VL，并用固定 OpenChamber/游戏截图集验证错误发现率和误报率。
 
 ### 生图
 

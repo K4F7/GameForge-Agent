@@ -251,7 +251,7 @@ type AssetProvenance = {
 - `import_sound_asset` 已实现为“有界 Freesound preview GET + 安全资产落盘”。只读下载遇到瞬时故障时可有限退避；preview 不需要 OAuth2，原始文件 `/download/` 需要 OAuth2，当前工具不会调用它。允许 CC0 与 Attribution，后者把作者、声音名称、原始页面和许可写入 provenance。
 - `generate_music_asset` 已实现为“单次 MiniMax Music 2.6 非流式纯音乐请求 + 安全 BGM 落盘”。只接受官方 host 和 hex MP3；调用前执行 replacement revision 预检，生成请求不自动重试；账号级输出许可仍必须显式确认。
 - 豆包旧版单向流式 TTS 使用二进制 WebSocket `wss://openspeech.bytedance.com/api/v1/tts/ws_binary`，客户端必须拼接音频帧并识别结束序列；它不能按普通 JSON HTTP 适配器实现。
-- 长文本 TTS 是 `/api/v1/tts_async/submit` 与 `/query` 的异步作业，结果通常需等待数十分钟、最长可到 3 小时，且回调不保证到达。当前已经实现 `submit_voice_job`、`query_voice_job`、`materialize_voice_job` 三个确定性工具：作业句柄经 HMAC 签名并绑定 project ID、asset ID、voice type、格式和文本哈希；CodeArts 决定查询时机，MCP 内部不循环等待。submit/query 后以结构化 `voice.job.updated` 保存 signed handle 和状态，新 CodeArts 会话可从 Relay 回放后继续 query 或 materialize；Workbench 不保存或显示完整 handle，普通日志也不得包含它。素材化只接受配置白名单中的 HTTPS 音频主机，并检查 Content-Type、64 MiB 上限、媒体魔数、格式和 SHA-256。
+- 长文本 TTS 是 `/api/v1/tts_async/submit` 与 `/query` 的异步作业，结果通常需等待数十分钟、最长可到 3 小时，且回调不保证到达。当前已经实现 `submit_voice_job`、`query_voice_job`、`materialize_voice_job` 三个确定性工具：作业句柄经 HMAC 签名并绑定 project ID、asset ID、voice type、格式和文本哈希；CodeArts 决定查询时机，MCP 内部不循环等待。submit/query 后以结构化 `voice.job.updated` 保存 signed handle 和状态，新 CodeArts 会话可从 Relay 回放后继续 query 或 materialize；浏览器客户端不得保存或显示完整 handle，普通日志也不得包含它。素材化只接受配置白名单中的 HTTPS 音频主机，并检查 Content-Type、64 MiB 上限、媒体魔数、格式和 SHA-256。
 
 ## 官方证据
 

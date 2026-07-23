@@ -7,9 +7,9 @@ Git commit、GitHub PR、required checks、review 和 GitHub 原生 auto-merge �
 1. `yeet` 建分支、stage、commit、执行本地检查、push，并创建或更新 Draft PR。
 2. 创建 PR 的 Agent 补全标题和模板；确认工作区干净且本地 `check`、`test`、`build`、`bundle:check` 通过后执行 `gh pr ready`。用户明确要求暂缓时保持 Draft。
 3. `CI` 对变更文件进行确定性分类：
-   - 普通文档 PR 只修改 Markdown，且不包含任何目录下的 `AGENTS.md`、`.github/**`、`.codeartsdoer/skills/**`，跳过三平台 Bun job；
-   - 其他 PR 在 Ubuntu、Windows、macOS 上执行完整 Bun 验证。
-4. 始终存在的 `PR Gate` 汇总分类和 CI 结果。分支保护只要求稳定的 `PR Gate` context，不直接要求可能被跳过的 matrix context。
+   - 普通文档 PR 只修改 Markdown，且不包含任何目录下的 `AGENTS.md`、`.github/**`、`.codeartsdoer/skills/**`、`.codeartsdoer/agents/**`，跳过 Windows Bun job；
+   - 其他 PR 仅在 Windows 上执行完整 Bun 验证；Windows 是当前支持真实 ConPTY 与 Playwright 浏览器验收的唯一必需平台。
+4. CI 与 Reviewer 都监听 `opened`、`ready_for_review`、`synchronize` 和 `reopened`；Draft PR 转为 Ready 时两者必须同时启动。始终存在的 `PR Gate` 汇总分类和 CI 结果。分支保护只要求稳定的 `PR Gate` context，不直接要求可能被跳过的 matrix context。
 5. `GameForge PR Reviewer` 审查当前 Head SHA。只有 `PR Gate` 成功且没有阻断项时才提交 `APPROVE`。
 6. Reviewer 提交 `REQUEST_CHANGES` 后，`GameForge PR Comment Fixer` 自动修复、验证并 push。最多自动修复两轮；之后仍有阻断项则停止并保留未解决线程。
 7. 每次 push 都使旧批准失效，并重新执行 CI 和 Reviewer。
@@ -24,7 +24,7 @@ PR 转为 Ready 即表示授权进入自动合并流程，不需要 `auto-merge`
 |---|---|---|
 | `yeet` | 创建或更新 Draft PR | 不审批、不合并 |
 | 创建 PR 的 Agent | 完成本地门禁和 PR 描述后转 Ready | 用户要求暂缓时不转 Ready |
-| `CI` / `PR Gate` | 文档分类、三平台验证和稳定 required context | 不做代码判断、不审批 |
+| `CI` / `PR Gate` | 文档分类、Windows 验证和稳定 required context | 不做代码判断、不审批 |
 | `GameForge PR Reviewer` | 审查当前 SHA，通过 safe output 提交 review | 不修改代码、不合并 |
 | `GameForge PR Comment Fixer` | 自动处理可执行意见，最多两轮 | 不改 workflow、`.github/aw/**`、`AGENTS.md`，不审批、不合并 |
 | `GameForge Auto Merge Gate` | 确定性核验并启用原生 auto-merge | 不直接 merge、不处理 fork PR |
@@ -76,7 +76,7 @@ gh aw compile --strict --validate --actionlint
 
 凭据不得写入聊天、命令历史、仓库文件或实验记录。仓库权限和分支保护属于远程状态，修改前仍需明确授权。
 
-首次启用时，先将 Auto Merge Gate 合并到默认分支，再用低风险 PR 验证 Draft→Ready、文档分类、三平台 CI、Reviewer、两轮 Fixer 上限和原生 auto-merge。`workflow_run` 只会使用默认分支上已存在的工作流，当前 PR 不能依靠尚未合并的 Gate 自举。
+首次启用时，先将 Auto Merge Gate 合并到默认分支，再用低风险 PR 验证 Draft→Ready、文档分类、Windows CI、Reviewer、两轮 Fixer 上限和原生 auto-merge。`workflow_run` 只会使用默认分支上已存在的工作流，当前 PR 不能依靠尚未合并的 Gate 自举。
 
 ## 官方依据
 

@@ -8,7 +8,16 @@ export type IntegrationRuntime = {
   relayUrl: string;
   auditDirectory: string;
   configPath: string;
+  dataDirectory: string;
 };
+
+const disabledExternalProviderCredentials = {
+  DASHSCOPE_API_KEY: "",
+  FREESOUND_API_KEY: "",
+  MINIMAX_API_KEY: "",
+  VOLCENGINE_ARK_API_KEY: "",
+  VOLCENGINE_SPEECH_API_TOKEN: "",
+} as const;
 
 export async function resolveRuntime(startDirectory: string, integration: "codearts" | "opencode"): Promise<IntegrationRuntime> {
   const repoRoot = await findRepoRoot(startDirectory);
@@ -24,7 +33,12 @@ export async function resolveRuntime(startDirectory: string, integration: "codea
   const relayUrl = safeRelayUrl(
     process.env.GAMEFORGE_RUN_RELAY_URL?.trim() || "http://127.0.0.1:8787/",
   );
-  const runtimeDirectory = path.join(repoRoot, ".gameforge-validation", "integrations", integration);
+  const configuredRuntimeDirectory = process.env.GAMEFORGE_INTEGRATION_RUNTIME_DIR?.trim();
+  if (configuredRuntimeDirectory !== undefined && configuredRuntimeDirectory.length > 0 && !path.isAbsolute(configuredRuntimeDirectory)) {
+    throw new Error("GAMEFORGE_INTEGRATION_RUNTIME_DIR must be absolute when configured.");
+  }
+  const runtimeRoot = configuredRuntimeDirectory || path.join(repoRoot, ".gameforge-validation", "integrations");
+  const runtimeDirectory = path.resolve(runtimeRoot, integration);
   const configuredAuditDirectory = process.env.GAMEFORGE_MCP_AUDIT_DIR?.trim();
   if (configuredAuditDirectory !== undefined && configuredAuditDirectory.length > 0 &&
       !path.isAbsolute(configuredAuditDirectory)) {
@@ -34,16 +48,22 @@ export async function resolveRuntime(startDirectory: string, integration: "codea
   await mkdir(outputRoot, { recursive: true });
   await mkdir(runtimeDirectory, { recursive: true });
   await mkdir(auditDirectory, { recursive: true, mode: 0o700 });
+  const dataDirectory = path.join(runtimeDirectory, "data");
+  await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
   return {
     repoRoot,
     outputRoot,
     relayUrl,
     auditDirectory,
     configPath: path.join(runtimeDirectory, "opencode.json"),
+    dataDirectory,
   };
 }
 
-export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<void> {
+export async function writeRuntimeConfig(
+  runtime: IntegrationRuntime,
+  options: { permissionMode?: "scoped" | "full-access" } = {},
+): Promise<void> {
   const relayToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
   if (relayToken !== undefined) {
     const normalized = relayToken.trim();
@@ -53,6 +73,15 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
   }
   const layaAirCliPath = await optionalRegularFileEnvironment("GAMEFORGE_LAYAIR_CLI");
   const douyinMiniGameCliPath = await optionalRegularFileEnvironment("GAMEFORGE_DOUYIN_MINIGAME_CLI");
+  const permissionMode = options.permissionMode ?? "scoped";
+  const permission = permissionMode === "full-access" ? "allow" : {
+    "gameforge_*": "ask",
+    "gameforge_validate_*": "allow",
+    "gameforge_get_*": "allow",
+    "gameforge_list_*": "allow",
+    "gameforge_replay_*": "allow",
+    "gameforge_query_*": "allow",
+  };
   const config = {
     $schema: "https://opencode.ai/config.json",
     lsp: false,
@@ -62,6 +91,9 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
         type: "local",
         command: ["node", "packages/mcp-server/dist/index.js"],
         environment: {
+          // These optional providers are disabled for the current CodeArts experiments.
+          // Mask ambient credentials so a partial host configuration cannot crash MCP startup.
+          ...disabledExternalProviderCredentials,
           GAMEFORGE_PROJECT_OUTPUT_ROOT: runtime.outputRoot,
           GAMEFORGE_RUN_RELAY_URL: runtime.relayUrl,
           ...(relayToken === undefined
@@ -75,17 +107,12 @@ export async function writeRuntimeConfig(runtime: IntegrationRuntime): Promise<v
           GAMEFORGE_MODEL_ROUTING_POLICY: path.join(runtime.repoRoot, "config", "model-routing.example.json"),
         },
         enabled: true,
-        timeout: 10_000,
+        // Browser verification has its own bounded 120 s deadline. The client
+        // transport must remain alive long enough to receive that result.
+        timeout: 180_000,
       },
     },
-    permission: {
-      "gameforge_*": "ask",
-      "gameforge_validate_*": "allow",
-      "gameforge_get_*": "allow",
-      "gameforge_list_*": "allow",
-      "gameforge_replay_*": "allow",
-      "gameforge_query_*": "allow",
-    },
+    permission,
   };
   await writeFile(runtime.configPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
 }

@@ -1,263 +1,89 @@
 # GameForge Agent
 
-基于华为云码道（CodeArts）代码智能体的全流程小游戏工程实验项目。
+基于华为云 CodeArts Agent 的复杂软件工程与游戏生产研究仓库。CodeArts 是主智能体；MCP、Relay、生成器、资产存储和浏览器验证保持确定性且客户端无关。
 
-产品第一版以可发布的抖音小游戏为首要目标，微信小游戏为第二导出目标；现有 Phaser + Vite 浏览器项目是快速预览与自动验收基线，不等同于平台发布产物。平台范围与验收门槛见 [ADR-0002](docs/decisions/0002-domestic-mini-game-v1.md) 和 [国内小游戏平台调研](docs/domestic-mini-game-platforms.md)。
+## 当前产品边界
 
-当前生成器已支持 `web`、`douyin-mini-game` 和 `wechat-mini-game`。两个小游戏 target 复用严格 GameSpec、五种 LayaAir 玩法和统一 Asset Store，但分别使用官方 CLI 的 `bytedancegame`/`wxgame` 构建目标、独立平台策略与 `tt.*`/`wx.*` capability 静态校验。CLI 构建通过不替代各自开发者工具与真机验收。
+仓库不再提供自建 TUI、Workbench 或桌面 GUI。以下三个历史入口已从 Git 删除：
 
-`verify_minigame_gameplay` 为抖音/微信受管源工程提供生产级逻辑验收：只执行与生成器固定模板 SHA-256 一致的 `Main.ts`，以隔离 VM、可控输入和时钟验证 genre 胜利与超时失败。它发布独立的 `gameplay.verified`，不包含 Canvas、截图或 DevTool 字段，因此不能被误读为视觉或设备证据。
+- `apps/tui/`：旧 Bun RunEvent 客户端；
+- `apps/workbench/`：旧 GameForge React 状态界面；
+- `apps/desktop/`：只包装 Workbench 的 Tauri 壳。
 
-当前阶段聚焦三件事：
+UI 验收的两个对象是仓库外部的原版界面：CodeArts 原版交互式 TUI 与 OpenChamber 上游原版 GUI。`packages/ui-test-harness/` 是外置自动化控制层，不是第三套产品 UI，也不会修改两个被测对象。
 
-1. 以CodeArts Agent作为需求理解、规划和多智能体编排中枢。
-2. 使用TypeScript实现可审计、可测试的MCP工具和游戏模板。
-3. 建立可复现的CodeArts Agent配置、开发和评测流程。
-
-## 仓库结构
+## 目录
 
 ```text
-.
-├── AGENTS.md                         # CodeArts/Codex 共享项目规则
-├── .codeartsdoer/skills/             # CodeArts项目级Skills
-├── apps/game/                         # Phaser + Vite示例游戏
-├── apps/workbench/                    # React + Vite Agent工作台
-├── apps/tui/                          # Bun终端任务与RunEvent客户端
-├── apps/desktop/                      # Tauri 2最小权限桌面壳实验
-├── packages/contracts/               # 需求与游戏规格Schema
-├── packages/generator/               # 固定模板的安全项目生成器
-├── packages/game-verifier/           # Playwright可玩性、诊断与截图验收
-├── packages/mcp-server/              # CodeArts可调用的MCP工具
-├── packages/providers/               # 国产模型与媒体Provider适配器
-├── packages/run-relay/               # RunEvent回放与SSE中继
-├── packages/opencode-plugin/          # 可选薄插件：状态提示与通知
-├── packages/benchmark/                # 客户端同任务指纹与对比报告
-├── integrations/codearts/             # CodeArts动态启动适配
-├── integrations/opencode/             # OpenCode动态启动适配
-├── docs/
-│   ├── codearts-quickstart.md         # 安装与首次验证
-│   ├── comparison.md                 # 三种代码智能体对比
-│   ├── model-media-strategy.md       # 国产模型、生图、TTS与音效策略
-│   ├── model-evaluation-2026-07.md    # 国产 SOTA、权威榜单与 oh-my-openagent 评估
-│   ├── game-generation-runtime.md    # 项目生成器与事件服务
-│   ├── roadmap.md                    # CodeArts 实验与第二轮 TUI/GUI 计划
-│   ├── codearts-opencode-analysis.md # CodeArts 与 OpenCode 官方资料研判
-│   └── open-source-references.md      # 可借鉴的游戏Agent与前端开源项目
-└── experiments/                      # 后续基准任务与实验记录
+├── .codeartsdoer/                 # CodeArts 工程上下文、Agent 与 Skills
+├── apps/game/                     # Phaser + Vite 示例游戏
+├── integrations/                  # CodeArts / OpenCode 隔离启动适配
+├── packages/contracts/            # Schema 与客户端无关契约
+├── packages/generator/            # 固定模板安全生成器
+├── packages/asset-store/          # 资产落盘与 Manifest
+├── packages/run-relay/            # Task、RunEvent 与恢复协议
+├── packages/game-verifier/        # 真实 Chrome 游戏验证
+├── packages/mcp-server/           # 确定性 MCP 工具边界
+├── packages/ui-test-harness/      # 外置 TUI/GUI 自动验收框架
+├── docs/                          # 架构、运行时与交接文档
+└── experiments/                   # 脱敏实验记录
 ```
 
-## 第一阶段里程碑
+## 常用命令
 
-- [x] 安装并通过 OAuth 登录 CodeArts Agent CLI/TUI
-- [x] 用 CodeArts 打开本仓库并加载项目级上下文
-- [x] 验证根 `AGENTS.md` 与 `.codeartsdoer/AGENTS.md` 分层
-- [x] 加载项目级 GameForge 生产 Skill
-- [x] 完成一个真实“理解—生成—构建—浏览器验收—报告”基准任务
-- [x] 完成一个真实 CodeArts 无 GUI 抖音小游戏“规格—生成—玩法验收—LayaAir 构建—Run 完成”任务
-- [x] 保存脱敏事件、人工干预和测试结果
-
-## 技术底座
-
-- CodeArts Agent：主智能体、规则、Skills和Agent Team。
-- TypeScript：全部业务代码与工具代码。
-- Phaser 4：浏览器2D游戏引擎。
-- MCP TypeScript SDK：向CodeArts暴露确定性工程工具。
-- Zod：需求和游戏规格校验。
-- Vite + Vitest：构建和自动化测试。
-
-## 快速开始
-
-```bash
+```powershell
 bun install --frozen-lockfile
-bun run build
-bun run bundle:check
+bun run check
 bun run test
+bun run build
 bun run audit
 bun run doctor
-bun run doctor:douyin
 bun run doctor:browser
-bun run doctor:desktop
-bun run workbench:smoke
+bun run bundle:check
 bun run dev:local
-bun run tui -- list
 ```
 
-`bun run doctor` 会构建基础包与 MCP，然后用真实 Node stdio Client 检查运行时版本、Bun 单锁、生产入口、必需工具、本次 capability snapshot 及 ready 能力对应的条件工具。配置 Task Inbox 时还会执行一次 `{limit: 1}` 的只读 Relay 探测，因此不可达 URL 不会显示绿灯。它不调用云 API、不输出凭据；可在与 CodeArts 相同的环境变量下运行，以提前发现半配置和路径错误。
+`dev:local` 只启动 Relay、示例游戏和持久 Douyin Bridge Host，不启动任何 GUI。CodeArts 与独立 OpenCode 使用不同数据目录：
 
-`bun run doctor:douyin` 只检查抖音小游戏本地 CLI 策略。默认无需安装平台 CLI；显式配置 `GAMEFORGE_DOUYIN_MINIGAME_CLI` 为官方包内的绝对 `bin/tmg.js` 后，只以当前 Node 执行固定的 `bin/tmg.js --version` 并要求 `tt-minigame-ide-cli` 2.1.1。这里不能使用 `tmg version`，后者会查询项目线上版本。诊断拒绝小程序 `tma`，也不暴露登录、打开、配置、项目 version、`build-npm`、`preview` 或 `upload`。当前项目策略禁止平台 preview、上传、提审和发布。
-
-已构建的小游戏产物可用纯 CLI 生成机器可读交付证据：
-
-```text
-bun run --silent minigame:handoff -- --project-id <project-id> --target douyin-mini-game <release/bytedancegame 的绝对路径>
+```powershell
+bun run codearts
+bun run opencode
 ```
 
-命令对同一目录执行“逐文件哈希快照 → 完整 validator → 第二次哈希快照”，前后聚合 SHA-256 必须一致。stdout 只包含 JSON：逐文件相对路径、字节数、SHA-256、总量和聚合摘要；不包含输入绝对路径、日志或环境变量。结果固定标记 `remoteOperations: "forbidden"` 与 `devToolVerification: "not-run"`，因此可证明 CLI 本地产物未漂移，但不会冒充 Lite/DevTool 模拟器或真机验收。
+## UI 自动验收
 
-`bun run doctor:browser` 构建 Verifier 后使用正式 Node 运行时启动一次隔离的无页面 Chrome 会话并立即关闭，验证 `channel: chrome` 或 `GAMEFORGE_CHROME_EXECUTABLE`。Playwright 系统 Chrome 验收不支持由 Bun 进程直接承载；该路径会立即报错，避免已知的长时间悬挂。Bun 仍负责依赖、构建、测试和命令编排。
+当前已交付可运行适配器与显式 CLI；它只在用户主动运行时启动隔离测试会话。设计、运行记录与剩余风险见：
 
-`bun run workbench:smoke` 在系统分配且始终保持绑定的随机 loopback 端口启动真实 Relay、生产 Workbench 静态服务与受控预览页，再用系统 Chrome 从表单提交一个 Task。确定性 fixture 认领该 Task 并发布合法的规格、资产、七阶段完成、预览、浏览器验收、日志和终态事件；命令验证 UI、iframe、100% 阶段进度、Relay sequence 1–14 连续性与三类浏览器诊断，截图和脱敏 JSON 写入忽略的 `output/playwright/`。它验证 Workbench/Relay 浏览器链路，不冒充 CodeArts 或国产 Provider 账号验收。
+- [外置测试框架设计](docs/ui-test-harness-design.md)
+- [CodeArts / OpenChamber 验收交接](docs/codearts-live-acceptance-handoff-2026-07-22.md)
+- [可见无人值守 Patch 要求](docs/codearts-visible-unattended-patch-requirements-2026-07-22.md)
 
-`dev:local` 通过 Bun 并行启动示例游戏（5173）、Workbench（4173）、Run Relay（8787）和持久 Douyin Bridge Host。Bridge Host 独立于 stdio MCP 生命周期，扩展只连接 loopback，并在 host/controller 重启后用 short-lived rendezvous 自动恢复。仅在 Vite 开发模式且未显式配置时，Workbench 默认连接 `http://127.0.0.1:8787/`；生产构建仍要求设置 `VITE_AGENT_BASE_URL`。MCP 仍由 CodeArts 作为 stdio 子进程启动；设置 `GAMEFORGE_DOUYIN_BRIDGE_MODE=host` 后通过本地 host 代理使用同一 DevTool 连接。生产式本地联调先执行 `bun run build`，再分别使用 `bun run start:relay` 和 `bun run start:douyin-bridge`；CodeArts MCP 配置见 [CodeArts 快速开始](docs/codearts-quickstart.md)。
+框架当前支持：
 
-`generate_game_project` 除安全新建外也支持受管更新。更新必须先 dry-run，再以返回的当前 plan SHA-256 做 apply CAS；只更新 Manifest 中哈希未变的生成器文件，运行时资产、`bun.lock`、未知文件和用户已修改代码都不会被覆盖。发生冲突时没有 force 开关，由 CodeArts 审阅并显式合并。
+- 真实 ConPTY 中的 CodeArts TUI 文本和枚举按键注入；
+- 真实浏览器中的 OpenChamber 导航、点击、输入与按键；
+- Task、Run、RunEvent 权威门禁；
+- 综合 TUI 输出、RunEvent 和项目变化的活动看门狗；
+- TUI、GUI、MCP Audit、浏览器诊断、截图和视频的关联证据。
 
-受管 update 在任何模板临时文件写入前创建 0600 的 `.gameforge/update.transaction.json`，记录 add/update/delete 的旧/新哈希和旧/新 Manifest 提交点。进程中断后，`recover_game_project_update` 会在 update lock 内以当前托管 Manifest 哈希决定整批回滚或完成清理；第三种状态、陌生路径、符号链接或哈希冲突都会拒绝。恢复工具不调用模型、媒体 Provider 或 Relay，OpenCode 权限为 `ask`。
+完整原始会话只写入 `.gameforge-validation/` 等仓库忽略目录；提交到 `experiments/` 的记录必须脱敏。
 
-示例游戏和生成模板先输出轻量加载壳，再异步加载 Phaser 游戏块；这会显著缩小首屏入口并改善首次绘制与长期缓存，但不会虚报 Phaser 总下载量减少。`bun run bundle:check` 根据 Vite manifest 分别约束初始、异步和总 raw/gzip 体积，预算超出时返回非零退出码。
+## 安全边界
 
-第二轮 Bun TUI MVP 位于 `apps/tui`，复用严格 Schema 的 Run Relay Client，不包含 Agent 循环。它支持提交/列出/查看 Task、回放/停止 Run，以及通过 `follow TASK_ID` 自动解析 Run ID 后实时观察连续 RunEvent；断线后从最后连续游标执行有限退避回放，终态自动退出。小游戏 `build.ready` 含交付聚合 SHA-256、远程操作禁止和 DevTool 未验收状态，TUI 会原样显示。`--json` 在无 TTY 环境只向 stdout 逐行输出可机器处理的 JSON，恢复进度写入 stderr。完整命令见 [TUI 使用说明](docs/tui.md)。
+- 不提交密钥、令牌、账号、认证数据库或本机绝对路径。
+- MCP 工具不得实现第二套 Agent 循环，也不得提供任意 shell。
+- 未经明确授权，不部署、发布、删除远程资源或修改仓库权限。
+- 当前禁止抖音小游戏 preview、上传、提审或发布。
+- 外部媒体 Provider 适配器可以保留，但默认不配置、不调用外部账号。
+- 真实 CodeArts 验收必须使用当前安装客户端和实际证据，不能以上游 OpenCode 行为代替。
 
-Tauri 2 桌面 spike 位于 `apps/desktop`，只封装现有 Workbench，不新增 Agent 循环、自定义 Rust command 或 Tauri plugin。`bun run doctor:desktop` 静态校验零权限 capability、CSP、loopback 开发地址和 Workbench 构建；Tauri Schema、Cargo 和图标由真实 `desktop:build` 验证。Windows 本机构建需进入 MSVC 开发环境后运行该命令。当前只验证了不打安装包的 Windows 可执行文件，签名、自动更新和 macOS/Linux 仍不在已验收范围。完整说明见 [桌面壳说明](docs/desktop.md)。
+## 文档入口
 
-GUI 后续以 MIT 许可的 [OpenChamber](https://github.com/btriapitsyn/openchamber) 为前端代码与交互基线，优先适配其共享 React UI、布局、主题、组件和运行时抽象。GameForge 仍以 Relay/RunEvent/reducer 为状态权威，不搬入 OpenCode 会话契约、Agent 循环、PTY/Git/SSH/tunnel 或 Electron 特权边界；当前 Tauri 2 零 IPC 桌面壳继续保留。迁移边界见 [GUI 方向](docs/gui-direction.md)。
+- [分层架构](docs/architecture-layers.md)
+- [CodeArts 快速开始](docs/codearts-quickstart.md)
+- [游戏生成运行时](docs/game-generation-runtime.md)
+- [模型路由](docs/model-routing.md)
+- [路线图](docs/roadmap.md)
+- [开源参考](docs/open-source-references.md)
 
-客户端基准使用规范化任务定义的 SHA-256，而不是要求 CodeArts 与 OpenCode 复用同一个 Task ID。运行 `bun run benchmark -- report definition.json codearts.record.json opencode.record.json --out report.md` 可校验记录并生成对比；只有两端都完成时才允许比较工作流质量。
-
-2026-07-18 已用 CodeArts 26.6.2 DeepSeek V3.2 与 OpenCode 1.18.3 腾讯 Hy3 完成同一抖音小游戏定义：两端均为 6 个连续事件、16 次零错误 MCP 调用和 passed gameplay/build proof，机械报告判定可比较。该单次结果不构成通用模型排行，详见 `experiments/2026-07-18-codearts-opencode-douyin-comparison/`。
-
-运行 `bun run benchmark -- capture definition.json metadata.json --task-id TASK_ID [--mcp-audit AUDIT.json] --out record.json` 可从 Relay 分页捕获 Task 与完整保留期 RunEvent，校验连续 sequence、Task/Run 终态和定义 Prompt/语言，再生成同一严格 record。浏览器完成证据来自 `verification.ready`；小游戏定义必须显式给出平台与运行时类型，并同时具备相互匹配的 `gameplay.verified`、`build.ready`、能力快照和规格事件。`metadata.json` 必须显式提供客户端版本、人工干预与失败分类；未提供 audit 时工具摘要也由人工如实填写，绝不从事件数猜测。配置 `GAMEFORGE_MCP_AUDIT_DIR` 后，生产 MCP 每次启动生成唯一、有界的 0600 JSON，只记录工具名/顺序/时间/耗时/状态；CodeArts 认领 Task 后通过条件工具 `bind_mcp_audit_context` 一次性绑定 Task/Run，相同绑定幂等、不同绑定拒绝。显式导入 audit 后，capture 必须与 Relay 交叉核对绑定，再机械计算工具摘要并写入 Task/Run、session ID 与 SHA-256。两种证据都不包含 Prompt、参数、返回值、日志正文、URL、模板哈希或 TTS job handle。输出文件必须不存在，防止覆盖既有证据。
-
-## 集成边界
-
-GameForge 核心不实现为 OpenCode Plugin。核心由客户端无关的 contracts、Provider 适配器、生成器、Asset Store、Verifier、Run Relay 和确定性 MCP 组成；CodeArts 与 OpenCode 只是可替换的主智能体/宿主。
-
-- `AGENTS.md`：规则；
-- `.codeartsdoer/skills/`：生产流程；
-- MCP：确定性工具；
-- Workbench/TUI：状态界面；
-- OpenCode Plugin：可选的可用性检测、会话提示、状态工具和通知。
-
-可提交的 [`opencode.json.example`](opencode.json.example) 不包含绝对路径或密钥。复制为本地配置前设置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 和 `GAMEFORGE_RUN_RELAY_URL`，并从仓库根启动客户端；权限默认让校验/查询类工具直接执行，让项目生成、资产导入、预览启停和 Run 终态操作请求确认。跨平台动态启动器会固定正确工作目录，见 `integrations/`。
-
-Workbench 的 iframe、CSP、预览 origin allowlist 与未来桌面壳最小权限见 [Workbench 安全边界](docs/workbench-security.md)。远程预览必须在 `VITE_GAME_PREVIEW_ORIGINS` 中显式列出；任何 Provider 密钥都不得放入浏览器可见的 `VITE_*` 环境变量。
-
-仓库统一使用 Bun 1.3.14 或更高版本和 `bun.lock`；仓库级 `.npmrc` 固定 npm 官方 registry，以确保 Phaser 4.2.1 与安全审计元数据可复现。不要再生成或提交 npm、pnpm、Yarn 的并行锁文件。
-
-启用阿里云百炼 Qwen 的结构化 GameSpec 草拟工具时，在启动 MCP 服务的进程环境中设置：
-
-```text
-DASHSCOPE_API_KEY=<阿里云百炼 API key>
-GAMEFORGE_SPEC_MODEL=qwen3.6-flash
-```
-
-`GAMEFORGE_SPEC_MODEL` 可省略，默认使用 `qwen3.6-flash`。只有设置 `DASHSCOPE_API_KEY` 时，MCP 才注册 `draft_game_spec`；该工具通过百炼官方 OpenAI 兼容接口发起一次非流式请求，要求严格 JSON Schema 输出，并再次按仓库 `GameSpec` Schema 校验。密钥只从服务端环境读取，不进入工具参数、日志或仓库。
-
-`get_gameforge_capabilities` 始终注册，返回本次 MCP 进程实际可用的国产模型、媒体和工程能力布尔快照，不返回密钥、Token、主机白名单或本机路径。CodeArts 将它发布为 `capabilities.ready` 后，Workbench 才把对应 Provider 标记为“本次 MCP 已配置”；未收到事件时显示等待，完整依赖链缺一项时显示未配置。
-
-Provider HTTP 适配器统一使用有界超时和结构化错误。百炼、Freesound GET 与 TTS 查询/下载可对 408、429、5xx、超时和网络错误最多尝试三次；认证、授权和普通请求错误立即失败。Seedream 生图、MiniMax 配乐与 TTS submit 默认只发送一次，因为官方没有可核验的幂等保证，避免模糊网络失败造成重复计费任务。完整依据与边界见 [国产模型与游戏媒体资产策略](docs/model-media-strategy.md)。
-
-当前国产 SOTA、Artificial Analysis/LMArena/OpenCompass、SWE-bench/Terminal-Bench、视觉/生图/TTS 榜单和 oh-my-opencode 改名状态的交叉评估见 [2026-07 模型评估](docs/model-evaluation-2026-07.md)。榜单只作为先验；宿主实际模型列表与 GameForge 同 Task 证据优先。
-
-[`config/model-routing.example.json`](config/model-routing.example.json) 是无密钥的国产模型角色/类别路由建议，并由 `modelRoutingPolicySchema` 与集成测试验证。MCP 启动时严格加载该策略并条件注册只读的 `get_agent_model_route`：调用方把宿主真实 `models` 结果映射为国产 Provider + 精确 host target，工具只按显式覆盖、primary、fallback 顺序返回选择与来源，不调用模型或实现 Agent 循环；没有匹配项时返回 `unavailable`，不得静默冒充。动态启动器会写入跨平台绝对策略路径，独立配置可用 `GAMEFORGE_MODEL_ROUTING_POLICY` 覆盖。当前默认 Agent 路由只包含 CodeArts 账号真实列出的内置模型：DeepSeek V3.2 负责玩法与代码，GLM-5 负责剧情对白，GLM-5.1 负责独立复核，GLM-4.7 ArkTS 作为编码 fallback。OpenCode/腾讯 Hy3 的既有同任务记录保留为历史显式 override 证据，不再进入默认 fallback；Kimi K3 也只保留研究结论。Seedream、豆包 TTS、Freesound 与 MiniMax 适配器仍保留，但当前未配置、不会调用，游戏继续使用程序化占位素材。配置中的期望模型不能替代宿主 `models` 输出，实验必须记录实际生效模型。
-
-启用许可证过滤的音效搜索工具时，在启动MCP服务的进程环境中设置：
-
-```text
-FREESOUND_API_KEY=<Freesound API v2 token>
-FREESOUND_API_USAGE=non-commercial
-```
-
-`FREESOUND_API_USAGE`也可以设为`commercial-agreement`，但仅应在项目已与Freesound取得商业API使用协议后使用。未设置密钥时，MCP服务不会注册`search_sound_asset`，也不会在工具参数中接收密钥。
-
-启用确定性项目生成工具时设置服务端绝对输出目录：
-
-```text
-GAMEFORGE_PROJECT_OUTPUT_ROOT=D:\GameForgeGenerated
-```
-
-配置输出目录后同时注册 `verify_game_project`、`start_game_preview` 和 `stop_game_preview`。预览工具只为生成器托管项目启动随机端口的 loopback Vite 服务，不执行目标项目的 `vite.config.ts`；相同项目的并发启动会合并为一个会话。验收工具默认调用系统 Chrome；如果运行环境无法通过 Playwright 的 `chrome` channel 找到浏览器，可显式设置：
-
-```text
-GAMEFORGE_CHROME_EXECUTABLE=C:\Program Files\Google\Chrome\Application\chrome.exe
-```
-
-同一输出目录还注册 `get_project_assets`，用于 CodeArts 重启后读取并验证已落盘 Manifest，补发缺失的 `asset.ready`，而不是重复生成或下载已有素材。
-
-图片、Freesound preview、MiniMax 配乐和已完成的 TTS 素材都支持显式替换：先读取 Manifest，再对同一 `assetId` 传入 `mode: "replace"` 与当前 `expectedRevision`。Asset Store 会在锁内再次执行 revision CAS、校验旧文件哈希并切换文件与 Manifest；成功后 revision 增加且仍发布 `asset.ready`。明显 stale 的图片/音效/配乐替换会在云 Provider 调用前拒绝，TTS 会先本地验签提取 assetId。替换不会按角色猜测目标，也不会覆盖未纳入 Manifest 的现有文件。
-
-首次创建和替换都会在任何临时媒体写入前创建 0600 的 `.gameforge/assets.transaction.json`。若 MCP 进程在切换中途终止，`recover_project_assets` 会在写锁内验证日志、Manifest revision/规范哈希和媒体哈希：旧 Manifest 仍权威时删除属于未提交 create 的孤儿，或回滚 replace；新 Manifest 已权威时完成清理。未知版本、第三种状态或任何哈希冲突均保守拒绝。该工具不调用云 Provider，OpenCode 权限继承未匹配 `gameforge_*` 的默认 `ask`。
-
-Asset Store 的互斥锁包含 0600 owner metadata。MCP 崩溃遗留的锁只有在 metadata 完整、hostname 与当前机器一致、PID 明确不存在且创建时间超过 10 分钟时才自动恢复；活进程、近期锁、异地主机、空锁或旧格式一律保守拒绝。不要用脚本无条件删除 `.gameforge/assets.lock`。
-
-浏览器验收工具只处理生成器托管的 Web 项目，动作脚本最多 100 步；运行时阻断外部网络，捕获控制台错误、页面异常和失败请求，并等待 telemetry 与非空白 Canvas 首帧后再读取 `window.__GAMEFORGE_TEST__` 和截图。证据写入项目的 `.gameforge/verification/`，摘要发布为 `verification.ready`。小游戏使用独立 `verify_minigame_gameplay` 发布 no-render `gameplay.verified`；抖音/微信官方 CLI 构建与静态校验通过后另发布无主机路径的 `build.ready`，其中交付摘要来自两次一致的逐文件哈希快照。三类证据不可互相冒充，`devToolVerification: "not-run"` 也不得改写为已验收。绝对路径、完整文件清单、原始构建日志与诊断全文不进入 RunEvent；完整无路径清单只存在于 build MCP 响应或 `minigame:handoff` stdout。CodeArts 可将 `start_game_preview` 返回的 URL 原样发布为 `preview.ready` RunEvent；Workbench 收到后自动切换预览。事件 URL 只接受 HTTPS 或 loopback HTTP，iframe 使用受限 sandbox。
-
-启用 Run Relay 生命周期工具：
-
-```text
-GAMEFORGE_RUN_RELAY_URL=http://127.0.0.1:8787/
-```
-
-Run Relay 默认仍使用内存状态。需要让 Task、RunEvent 和游标跨正常进程重启恢复时，在启动 Relay 的进程环境中设置绝对状态文件路径：
-
-```text
-GAMEFORGE_RUN_RELAY_STATE_FILE=D:\GameForgeState\relay-state.json
-```
-
-Relay 对每次成功变更串行写入严格 Schema 快照，使用同目录临时文件、文件同步和原子 rename；启动时拒绝相对路径、符号链接、超限或 Task/Run 终态不一致的快照。状态文件含用户 Prompt 与运行日志，应置于受限本地目录，不提交仓库。MCP 的 `GAMEFORGE_RUN_RELAY_URL` 与 Relay 的 `GAMEFORGE_RUN_RELAY_STATE_FILE` 属于两个不同进程的配置。
-
-Relay CLI 固定监听 `127.0.0.1`。需要为同机其他进程增加纵深防护时，可在 Relay、MCP、TUI、benchmark 和 OpenCode Plugin 的进程环境中设置同一个至少 32 字符的 `GAMEFORGE_RUN_RELAY_TOKEN`；配置后除 CORS 预检外所有 Task、Run、回放和 SSE 路由都要求 Bearer，token 不进入 URL、日志或 record。Workbench 不读取该变量，也不得把它放进 `VITE_*`；带认证的远程浏览器部署必须由同源认证反向代理处理。CORS/Origin 不是身份认证，导出的 `createRunRelayServer` 若被嵌入到非 loopback 监听必须显式配置 `authToken` 和网络层访问控制。
-
-启用 Seedream 生图并把结果写入已生成项目：
-
-```text
-VOLCENGINE_ARK_API_KEY=<方舟 API key>
-GAMEFORGE_IMAGE_MODEL=<控制台中已开通的模型 ID>
-GAMEFORGE_IMAGE_LICENSE=<当前账号与用途对应的输出许可说明>
-GAMEFORGE_IMAGE_REFERENCE_HOSTS=example-oss.cn-beijing.aliyuncs.com
-```
-
-只有同时设置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 和上述三个必填变量时，MCP 才注册 `request_image_asset`。其角色只能是 `player`、`collectible`、`hazard` 或 `background`；无效音频角色会在调用 Seedream 前被 MCP Schema 拒绝。Seedream 等生图模型输出的角色图片会在生成游戏中归一化到固定显示尺寸与碰撞体，不让源分辨率改变玩法尺度。Freesound 与输出目录均配置后，还会注册 `import_sound_asset`；它只下载搜索结果中的官方 preview，不把 Token 拼入 URL，也不替代需要 OAuth2 的原始文件下载接口。选择 `collect-sound` 或 `hit-sound` 时按音效入库，明确选择 `bgm` 时按音乐入库；生成游戏会在玩家第一次交互后循环播放 BGM。
-
-启用 MiniMax Music 2.6 纯音乐配乐：
-
-```text
-MINIMAX_API_KEY=<MiniMax API key>
-GAMEFORGE_MUSIC_MODEL=music-2.6
-GAMEFORGE_MUSIC_LICENSE=<当前账号与用途对应的输出许可说明>
-```
-
-同时配置 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 后才注册 `generate_music_asset`。工具固定使用官方 HTTPS API、非流式 hex MP3、`is_instrumental=true`，不发送歌词，也不自动重试生成 POST；成功素材以唯一 `bgm` 角色进入 Manifest。官方 API 文档没有直接授予通用商用权，`GAMEFORGE_MUSIC_LICENSE` 必须由账号持有人按实际套餐和用途确认，不能填写猜测值。
-
-启用火山引擎异步长文本配音：
-
-```text
-VOLCENGINE_SPEECH_API_TOKEN=<豆包语音 API token>
-VOLCENGINE_SPEECH_APP_ID=<应用 ID>
-GAMEFORGE_TTS_LICENSE=<当前账号与用途对应的输出许可说明>
-GAMEFORGE_TTS_AUDIO_HOSTS=<控制台/真实 query 响应确认的音频 CDN 主机，多个用逗号分隔>
-```
-
-不要猜测 `GAMEFORGE_TTS_AUDIO_HOSTS`；以当前账号真实返回的 `audio_url` 主机为准，只填写主机名。配置完整后注册 `submit_voice_job`、`query_voice_job` 和 `materialize_voice_job`。作业句柄经过 HMAC 签名并绑定项目；MCP 不会自动轮询，完成音频只允许从服务端白名单中的 HTTPS 主机下载。
-
-工作台连接本地任务/RunEvent中继时设置`VITE_AGENT_BASE_URL=http://127.0.0.1:8787/`。配置后“提交给 CodeArts”会把当前 Prompt 写入受限任务收件箱，并原子创建对应 Run；纯 CLI/TUI 也可经 `ask` 调用 MCP `create_game_task` 完成同一件事，不再依赖 GUI。MCP 同时注册 `create_game_task`、`list_game_tasks`、`get_game_task`、`claim_game_task`，供 CodeArts 幂等创建、读取和认领。CodeArts 发布 `spec.ready`、`asset.ready`、`build.ready`、`gameplay.verified`、`preview.ready` 后，Workbench 分别展示真实 GameSpec、已落盘资产、目标平台产物摘要、无渲染逻辑证据及当前游戏预览；场景结构和地图视图由已验证 GameSpec 与资产清单确定性派生，明确标注真实绑定、程序化回退和“模板示意”边界。未收到事件时显示等待状态，不使用硬编码生产结果。Relay 不调用模型，也不自动执行任务。完整接口、安全边界和验证步骤见[确定性游戏生成与运行事件服务](docs/game-generation-runtime.md)。
-
-Workbench 的 SSE 出错或出现 sequence 缺口时会关闭旧连接，从最后连续游标执行 Schema 回放，再重建 stream；自动恢复采用 0.5/1/2/4/8 秒有限退避，409/410 游标冲突直接停止。耗尽后界面显示“恢复连接”，由用户从同一游标显式重试。该循环只恢复确定性 RunEvent，不调用模型或 MCP 工具。
-
-Task 创建以 Run ID 作为幂等键：网络响应丢失后，以完全相同的 Run ID、Prompt、语言和可选 `projectId` 重试会返回原 Task 与原始 `run.started`，不会重复排队；同 Run ID 携带不同内容会返回稳定的 `task_run_conflict`。`projectId` 存在时 CodeArts 必须更新该受管项目，不存在时才创建新项目；不得从 Prompt 或目录猜测。一个 Run ID 只代表一次不可变任务，完成新需求时应使用新的 Run ID。
-
-Workbench 可选择 `zh-CN` 或 `en-US`。语言随 Task 进入权威 `run.started`，因此重连与事件回放可以恢复选择；CodeArts 必须把 Task 的 Prompt 与 language 原样传给 `draft_game_spec`。百炼返回的 `GameSpec.locale` 不匹配时会被拒绝，生成项目的静态 HTML `lang`、无障碍标签和 Phaser HUD/控制提示均随 locale 输出；旧规格缺少 locale 时仍默认中文。
-
-Workbench 会为每次页面会话准备唯一 Run ID；连接期间输入锁定。若提交响应不确定，直接保留当前 ID 和项目选择重试；若要开始不同需求，先停止或等待当前 Run 终止，再点击“新任务”显式轮换 ID。不要手工修改已连接 Run 的 ID。
-
-Workbench 的“Task 历史”只读获取 Relay 最近 20 项。选择后会清空当前 UI 投影，并从该 Task 的 Run sequence 0 权威回放 Prompt、语言、项目选择和 RunEvent；它不会重新认领 Task、修改旧 Run 或自动停止正在后台执行的 Run。持久化历史仍取决于 Relay 是否配置 `GAMEFORGE_RUN_RELAY_STATE_FILE`。
-
-当前机器已安装 CodeArts Agent 客户端；真实 CodeArts 端到端验收不能由本地 MCP Client 替代。可执行步骤、已通过证据与第二轮 TUI/GUI TODO 见 [路线图](docs/roadmap.md)。
-
-2026-07-18 已使用 CodeArts 26.6.2 OAuth TUI 和临时隔离配置完成首个真实闭环：CodeArts 启动 `gameforge` stdio MCP、认领 Workbench Task、发布 capability 与英文 GameSpec、生成并构建 Phaser 项目、取得真实 Chrome `won` 证据、发布 preview/verification 并完成 Run。云 Provider 均未配置也未调用。详见 [`2026-07-18-codearts-real-e2e`](experiments/2026-07-18-codearts-real-e2e/result.md)。
-
-先阅读 [CodeArts 快速开始](docs/codearts-quickstart.md)，然后在 CodeArts 智能体模式中输入：
-
-```text
-阅读 AGENTS.md 和 docs 目录，总结当前项目目标；不要修改文件。然后列出完成第一个可复现实验所需的步骤和验收条件。
-```
-
-## 资料来源
-
-- [CodeArts Agent 产品文档](https://support.huaweicloud.com/productdesc-codeartssnap/codeartsdoer_pd_0001.html)
-- [CodeArts Agent CLI](https://support.huaweicloud.com/usermanual-cli/codeartsagent_cli_0001.html)
-- [CodeArts Skills](https://support.huaweicloud.com/usermanual-codeartssnap/codeartsdoer_ug_0024.html)
-- [CodeArts MCP](https://support.huaweicloud.com/usermanual-codeartssnap/codeartsdoer_ug_0010.html)
-- [CodeArts 与 OpenCode 官方资料研判](docs/codearts-opencode-analysis.md)
-- [分层架构与 MCP 权限](docs/architecture-layers.md)
-- [CodeArts/OpenCode 动态启动器](integrations/README.md)
+历史 `experiments/` 和 ADR 会保留当时已经存在的 Workbench、TUI 或桌面壳名称，它们是实验事实，不是当前运行入口。

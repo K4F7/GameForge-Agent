@@ -166,6 +166,51 @@ describe("run event contracts", () => {
     }).success).toBe(true);
   });
 
+  it("accepts path-safe generation context and bounded redacted MCP audit events", () => {
+    const generationEvent = {
+      type: "project.generated",
+      runId: "run-1",
+      sequence: 4,
+      emittedAt,
+      mode: "apply",
+      operation: "update",
+      plan: {
+        generatorVersion: "0.12.0",
+        projectId: "safety-sprint",
+        target: "web",
+        specSha256: "a".repeat(64),
+        planSha256: "b".repeat(64),
+        files: [{ path: "src/main.ts", bytes: 128, sha256: "c".repeat(64) }],
+      },
+      update: {
+        currentPlanSha256: "d".repeat(64),
+        updatedPaths: ["src/main.ts"],
+        unchangedPaths: [],
+        preservedPaths: [],
+        deletedPaths: [],
+        conflicts: [],
+      },
+    } as const;
+    expect(runEventSchema.safeParse(generationEvent).success).toBe(true);
+    expect(runEventSchema.safeParse({ ...generationEvent, outputPath: "D:/generated/safety-sprint" }).success).toBe(false);
+
+    const auditEvent = {
+      type: "mcp.audit.ready",
+      runId: "run-1",
+      sequence: 5,
+      emittedAt,
+      truncated: false,
+      totalCalls: 2,
+      calls: [
+        { sequence: 1, tool: "claim_game_task", durationMs: 12, outcome: "success" },
+        { sequence: 2, tool: "generate_game_project", durationMs: 48, outcome: "success" },
+      ],
+    } as const;
+    expect(runEventSchema.safeParse(auditEvent).success).toBe(true);
+    expect(runEventSchema.safeParse({ ...auditEvent, sessionId: "00000000-0000-0000-0000-000000000000" }).success).toBe(false);
+    expect(runEventSchema.safeParse({ ...auditEvent, calls: [{ ...auditEvent.calls[0], arguments: { secret: true } }] }).success).toBe(false);
+  });
+
   it("validates a recoverable signed voice job event without accepting arbitrary handles", () => {
     const jobHandle = `${"a".repeat(80)}.${"b".repeat(43)}`;
     expect(runEventSchema.safeParse({

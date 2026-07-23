@@ -27,9 +27,19 @@ export const verificationActionSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("wait"), durationMs: z.number().int().min(1).max(10_000) }),
 ]);
 
+export const verificationScenarioSchema = z.enum(["won", "lost"]);
+export const verificationScenarioPlanSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  scenarios: z.strictObject({
+    won: z.array(verificationActionSchema).min(1).max(100),
+    lost: z.array(verificationActionSchema).min(1).max(100),
+  }),
+});
+
 export const verifyGameRequestSchema = z.strictObject({
   projectId: projectIdSchema,
   actions: z.array(verificationActionSchema).max(100).default([]),
+  scenario: verificationScenarioSchema.optional(),
   expectedOutcome: z.enum(["running", "won", "lost"]).optional(),
   timeoutMs: z.number().int().min(1_000).max(120_000).default(30_000),
 });
@@ -44,6 +54,8 @@ const verificationStateSchema = z.strictObject({
     player: z.strictObject({ x: z.number().finite(), y: z.number().finite() }),
     collectibles: z.array(z.strictObject({ x: z.number().finite(), y: z.number().finite() })).max(100),
     hazards: z.array(z.strictObject({ x: z.number().finite(), y: z.number().finite() })).max(100),
+    boss: z.strictObject({ x: z.number().finite(), y: z.number().finite(), hp: z.number().finite(), maxHp: z.number().positive() }).optional(),
+    exit: z.strictObject({ x: z.number().finite(), y: z.number().finite() }).optional(),
   }).optional(),
 });
 
@@ -106,6 +118,14 @@ export class GameVerifier {
     const input = verifyGameRequestSchema.parse(request);
     const startedAt = Date.now();
     const projectPath = await verifiedManagedProject(this.#projectsRoot, input.projectId);
+    if (input.scenario !== undefined && input.actions.length > 0) {
+      throw new Error("Verifier scenario and inline actions are mutually exclusive.");
+    }
+    if (input.scenario !== undefined && input.expectedOutcome !== undefined && input.expectedOutcome !== input.scenario) {
+      throw new Error("Verifier scenario must match expectedOutcome when both are provided.");
+    }
+    const actions = input.scenario === undefined ? input.actions : await readVerificationScenario(projectPath, input.scenario);
+    const expectedOutcome = input.expectedOutcome ?? input.scenario;
     const screenshotPath = await this.#screenshotPath(projectPath);
     const consoleErrors: string[] = [];
     const pageErrors: string[] = [];
@@ -136,7 +156,7 @@ export class GameVerifier {
       session.onRequestFailed((message) => pushDiagnostic(failedRequests, message));
       await withTimeout(session.goto(server.url, remaining("navigation")), remaining("navigation"), "Verifier navigation timed out.");
       await withTimeout(session.waitUntilReady(remaining("readiness")), remaining("readiness"), "Verifier readiness timed out.");
-      for (const action of input.actions) {
+      for (const action of actions) {
         await withTimeout(session.perform(action), remaining("actions"), "Verifier actions exceeded the total timeout.");
       }
       const state = verificationStateSchema.parse(await withTimeout(session.readState(), remaining("state read"), "Verifier state read timed out."));
@@ -146,7 +166,7 @@ export class GameVerifier {
       }
       await withTimeout(session.screenshot(screenshotPath), remaining("screenshot"), "Verifier screenshot timed out.");
       const passed = consoleErrors.length === 0 && pageErrors.length === 0 && failedRequests.length === 0 &&
-        (input.expectedOutcome === undefined || state.status === input.expectedOutcome);
+        (expectedOutcome === undefined || state.status === expectedOutcome);
       return {
         projectId: input.projectId,
         passed,
@@ -157,7 +177,7 @@ export class GameVerifier {
         consoleErrors,
         pageErrors,
         failedRequests,
-        actionsExecuted: input.actions.length,
+        actionsExecuted: actions.length,
         durationMs: Date.now() - startedAt,
       };
     } catch (error) {
@@ -178,6 +198,17 @@ export class GameVerifier {
     else if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Verifier screenshot directory is unsafe.");
     return path.join(directory, `${randomUUID()}.png`);
   }
+}
+
+async function readVerificationScenario(projectPath: string, scenario: z.infer<typeof verificationScenarioSchema>): Promise<VerificationAction[]> {
+  const metadata = await verifiedDirectory(path.join(projectPath, ".gameforge"), "Verifier metadata directory");
+  const target = path.join(metadata, "verification-scenarios.json");
+  const info = await lstat(target).catch(() => undefined);
+  if (info === undefined || !info.isFile() || info.isSymbolicLink() || info.size > 64 * 1024) {
+    throw new Error("Verifier scenario plan must be a regular JSON file no larger than 64 KiB.");
+  }
+  const plan = verificationScenarioPlanSchema.parse(JSON.parse(await readFile(target, "utf8")) as unknown);
+  return plan.scenarios[scenario];
 }
 
 export class PlaywrightVerificationRuntime implements VerificationRuntime {

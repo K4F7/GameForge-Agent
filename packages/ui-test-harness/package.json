@@ -1,0 +1,40 @@
+{
+  "name": "@gameforge/ui-test-harness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "External unattended controller contracts for the original CodeArts TUI and OpenChamber GUI.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit",
+    "test": "vitest run src",
+    "verify:dependencies": "bun scripts/verify-dependencies.ts",
+    "build:runtime": "bun --cwd ../.. run build:foundation && bun --cwd ../.. run --filter @gameforge/mcp-server build && bun run build",
+    "run:headless": "bun run build:runtime && bun dist/cli.js --headless",
+    "run:headed": "bun run build:runtime && bun dist/cli.js --headed"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=22.12.0",
+    "bun": ">=1.3.14"
+  },
+  "dependencies": {
+    "@gameforge/run-relay": "workspace:*",
+    "@xterm/headless": "6.0.0",
+    "@xterm/xterm": "6.0.0",
+    "bun-pty": "0.4.10",
+    "playwright-core": "1.61.1"
+  }
+}

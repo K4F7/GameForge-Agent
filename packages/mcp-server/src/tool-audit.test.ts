@@ -34,7 +34,23 @@ describe("MCP tool audit recorder", () => {
     ]);
     expect(JSON.stringify(audit)).not.toContain("prompt");
     expect(JSON.stringify(audit)).not.toContain("jobHandle");
+    await expect(recorder.getSummary()).resolves.toEqual({
+      runId: "run-audit",
+      truncated: false,
+      totalCalls: 2,
+      calls: [
+        { sequence: 1, tool: "validate_game_spec", durationMs: expect.any(Number), outcome: "success" },
+        { sequence: 2, tool: "submit_voice_job", durationMs: expect.any(Number), outcome: "error" },
+      ],
+    });
     if (process.platform !== "win32") expect((await stat(auditPath)).mode & 0o777).toBe(0o600);
+  });
+
+  it("refuses to project an audit before it is bound to a Task and Run", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "gameforge-mcp-audit-"));
+    roots.push(root);
+    const recorder = await McpToolAuditRecorder.create(path.join(root, "session.json"));
+    await expect(recorder.getSummary()).rejects.toThrow("not bound");
   });
 
   it("requires an unused absolute JSON path", async () => {

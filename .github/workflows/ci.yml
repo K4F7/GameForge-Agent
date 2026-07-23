@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, ready_for_review, synchronize, reopened]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,7 +17,7 @@ permissions:
 jobs:
   classify:
     name: Classify PR
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     outputs:
       docs-only: ${{ steps.changes.outputs.docs-only }}
     steps:
@@ -37,7 +38,7 @@ jobs:
               per_page: 100,
             });
             const isOrdinaryDocumentation = (path) => {
-              if (path === "AGENTS.md" || path.endsWith("/AGENTS.md") || path.startsWith(".github/") || path.startsWith(".codeartsdoer/skills/")) {
+              if (path === "AGENTS.md" || path.endsWith("/AGENTS.md") || path.startsWith(".github/") || path.startsWith(".codeartsdoer/skills/") || path.startsWith(".codeartsdoer/agents/")) {
                 return false;
               }
               return path.endsWith(".md");
@@ -47,11 +48,7 @@ jobs:
   bun:
     needs: classify
     if: ${{ needs.classify.outputs.docs-only != 'true' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -82,20 +79,20 @@ jobs:
     name: PR Gate
     if: ${{ always() }}
     needs: [classify, bun]
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Verify required CI result
-        shell: bash
+        shell: pwsh
         run: |
-          if [[ "${{ needs.classify.result }}" != "success" ]]; then
-            echo "PR classification failed."
+          if ("${{ needs.classify.result }}" -ne "success") {
+            Write-Error "PR classification failed."
             exit 1
-          fi
-          if [[ "${{ needs.classify.outputs.docs-only }}" == "true" ]]; then
-            echo "Ordinary documentation-only PR: full Bun CI is not required."
+          }
+          if ("${{ needs.classify.outputs.docs-only }}" -eq "true") {
+            Write-Output "Ordinary documentation-only PR: full Bun CI is not required."
             exit 0
-          fi
-          if [[ "${{ needs.bun.result }}" != "success" ]]; then
-            echo "Three-platform Bun CI did not pass."
+          }
+          if ("${{ needs.bun.result }}" -ne "success") {
+            Write-Error "Windows Bun CI did not pass."
             exit 1
-          fi
+          }

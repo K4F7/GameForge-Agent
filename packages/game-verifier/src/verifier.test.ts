@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GameProjectGenerator } from "@gameforge/generator";
@@ -152,6 +152,31 @@ describe("GameVerifier", () => {
     expect(runtime.session.actions).toEqual(actions);
     expect(runtime.session.closed).toBe(true);
     expect(runtime.serverClosed).toBe(true);
+  });
+
+  it("loads one bounded named scenario from the managed project", async () => {
+    const { root, runtime, verifier } = await fixture();
+    const actions = [
+      { type: "press" as const, key: "Space" },
+      { type: "hold" as const, key: "ArrowRight", durationMs: 500 },
+    ];
+    await writeFile(path.join(root, "safety-sprint", ".gameforge", "verification-scenarios.json"), JSON.stringify({
+      schemaVersion: 1,
+      scenarios: { won: actions, lost: [{ type: "wait", durationMs: 1_000 }] },
+    }), "utf8");
+    const result = await verifier.verify({ projectId: "safety-sprint", scenario: "won" });
+    expect(result.passed).toBe(true);
+    expect(result.actionsExecuted).toBe(2);
+    expect(runtime.session.actions).toEqual(actions);
+  });
+
+  it("rejects ambiguous inline and named actions", async () => {
+    const { verifier } = await fixture();
+    await expect(verifier.verify({
+      projectId: "safety-sprint",
+      scenario: "won",
+      actions: [{ type: "press", key: "Space" }],
+    })).rejects.toThrow("mutually exclusive");
   });
 
   it("fails the report on browser diagnostics or outcome mismatch", async () => {

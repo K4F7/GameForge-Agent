@@ -24,6 +24,7 @@ import {
   modelTargetSchema,
   resolveAgentModelRoute,
   type ModelRoutingPolicy,
+  type RunEvent,
 } from "@gameforge/contracts";
 import {
   draftGameSpecRequestSchema,
@@ -89,7 +90,7 @@ import {
   type WechatProjectBuilder,
   type LayaGameplayVerifier,
 } from "./tools.js";
-import type { ToolAuditContextBinder, ToolAuditRecorder } from "./tool-audit.js";
+import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditSummaryProvider } from "./tool-audit.js";
 import type { DouyinBridgePort, DouyinRuntimeAction } from "./douyin-bridge-controller.js";
 import { DouyinRuntimeActionCoordinator } from "./douyin-runtime-action.js";
 
@@ -110,7 +111,7 @@ export type CreateServerOptions = {
   runRelayClient?: RunRelayToolClient;
   taskRelayClient?: TaskRelayToolClient;
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
-  toolAudit?: ToolAuditRecorder & Partial<ToolAuditContextBinder>;
+  toolAudit?: ToolAuditRecorder & Partial<ToolAuditContextBinder & ToolAuditSummaryProvider>;
   modelRoutingPolicy?: ModelRoutingPolicy;
   douyinBridgeController?: DouyinBridgePort;
 };
@@ -278,6 +279,32 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
             isError: true,
             content: [{ type: "text", text: "MCP audit context binding failed." }],
           };
+        }
+      },
+    );
+  }
+
+  if (options.toolAudit?.getSummary !== undefined) {
+    registerTool(
+      "get_mcp_audit_summary",
+      {
+        title: "Read the redacted MCP audit summary",
+        description: "Return a bounded Task/Run-bound audit projection containing only tool order, name, outcome, and duration. Arguments, results, paths, timestamps, session IDs, prompts, URLs, and credentials are excluded.",
+        inputSchema: {},
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+      async () => {
+        try {
+          const summary = await options.toolAudit!.getSummary!();
+          const auditEvent: Omit<Extract<RunEvent, { type: "mcp.audit.ready" }>, "runId" | "sequence" | "emittedAt"> = {
+            type: "mcp.audit.ready",
+            truncated: summary.truncated,
+            totalCalls: summary.totalCalls,
+            calls: [...summary.calls],
+          };
+          return { content: [{ type: "text", text: JSON.stringify({ auditEvent }, null, 2) }] };
+        } catch {
+          return { isError: true, content: [{ type: "text", text: "MCP audit summary is unavailable until the audit is bound to a Task and Run." }] };
         }
       },
     );
@@ -506,7 +533,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       "list_game_tasks",
       {
         title: "List game build tasks",
-        description: "List one bounded snapshot of queued, claimed, or terminal Workbench tasks. CodeArts can resume its own claimed tasks; this never polls or executes them.",
+        description: "List one bounded snapshot of queued, claimed, or terminal GameForge tasks. CodeArts can resume its own claimed tasks; this never polls or executes them.",
         inputSchema: listGameTasksRequestSchema.shape,
       },
       async (request) => listGameTasksTool(taskRelayClient, request),
@@ -668,7 +695,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       {
         title: "Verify a generated game in a browser",
         description:
-          "Start one managed generated project locally, execute a bounded deterministic input script in system Chrome, capture browser diagnostics and a screenshot, then return the explicit game outcome. No repair or Agent loop runs inside this tool.",
+          "Start one managed generated project locally and execute a bounded deterministic input script in system Chrome. Pass inline actions for small probes, or scenario=won|lost to load that named script from .gameforge/verification-scenarios.json without embedding a long tool argument. Captures browser diagnostics and a screenshot, then returns the explicit game outcome. No repair or Agent loop runs inside this tool.",
         inputSchema: verifyGameRequestSchema.shape,
       },
       async (request) => verifyGameProjectTool(projectVerifier, request),
