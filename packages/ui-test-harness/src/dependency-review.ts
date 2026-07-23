@@ -12,7 +12,7 @@ export async function verifyHarnessDependencyReview(): Promise<{ verified: numbe
   const record = await readJson<ReviewRecord>(path.join(packageRoot, "dependency-review.json"));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(record.reviewedAt) || record.verification.length === 0) throw new Error("Dependency review metadata is incomplete.");
   const declared = Object.fromEntries(Object.entries(manifest.dependencies ?? {}).filter(([, version]) => !version.startsWith("workspace:")));
-  if (record.dependencies.length !== Object.keys(declared).length) throw new Error("Dependency review must cover every runtime dependency exactly once.");
+  assertExactDependencyCoverage(record, declared);
   for (const expected of record.dependencies) {
     if (declared[expected.name] !== expected.version) throw new Error(`${expected.name} is not pinned to reviewed version ${expected.version}.`);
     if (!expected.source.startsWith("https://") || expected.purpose.length === 0 || expected.officialGap.length === 0) throw new Error(`${expected.name} provenance or rationale is incomplete.`);
@@ -23,6 +23,14 @@ export async function verifyHarnessDependencyReview(): Promise<{ verified: numbe
     if (JSON.stringify(actualTransitive) !== JSON.stringify(reviewedTransitive)) throw new Error(`${expected.name} runtime dependency closure changed.`);
   }
   return { verified: record.dependencies.length };
+}
+
+export function assertExactDependencyCoverage(record: Pick<ReviewRecord, "dependencies">, declared: Record<string, string>): void {
+  const reviewed = new Set(record.dependencies.map((dependency) => dependency.name));
+  const declaredNames = Object.keys(declared);
+  if (reviewed.size !== record.dependencies.length || reviewed.size !== declaredNames.length || declaredNames.some((name) => !reviewed.has(name))) {
+    throw new Error("Dependency review must cover every runtime dependency exactly once.");
+  }
 }
 
 async function readJson<T>(file: string): Promise<T> {
