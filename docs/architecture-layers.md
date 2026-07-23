@@ -15,11 +15,11 @@
 
 ## 产品化目标边界
 
-仓库已提供 `apps/tui` 终端 MVP、`apps/workbench` 浏览器 GUI 与封装 Workbench 的 `apps/desktop` Tauri spike。它们与本地后端保持单仓、多制品边界：分别构建和发布，且共享 `packages/contracts/` 的版本化公开协议。CLI 与 GUI 只保证 Task、Run、MCP Audit 和证据关联等业务语义一致，不要求镜像交互或界面。
+仓库当前不提供自建产品 TUI、Workbench 或桌面壳。CodeArts/OpenCode 宿主适配与 `packages/ui-test-harness/` 外置验收层和本地后端保持单仓、多制品边界，并共享 `packages/contracts/` 的版本化公开协议。原版 CodeArts TUI 与原版 OpenChamber GUI 只要求 Task、Run、MCP Audit 和证据关联等业务语义一致，不要求镜像交互或界面。
 
 本地后端是唯一状态权威，负责 Task/Run、并发控制、MCP Audit 和事件发布。CLI 与 GUI 通过公开协议自动发现或拉起后端；同一 Task 的竞争状态变更由后端拒绝其中一个并返回可解释的冲突结果。后端应在有限兼容窗口内支持当前与上一稳定客户端契约版本。
 
-当前质量门的公开入口是根级 `verify:backend`、`verify:cli`、`verify:gui`、`verify:compat` 与聚合命令 `verify`。`verify:cli` 覆盖 TUI 与 CodeArts 启动适配，`verify:gui` 覆盖 Workbench、真实浏览器 smoke 与 Tauri 壳，`verify:compat` 当前执行 MCP 工作流集成测试；后续再扩展“后端当前版 × 客户端当前版和上一稳定版”的版本兼容矩阵。
+当前质量门的公开入口是根级 `verify:backend`、`verify:cli`、`verify:gui`、`verify:compat` 与聚合命令 `verify`。`verify:cli` 覆盖 CodeArts/OpenCode 启动适配，`verify:gui` 覆盖外置 UI harness 的构建、类型、依赖准入与测试，`verify:compat` 执行 MCP 工作流集成测试；真实 CodeArts/OpenChamber 可见验收仍需显式运行并记录证据。
 
 ## 为什么核心不是 OpenCode Plugin
 
