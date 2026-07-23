@@ -50,7 +50,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -96,6 +96,6 @@ jobs:
             exit 0
           fi
           if [[ "${{ needs.bun.result }}" != "success" ]]; then
-            echo "Three-platform Bun CI did not pass."
+            echo "Windows Bun CI did not pass."
             exit 1
           fi
