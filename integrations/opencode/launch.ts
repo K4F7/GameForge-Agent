@@ -12,7 +12,11 @@ if (args.includes("--dry-run")) {
 const child = spawn(executable, args.length === 0 ? [runtime.repoRoot] : args, {
   cwd: runtime.repoRoot,
   stdio: "inherit",
-  env: { ...process.env, OPENCODE_CONFIG: runtime.configPath },
+  env: {
+    ...process.env,
+    OPENCODE_CONFIG: runtime.configPath,
+    ...(process.env.XDG_DATA_HOME?.trim() ? {} : { XDG_DATA_HOME: runtime.dataDirectory }),
+  },
 });
 bindChildLifecycle(child);
 child.once("error", (error) => {

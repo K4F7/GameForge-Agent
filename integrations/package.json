@@ -6,10 +6,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit",
-    "test": "vitest run shared/runtime.test.ts shared/model-routing.test.ts codearts/executable.test.ts"
+    "test": "vitest run shared/runtime.test.ts shared/model-routing.test.ts codearts/executable.test.ts opencode/observer.test.ts",
+    "observe:opencode": "bun opencode/observe.ts"
   },
   "dependencies": {
-    "@gameforge/contracts": "0.1.0"
+    "@gameforge/contracts": "0.1.0",
+    "@opencode-ai/sdk": "1.18.3"
   },
   "devDependencies": {
     "@types/node": "22.20.1",

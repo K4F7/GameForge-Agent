@@ -15,7 +15,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit",
-    "test": "vitest run src"
+    "test": "vitest run src",
+    "run:headless": "bun run build && bun dist/cli.js --headless",
+    "run:headed": "bun run build && bun dist/cli.js --headed"
   },
   "devDependencies": {
     "@types/node": "22.20.1",
@@ -25,5 +27,12 @@
   "engines": {
     "node": ">=22.12.0",
     "bun": ">=1.3.14"
+  },
+  "dependencies": {
+    "@gameforge/run-relay": "workspace:*",
+    "@xterm/headless": "6.0.0",
+    "@xterm/xterm": "6.0.0",
+    "bun-pty": "0.4.10",
+    "playwright-core": "1.61.1"
   }
 }

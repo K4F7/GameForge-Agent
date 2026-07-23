@@ -8,7 +8,16 @@ export type IntegrationRuntime = {
   relayUrl: string;
   auditDirectory: string;
   configPath: string;
+  dataDirectory: string;
 };
+
+const disabledExternalProviderCredentials = {
+  DASHSCOPE_API_KEY: "",
+  FREESOUND_API_KEY: "",
+  MINIMAX_API_KEY: "",
+  VOLCENGINE_ARK_API_KEY: "",
+  VOLCENGINE_SPEECH_API_TOKEN: "",
+} as const;
 
 export async function resolveRuntime(startDirectory: string, integration: "codearts" | "opencode"): Promise<IntegrationRuntime> {
   const repoRoot = await findRepoRoot(startDirectory);
@@ -24,7 +33,11 @@ export async function resolveRuntime(startDirectory: string, integration: "codea
   const relayUrl = safeRelayUrl(
     process.env.GAMEFORGE_RUN_RELAY_URL?.trim() || "http://127.0.0.1:8787/",
   );
-  const runtimeDirectory = path.join(repoRoot, ".gameforge-validation", "integrations", integration);
+  const configuredRuntimeDirectory = process.env.GAMEFORGE_INTEGRATION_RUNTIME_DIR?.trim();
+  if (configuredRuntimeDirectory !== undefined && configuredRuntimeDirectory.length > 0 && !path.isAbsolute(configuredRuntimeDirectory)) {
+    throw new Error("GAMEFORGE_INTEGRATION_RUNTIME_DIR must be absolute when configured.");
+  }
+  const runtimeDirectory = path.resolve(configuredRuntimeDirectory || path.join(repoRoot, ".gameforge-validation", "integrations", integration));
   const configuredAuditDirectory = process.env.GAMEFORGE_MCP_AUDIT_DIR?.trim();
   if (configuredAuditDirectory !== undefined && configuredAuditDirectory.length > 0 &&
       !path.isAbsolute(configuredAuditDirectory)) {
@@ -34,12 +47,15 @@ export async function resolveRuntime(startDirectory: string, integration: "codea
   await mkdir(outputRoot, { recursive: true });
   await mkdir(runtimeDirectory, { recursive: true });
   await mkdir(auditDirectory, { recursive: true, mode: 0o700 });
+  const dataDirectory = path.join(runtimeDirectory, "data");
+  await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
   return {
     repoRoot,
     outputRoot,
     relayUrl,
     auditDirectory,
     configPath: path.join(runtimeDirectory, "opencode.json"),
+    dataDirectory,
   };
 }
 
@@ -57,6 +73,7 @@ export async function writeRuntimeConfig(
   const layaAirCliPath = await optionalRegularFileEnvironment("GAMEFORGE_LAYAIR_CLI");
   const douyinMiniGameCliPath = await optionalRegularFileEnvironment("GAMEFORGE_DOUYIN_MINIGAME_CLI");
   const permissionMode = options.permissionMode ?? "scoped";
+  const fallbackProvider = explicitFallbackProvider();
   const permission = permissionMode === "full-access" ? "allow" : {
     "gameforge_*": "ask",
     "gameforge_validate_*": "allow",
@@ -74,6 +91,9 @@ export async function writeRuntimeConfig(
         type: "local",
         command: ["node", "packages/mcp-server/dist/index.js"],
         environment: {
+          // These optional providers are disabled for the current CodeArts experiments.
+          // Mask ambient credentials so a partial host configuration cannot crash MCP startup.
+          ...disabledExternalProviderCredentials,
           GAMEFORGE_PROJECT_OUTPUT_ROOT: runtime.outputRoot,
           GAMEFORGE_RUN_RELAY_URL: runtime.relayUrl,
           ...(relayToken === undefined
@@ -92,9 +112,35 @@ export async function writeRuntimeConfig(
         timeout: 180_000,
       },
     },
+    ...(fallbackProvider === undefined ? {} : { provider: fallbackProvider }),
     permission,
   };
   await writeFile(runtime.configPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
+function explicitFallbackProvider(): Record<string, unknown> | undefined {
+  const baseUrlInput = process.env.GAMEFORGE_CODEARTS_FALLBACK_BASE_URL?.trim() || undefined;
+  const model = process.env.GAMEFORGE_CODEARTS_FALLBACK_MODEL?.trim() || undefined;
+  const apiKey = process.env.GAMEFORGE_FALLBACK_API_KEY?.trim() || undefined;
+  const configured = [baseUrlInput, model, apiKey].filter((value) => value !== undefined).length;
+  if (configured === 0) return undefined;
+  if (baseUrlInput === undefined || model === undefined || apiKey === undefined) {
+    throw new Error("Explicit CodeArts fallback requires base URL, model, and GAMEFORGE_FALLBACK_API_KEY together.");
+  }
+  const baseUrl = new URL(baseUrlInput);
+  if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash) {
+    throw new Error("CodeArts fallback base URL must use HTTPS without credentials, query, or fragment.");
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(model)) throw new Error("CodeArts fallback model ID is invalid.");
+  if (apiKey.length < 16 || /[\r\n]/.test(apiKey)) throw new Error("GAMEFORGE_FALLBACK_API_KEY is invalid.");
+  return {
+    "gameforge-fallback": {
+      npm: "@ai-sdk/openai-compatible",
+      name: "GameForge explicit test fallback",
+      options: { baseURL: baseUrl.href.replace(/\/$/, ""), apiKey: "{env:GAMEFORGE_FALLBACK_API_KEY}" },
+      models: { [model]: { name: model } },
+    },
+  };
 }
 
 async function optionalRegularFileEnvironment(name: string): Promise<string | undefined> {

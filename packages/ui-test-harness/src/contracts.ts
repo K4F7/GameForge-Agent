@@ -25,6 +25,9 @@ export type HarnessSession = {
   sessionId: string;
   startedAt: string;
   mode: HarnessMode;
+  taskId?: string;
+  runId?: string;
+  projectId?: string;
 };
 
 export type TuiOutputFrame = {
@@ -50,10 +53,13 @@ export type GuiDiagnostics = {
 };
 
 export type GuiSnapshot = {
+  sessionId?: string;
+  runId?: string;
   url: string;
   title: string;
   capturedAt: string;
   diagnostics: GuiDiagnostics;
+  screenshotPath?: string;
 };
 
 export type TuiObserverSnapshot = {
@@ -66,6 +72,7 @@ export type TuiObserverSnapshot = {
 };
 
 export type AuthoritySnapshot = {
+  sessionId?: string;
   taskId?: string;
   runId?: string;
   projectId?: string;
@@ -116,6 +123,7 @@ export interface GameForgeAuthorityDriver {
 }
 
 export type ActivitySample = {
+  sessionId?: string;
   sampledAt: string;
   tuiOutputSequence: number;
   authorityEventSequence: number;
@@ -128,6 +136,7 @@ export interface EvidenceSink {
   recordLifecycle(event: { sessionId: string; phase: HarnessPhase; at: string; detail?: string }): Promise<void>;
   recordActivity(sample: ActivitySample): Promise<void>;
   recordTuiInput(input: { kind: "text" | "key"; value: string; at: string }): Promise<void>;
+  recordTuiOutput(frame: TuiOutputFrame): Promise<void>;
   recordTuiSnapshot(snapshot: TuiSnapshot): Promise<void>;
   recordTuiObserverSnapshot(snapshot: TuiObserverSnapshot): Promise<void>;
   recordGuiSnapshot(label: string, snapshot: GuiSnapshot): Promise<void>;
@@ -158,6 +167,7 @@ export type HarnessScenario = {
 };
 
 export type HarnessOptions = {
+  sessionId?: string;
   mode: HarnessMode;
   terminal: { columns: number; rows: number };
   tuiObserverViewport: { width: number; height: number };
@@ -165,6 +175,9 @@ export type HarnessOptions = {
   observationHoldMs: number;
   activityPollMs: number;
   inactivityTimeoutMs: number;
+  taskId?: string;
+  runId?: string;
+  projectId?: string;
 };
 
 export type HarnessResult = {

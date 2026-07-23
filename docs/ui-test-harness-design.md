@@ -39,9 +39,9 @@
 - Controller 只按权威状态推进场景，并综合 TUI、RunEvent 和项目变化判断“慢”或“卡死”；
 - Evidence Sink 把两个被测面的时间线关联到同一验收记录。
 
-## 本轮交付边界
+## MVP 实现状态
 
-本轮只新增 `packages/ui-test-harness/` 中的驱动接口、场景步骤、控制器、权威门禁和活动看门狗。没有运行入口、没有具体 PTY/Playwright 适配器、没有启动测试会话，也没有修改 Workbench。
+`packages/ui-test-harness/` 已提供显式 CLI、真实 Bun ConPTY、官方 xterm.js 同流观察、Playwright OpenChamber、Relay Authority、Evidence 落盘、权威门禁和活动看门狗。导入包仍无副作用；仅显式 `run:headless` / `run:headed` 启动测试会话。Workbench 不在测试拓扑中。
 
 ## 已确认的 TUI 可见方案
 
@@ -51,4 +51,4 @@ OpenChamber 始终是另一个独立的原版 GUI 窗口，不嵌入 TUI。控�
 
 ## 上游边界
 
-GUI 被测对象是 OpenChamber 上游原版，而不是仓库中已经删除的派生 Workbench。历史评估曾固定提交 `31b43fbde90d368c5d131ec52e761d888466d597`；实现浏览器适配器前必须重新确认实际被测 commit，并只在测试框架中记录版本和启动信息，不复制或改造其产品页面。
+GUI 被测对象是 OpenChamber 上游原版，而不是仓库中已经删除的派生 Workbench。当前本机探针重新确认版本 `1.16.2`、提交 `31b43fbde90d368c5d131ec52e761d888466d597`、MIT；测试框架只通过 loopback URL 操作其原版页面，不复制或改造产品页面。

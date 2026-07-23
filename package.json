@@ -31,6 +31,7 @@
     "integrations:test": "bun run --filter @gameforge/integrations test",
     "codearts": "bun integrations/codearts/launch.ts",
     "opencode": "bun integrations/opencode/launch.ts",
+    "observe:opencode": "bun integrations/opencode/observe.ts",
     "benchmark": "bun packages/benchmark/src/cli.ts",
     "bundle:check": "bun run --filter @gameforge/game build && bun packages/bundle-budget/src/cli.ts",
     "minigame:validate": "bun packages/minigame-validator/src/cli.ts",
