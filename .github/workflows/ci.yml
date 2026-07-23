@@ -38,7 +38,7 @@ jobs:
               per_page: 100,
             });
             const isOrdinaryDocumentation = (path) => {
-              if (path === "AGENTS.md" || path.endsWith("/AGENTS.md") || path.startsWith(".github/") || path.startsWith(".codeartsdoer/skills/")) {
+              if (path === "AGENTS.md" || path.endsWith("/AGENTS.md") || path.startsWith(".github/") || path.startsWith(".codeartsdoer/skills/") || path.startsWith(".codeartsdoer/agents/")) {
                 return false;
               }
               return path.endsWith(".md");

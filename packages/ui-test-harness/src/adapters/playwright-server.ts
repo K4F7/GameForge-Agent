@@ -3,8 +3,11 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { browserLaunchOptions } from "./browser-launch.js";
 
-const browser = await chromium.launch({ headless: process.argv.includes("--headless"), timeout: 30_000 });
+const channelIndex = process.argv.indexOf("--browser-channel");
+const browserChannel = channelIndex < 0 ? undefined : process.argv[channelIndex + 1];
+const browser = await chromium.launch(browserLaunchOptions(process.argv.includes("--headless"), browserChannel));
 let page: Page | undefined; const diagnostics: { consoleErrors: string[]; pageErrors: string[]; failedRequests: string[] } = { consoleErrors: [], pageErrors: [], failedRequests: [] };
 const server = createServer(async (request, response) => {
   try { const body = await new Promise<{ command: string; value: any }>((resolve) => { let text = ""; request.on("data", (chunk) => text += chunk); request.on("end", () => resolve(JSON.parse(text || "{}"))); }); const { command, value } = body;

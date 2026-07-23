@@ -44,10 +44,11 @@ export class UiTestController {
     let guiLaunched = false;
     let failureCaptured = false;
     let unsubscribeOutput: (() => void) | undefined;
+    let outputQueue = Promise.resolve();
 
     try {
       unsubscribeOutput = this.drivers.tui.subscribeOutput((frame) => {
-        void this.drivers.evidence.recordTuiOutput(frame);
+        outputQueue = outputQueue.then(() => this.drivers.evidence.recordTuiOutput(frame));
       });
       tuiStarted = true;
       const tui = await this.drivers.tui.start({ session, ...this.options.terminal });
@@ -78,6 +79,7 @@ export class UiTestController {
       if (guiLaunched) { await this.captureGui(session, "failed").catch(() => undefined); failureCaptured = true; }
     }
 
+    await outputQueue;
     if (tuiStarted) {
       const finalTui = await this.drivers.tui.read().catch(() => undefined);
       if (finalTui !== undefined) await this.drivers.evidence.recordTuiSnapshot(finalTui);

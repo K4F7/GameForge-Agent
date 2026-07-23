@@ -9,6 +9,7 @@ import { FileEvidenceSink } from "./adapters/file-evidence.js";
 import { PlaywrightOpenChamberDriver } from "./adapters/playwright-openchamber.js";
 import { RelayAuthorityDriver } from "./adapters/relay-authority.js";
 import { XtermTuiObserverDriver } from "./adapters/xterm-observer.js";
+import { projectFingerprint } from "./adapters/project-fingerprint.js";
 import type { HarnessResult } from "./contracts.js";
 import { UiTestController } from "./controller.js";
 
@@ -49,6 +50,7 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
   });
   const controller = new UiTestController({
     tui, authority, evidence,
+    projectFingerprint: () => projectFingerprint(path.join(options.projectsRoot, projectId)),
     tuiObserver: new XtermTuiObserverDriver(),
     gui: new PlaywrightOpenChamberDriver({ sessionRoot, baseUrl: options.openChamberUrl, ...(options.browserChannel === undefined ? {} : { browserChannel: options.browserChannel }) }),
   }, {
@@ -72,7 +74,7 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
 }
 
 function parseArguments(args: string[]): {
-  experiment: string; relayUrl: string; taskPrompt: string; agentId: string;
+  experiment: string; relayUrl: string; taskPrompt: string; agentId: string; projectsRoot: string;
   inactivityTimeoutMs: number; totalTimeoutMs: number; mode: "headed/watch" | "headless";
   openChamberUrl: string; browserChannel?: string; observationHoldMs: number;
   sessionId?: string; taskId?: string; runId?: string; projectId?: string;
@@ -91,7 +93,8 @@ function parseArguments(args: string[]): {
     experiment: value("--experiment", `ui-harness-${new Date().toISOString().replace(/[:.]/g, "-")}`),
     relayUrl: value("--relay-url", process.env.GAMEFORGE_RUN_RELAY_URL?.trim() ?? "http://127.0.0.1:8787/"),
     taskPrompt: value("--task-prompt", "执行一次最小确定性 MCP 验收，不生成游戏，不调用外部 Provider，然后完成 Run。"),
-    agentId: value("--agent-id", "codearts-ui-harness"),
+    agentId: value("--agent-id", "codearts"),
+    projectsRoot: value("--projects-root", process.env.GAMEFORGE_PROJECTS_ROOT?.trim() ?? path.join(repoRoot, "projects")),
     inactivityTimeoutMs: positiveInteger(value("--inactivity-timeout-ms", "120000")),
     totalTimeoutMs: positiveInteger(value("--total-timeout-ms", "900000")),
     mode: headed ? "headed/watch" : "headless",

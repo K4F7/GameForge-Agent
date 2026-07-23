@@ -24,7 +24,7 @@ export class RelayAuthorityDriver implements GameForgeAuthorityDriver {
   async snapshot(): Promise<AuthoritySnapshot> {
     const [task, events] = await Promise.all([
       this.#client.getTask(this.options.taskId),
-      this.#client.replayEvents({ runId: this.options.runId, after: 0 }),
+      this.#replayAll(),
     ]);
     const last = events.events.at(-1);
     return {
@@ -37,6 +37,17 @@ export class RelayAuthorityDriver implements GameForgeAuthorityDriver {
       ...(last === undefined ? {} : { lastEventType: last.type }),
       capturedAt: new Date().toISOString(),
     };
+  }
+
+  async #replayAll() {
+    const events = [] as Awaited<ReturnType<RunRelayClient["replayEvents"]>>["events"];
+    let after = 0;
+    while (true) {
+      const page = await this.#client.replayEvents({ runId: this.options.runId, after });
+      events.push(...page.events);
+      if (page.events.length < 1_000) return { events };
+      after = page.events.at(-1)!.sequence;
+    }
   }
 }
 

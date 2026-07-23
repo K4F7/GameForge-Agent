@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import type { GuiDiagnostics, GuiSnapshot, HarnessMode, HarnessSession, OpenChamberGuiDriver } from "../contracts.js";
+import { browserLaunchOptions } from "./browser-launch.js";
 
 export type PlaywrightOpenChamberOptions = { sessionRoot: string; baseUrl: string; browserChannel?: string };
 
@@ -19,7 +20,7 @@ export class PlaywrightOpenChamberDriver implements OpenChamberGuiDriver {
     if (this.#browser !== undefined) throw new Error("OpenChamber browser is already launched.");
     const baseUrl = safeLoopbackUrl(this.options.baseUrl); this.#session = options.session;
     this.#diagnostics.consoleErrors.splice(0); this.#diagnostics.pageErrors.splice(0); this.#diagnostics.failedRequests.splice(0);
-    if (process.versions.bun !== undefined && this.options.browserChannel === undefined) { this.#remoteUrl = await this.#launchRemote(options.mode); await this.#remote("launch", { url: baseUrl, viewport: options.viewport }); return; }
+    if (process.versions.bun !== undefined) { this.#remoteUrl = await this.#launchRemote(options.mode); await this.#remote("launch", { url: baseUrl, viewport: options.viewport }); return; }
     this.#browser = await this.#launchBrowser(options.mode);
     this.#context = await this.#browser.newContext({ viewport: options.viewport }); this.#page = await this.#context.newPage();
     this.#page.on("console", (message) => { if (message.type() === "error") this.#diagnostics.consoleErrors.push(message.text()); });
@@ -44,11 +45,11 @@ export class PlaywrightOpenChamberDriver implements OpenChamberGuiDriver {
   #requirePage(): Page { if (this.#page === undefined) throw new Error("OpenChamber browser has not launched."); return this.#page; }
   #requireSession(): HarnessSession { if (this.#session === undefined) throw new Error("OpenChamber session has not launched."); return this.#session; }
   async #launchBrowser(mode: HarnessMode): Promise<Browser> {
-    return chromium.launch({ headless: mode === "headless", timeout: 30_000, ...(this.options.browserChannel === undefined ? {} : { channel: this.options.browserChannel }) });
+    return chromium.launch(browserLaunchOptions(mode === "headless", this.options.browserChannel));
   }
   async #launchRemote(mode: HarnessMode): Promise<string> {
     const helper = fileURLToPath(new URL("./playwright-server.js", import.meta.url));
-    const child = spawn("node", [helper, ...(mode === "headless" ? ["--headless"] : [])], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true }); this.#serverProcess = child;
+    const child = spawn("node", [helper, ...(mode === "headless" ? ["--headless"] : []), ...(this.options.browserChannel === undefined ? [] : ["--browser-channel", this.options.browserChannel])], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true }); this.#serverProcess = child;
     const endpoint = await firstLine(child, 35_000);
     return endpoint;
   }
