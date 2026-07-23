@@ -5,7 +5,11 @@ import path from "node:path";
 export async function projectFingerprint(projectRoot: string): Promise<string> {
   const entries: string[] = [];
   const visit = async (directory: string): Promise<void> => {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const children = await readdir(directory, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+    for (const entry of children) {
       const target = path.join(directory, entry.name);
       if (entry.isDirectory()) await visit(target);
       else if (entry.isFile()) {

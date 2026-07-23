@@ -94,7 +94,7 @@ function parseArguments(args: string[]): {
     relayUrl: value("--relay-url", process.env.GAMEFORGE_RUN_RELAY_URL?.trim() ?? "http://127.0.0.1:8787/"),
     taskPrompt: value("--task-prompt", "执行一次最小确定性 MCP 验收，不生成游戏，不调用外部 Provider，然后完成 Run。"),
     agentId: value("--agent-id", "codearts"),
-    projectsRoot: value("--projects-root", process.env.GAMEFORGE_PROJECTS_ROOT?.trim() ?? path.join(repoRoot, "projects")),
+    projectsRoot: value("--projects-root", process.env.GAMEFORGE_PROJECT_OUTPUT_ROOT?.trim() ?? path.join(repoRoot, ".gameforge-validation", "integrations", "projects")),
     inactivityTimeoutMs: positiveInteger(value("--inactivity-timeout-ms", "120000")),
     totalTimeoutMs: positiveInteger(value("--total-timeout-ms", "900000")),
     mode: headed ? "headed/watch" : "headless",
