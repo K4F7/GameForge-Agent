@@ -58,10 +58,24 @@ jobs:
         if: ${{ hashFiles('bun.lock') != '' }}
         with:
           bun-version: 1.3.14
-      - name: Verify with Bun
+      - name: Install dependencies
+        if: ${{ hashFiles('bun.lock') != '' }}
+        run: bun install --frozen-lockfile
+      - name: Verify backend boundary
+        if: ${{ hashFiles('bun.lock') != '' }}
+        run: bun run verify:backend
+      - name: Verify CLI boundary
+        if: ${{ hashFiles('bun.lock') != '' }}
+        run: bun run verify:cli
+      - name: Verify GUI product boundary
+        if: ${{ hashFiles('bun.lock') != '' }}
+        run: bun run verify:gui
+      - name: Verify compatibility boundary
+        if: ${{ hashFiles('bun.lock') != '' }}
+        run: bun run verify:compat
+      - name: Verify full workspace
         if: ${{ hashFiles('bun.lock') != '' }}
         run: |
-          bun install --frozen-lockfile
           bun run check
           bun run test
           bun run build
