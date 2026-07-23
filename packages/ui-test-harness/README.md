@@ -26,9 +26,9 @@ bun run --filter @gameforge/ui-test-harness run:headed
 
 默认 OpenChamber URL 为 `http://127.0.0.1:5173/`，可用 `--openchamber-url` 或 `GAMEFORGE_OPENCHAMBER_URL` 覆盖，但只接受无凭据 loopback HTTP(S)。该命令使用真实 Bun ConPTY 启动 `bun run codearts`，连接既有 Relay，并将 VT、生命周期、活动样本、Authority 快照、MCP Audit、浏览器诊断和 PNG 截图写入 `.gameforge-validation/`。默认活动超时 120 秒，总门禁 15 分钟；headed 成功后默认保留窗口 10 秒。
 
-需要把预先启动的外部 Observer 与 Harness Evidence 关联时，可显式传入 `--session-id <id>`。baseline 使用该 ID；若明确限流后触发 fallback，fallback Evidence 使用 `<id>-fallback`，避免覆盖 baseline。
+需要把预先启动的外部 Observer 与 Harness Evidence 关联时，可显式传入 `--session-id <id>`。单次权威执行使用该 ID 关联 Evidence。
 
-只有 VT 中出现明确的 HTTP 429、rate-limit 或 quota 证据时，才允许使用显式配置的 CodeArts fallback Provider。API key 只从 `GAMEFORGE_FALLBACK_API_KEY` 读取，配置文件只保存环境变量引用。
+Harness 不对同一个 Task/Run 发起 fallback 重试。HTTP 429、rate-limit 或 quota 只作为失败诊断记录，避免在已发生权威状态变更后重复 MCP 调用、RunEvent 或 Provider 成本；外部 Provider 也不会因环境中的密钥被自动启用。
 
 headless 使用 `@xterm/headless@6.0.0` 解析唯一 ConPTY VT 流；headed 额外以 `@xterm/xterm@6.0.0` 打开独立可见观察窗，但不创建第二 CodeArts 会话。OpenChamber 由 `playwright-core@1.61.1` 驱动原版页面。每次场景自动保存 `loaded`、`before-interaction`、`after-interaction`、`success` 或 `failed` 阶段截图，并记录 console/page/failed-request 诊断。当前约束明确不录制视频。
 

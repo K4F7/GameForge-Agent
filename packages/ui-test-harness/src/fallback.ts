@@ -9,4 +9,6 @@ export function classifyModelFailure(value: string): FailureKind {
   return "other";
 }
 
-export function shouldFallback(value: string): boolean { return classifyModelFailure(value) !== "other"; }
+// A Task/Run is authoritative and non-idempotent. Classification is retained for
+// diagnostics, but the harness must never start a second attempt for that Run.
+export function shouldFallback(_value: string): boolean { return false; }
