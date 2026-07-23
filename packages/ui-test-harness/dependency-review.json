@@ -1,0 +1,42 @@
+{
+  "reviewedAt": "2026-07-23",
+  "verification": "bun run --filter @gameforge/ui-test-harness verify:dependencies",
+  "dependencies": [
+    {
+      "name": "@xterm/headless",
+      "version": "6.0.0",
+      "license": "MIT",
+      "source": "https://github.com/xtermjs/xterm.js",
+      "purpose": "Parse the original CodeArts ConPTY VT stream without creating another terminal session.",
+      "officialGap": "OpenCode events do not expose the rendered terminal screen required by the external acceptance harness.",
+      "transitiveRuntimeDependencies": []
+    },
+    {
+      "name": "@xterm/xterm",
+      "version": "6.0.0",
+      "license": "MIT",
+      "source": "https://github.com/xtermjs/xterm.js",
+      "purpose": "Render the same ConPTY VT stream in an independent visible observer window.",
+      "officialGap": "CodeArts provides the tested TUI but not an independent observer surface for unattended evidence capture.",
+      "transitiveRuntimeDependencies": []
+    },
+    {
+      "name": "bun-pty",
+      "version": "0.4.10",
+      "license": "MIT",
+      "source": "https://github.com/sursaone/bun-pty",
+      "purpose": "Drive the installed CodeArts TUI through Windows ConPTY from the Bun runtime.",
+      "officialGap": "OpenCode SDK and CodeArts do not provide a deterministic API for real interactive TUI keyboard and resize behavior.",
+      "transitiveRuntimeDependencies": []
+    },
+    {
+      "name": "playwright-core",
+      "version": "1.61.1",
+      "license": "Apache-2.0",
+      "source": "https://github.com/microsoft/playwright",
+      "purpose": "Automate the original OpenChamber GUI with an installed browser.",
+      "officialGap": "OpenCode SDK has no browser automation or browser diagnostics API.",
+      "transitiveRuntimeDependencies": []
+    }
+  ]
+}

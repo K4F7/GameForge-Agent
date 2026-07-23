@@ -32,6 +32,8 @@ Harness 不对同一个 Task/Run 发起 fallback 重试。HTTP 429、rate-limit 
 
 headless 使用 `@xterm/headless@6.0.0` 解析唯一 ConPTY VT 流；headed 额外以 `@xterm/xterm@6.0.0` 打开独立可见观察窗，但不创建第二 CodeArts 会话。OpenChamber 由 `playwright-core@1.61.1` 驱动原版页面。每次场景自动保存 `loaded`、`before-interaction`、`after-interaction`、`success` 或 `failed` 阶段截图，并记录 console/page/failed-request 诊断。当前约束明确不录制视频。
 
+运行时依赖的锁定版本、上游来源、许可证、选型原因、官方能力缺口与运行时传递依赖记录在 `dependency-review.json`。`bun run --filter @gameforge/ui-test-harness verify:dependencies` 会把该记录与工作区声明及 `bun install --frozen-lockfile` 产生的已安装 manifest 逐项核对；根级 `bun run check` 也执行这一门禁。
+
 最终 `success` 截图若仍包含任意 console error、page error 或 failed request，场景必须失败，即使 Relay Authority 已经 completed。Bun 负责 ConPTY/controller；一个薄 Node helper 承载官方 Playwright，避免 Bun 直接浏览器管道兼容问题，不实现浏览器协议。
 
 ## 已实现的适配器

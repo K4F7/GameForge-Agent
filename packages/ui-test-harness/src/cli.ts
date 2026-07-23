@@ -14,8 +14,8 @@ import { safeEvidenceSegment, safeRelayUrl } from "./cli-safety.js";
 import type { HarnessResult } from "./contracts.js";
 import { UiTestController } from "./controller.js";
 
-const options = parseArguments(process.argv.slice(2));
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
+const options = parseArguments(process.argv.slice(2));
 const relay = new RunRelayClient({
   baseUrl: options.relayUrl,
   timeoutMilliseconds: 10_000,
@@ -103,7 +103,7 @@ function parseArguments(args: string[]): {
     ...(browserChannel === undefined ? {} : { browserChannel }),
     observationHoldMs: positiveInteger(value("--observation-hold-ms", "10000")),
     ...(sessionId === undefined ? {} : { sessionId: safeEvidenceSegment(sessionId, "--session-id") }),
-    ...(taskId === undefined ? {} : { taskId, runId: existingRunId!, projectId: existingProjectId! }),
+    ...(taskId === undefined ? {} : { taskId, runId: existingRunId!, projectId: safeEvidenceSegment(existingProjectId!, "--project-id") }),
   };
 }
 

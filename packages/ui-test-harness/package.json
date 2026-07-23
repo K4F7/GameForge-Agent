@@ -16,6 +16,7 @@
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit",
     "test": "vitest run src",
+    "verify:dependencies": "bun scripts/verify-dependencies.ts",
     "run:headless": "bun run build && bun dist/cli.js --headless",
     "run:headed": "bun run build && bun dist/cli.js --headed"
   },
