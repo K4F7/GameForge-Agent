@@ -193,9 +193,11 @@ export class GameVerifier {
   async #screenshotPath(projectPath: string): Promise<string> {
     const metadata = await verifiedDirectory(path.join(projectPath, ".gameforge"), "Verifier metadata directory");
     const directory = path.join(metadata, "verification");
-    const info = await lstat(directory).catch(() => undefined);
-    if (info === undefined) await mkdir(directory);
-    else if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Verifier screenshot directory is unsafe.");
+    await mkdir(directory).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    });
+    const info = await lstat(directory);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Verifier screenshot directory is unsafe.");
     return path.join(directory, `${randomUUID()}.png`);
   }
 }

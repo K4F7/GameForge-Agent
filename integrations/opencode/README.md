@@ -14,7 +14,7 @@ bun run --filter @gameforge/integrations check
 bun run --filter @gameforge/integrations test
 ```
 
-2026-07-23 实际验证结果：类型检查通过，5 个测试文件共 17 个测试通过；审计结果以同一提交的 CI/本地命令输出为准。
+2026-07-24 实际验证结果：类型检查通过，5 个测试文件共 28 个测试通过；审计结果以同一提交的 CI/本地命令输出为准。
 
 ```powershell
 $env:OPENCODE_SERVER_URL='http://127.0.0.1:4096'
@@ -23,7 +23,9 @@ $env:GAMEFORGE_RUN_ID='<可选 runId>'
 bun run --filter @gameforge/integrations observe:opencode
 ```
 
-原始 `directory/payload`、`type/properties`、可用时的 SSE `id:` 以及本地连续 `sequence` 写入忽略目录。官方 SDK 自动以 `Last-Event-ID` 重连；若服务端没有发送 `id:`，记录中的 `sseId` 为 `null`，不得把本地 `sequence` 冒充 OpenCode 原生 ID。`after` 是落盘 Evidence 的只读游标，不代表 OpenCode 服务端支持 `after` 查询参数。
+原始 `directory/payload`、`type/properties`、可用时的 SSE `id:` 以及本地连续 `sequence` 写入忽略目录。官方 SDK 负责传输异常重试；薄适配层在服务端正常结束 SSE 响应时重新订阅，两条路径都使用最后一个原生 `id:` 发送 `Last-Event-ID`，并遵循服务端 `retry:`（上限 30 秒）。若服务端没有发送 `id:`，记录中的 `sseId` 为 `null`，不得把本地 `sequence` 冒充 OpenCode 原生 ID；空 `id:` 同样记录为 `null`，用于清除恢复游标，不参与去重，后续重连也不得发送空的 `Last-Event-ID` 请求头。`after` 是落盘 Evidence 的只读游标，不代表 OpenCode 服务端支持 `after` 查询参数。
+
+每个 Evidence 文件使用带 owner hostname、PID 与随机 ownership token 的单写者锁。活跃 owner 存在时第二写者失败；writer 退出时只删除 token 仍与自身匹配的锁，路径被替换后不得误删新 writer 的锁。若进程被外层强制终止而未执行 `finally`，后续 Observer 仅对同主机锁检查 owner PID，并只在确认该 PID 已不存在时恢复 stale lock；其他主机的锁保持 fail closed。旧版无 hostname 或无法验证 owner 的锁沿用保守兼容规则，不能在所有权不明确时自动删除。若中断同时留下无换行的半写 NDJSON 尾记录，只读 `replay()` 仍返回此前完整记录；新的 writer 在取得独占锁后基于原始字节的最后一个 LF 截断无法解析的尾段，若尾段已是完整 UTF-8 JSON 则仅补换行保留。已经换行的损坏记录继续 fail closed，不得自动跳过或改写。
 
 真实同任务记录见 `experiments/2026-07-18-codearts-opencode-douyin-comparison/`。它验证本地 Task/MCP/玩法/构建边界，不代表 OpenCode 取代 CodeArts 主智能体。
 

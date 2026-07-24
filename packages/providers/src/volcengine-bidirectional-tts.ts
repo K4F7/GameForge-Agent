@@ -5,6 +5,8 @@ import { z } from "zod";
 const DEFAULT_ENDPOINT = "wss://openspeech.bytedance.com/api/v3/tts/bidirection";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_AUDIO_BYTES = 64 * 1024 * 1024;
+const MAX_QUEUED_MESSAGES = 256;
+const MAX_QUEUED_MESSAGE_BYTES = 16 * 1024 * 1024;
 
 export const volcengineBidirectionalTtsRequestSchema = z.strictObject({
   text: z.string().trim().min(1).max(5_000),
@@ -263,29 +265,67 @@ export function decodeVolcengineTtsMessage(bytes: Uint8Array): DecodedVolcengine
     ...(connectId === undefined ? {} : { connectId }), ...(errorCode === undefined ? {} : { errorCode }), payload: bytes.slice(offset) };
 }
 
-function createMessageQueue(socket: WebSocket, timeoutMs: number) {
+export function createMessageQueue(socket: WebSocket, timeoutMs: number) {
   const queue: DecodedVolcengineTtsMessage[] = [];
-  const waiters: Array<(message: DecodedVolcengineTtsMessage) => void> = [];
-  const failures: Array<(error: Error) => void> = [];
+  const waiters: Array<{
+    resolve: (message: DecodedVolcengineTtsMessage) => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }> = [];
+  let queuedBytes = 0;
+  let terminalFailure: Error | undefined;
+  const fail = (error: Error): void => {
+    terminalFailure ??= error;
+    while (waiters.length > 0) {
+      const waiter = waiters.shift()!;
+      clearTimeout(waiter.timer);
+      waiter.reject(terminalFailure);
+    }
+  };
   const onMessage = (data: RawData) => {
     try {
       const message = decodeVolcengineTtsMessage(toBytes(data));
       const waiter = waiters.shift();
-      failures.shift();
-      if (waiter === undefined) queue.push(message);
-      else waiter(message);
+      if (waiter === undefined) {
+        if (queue.length >= MAX_QUEUED_MESSAGES || queuedBytes + message.payload.byteLength > MAX_QUEUED_MESSAGE_BYTES) {
+          fail(new Error("Volcengine TTS response queue exceeded the bounded buffer."));
+          queue.splice(0); queuedBytes = 0;
+          socket.close();
+          return;
+        }
+        queue.push(message); queuedBytes += message.payload.byteLength;
+      } else {
+        clearTimeout(waiter.timer);
+        waiter.resolve(message);
+      }
     } catch (error) {
-      failures.shift()?.(error instanceof Error ? error : new Error("Invalid Volcengine TTS response."));
+      const failure = error instanceof Error ? error : new Error("Invalid Volcengine TTS response.");
+      queue.splice(0); queuedBytes = 0;
+      fail(failure);
+      socket.close();
     }
   };
+  const onError = (): void => fail(new Error("Volcengine TTS connection failed."));
+  const onClose = (): void => fail(new Error("Volcengine TTS connection closed."));
   socket.on("message", onMessage);
+  socket.on("error", onError);
+  socket.on("close", onClose);
   return {
-    next: () => queue.length > 0
-      ? Promise.resolve(queue.shift()!)
+    next: () => terminalFailure !== undefined
+      ? Promise.reject(terminalFailure)
+      : queue.length > 0
+      ? Promise.resolve(queue.shift()!).then((message) => { queuedBytes -= message.payload.byteLength; return message; })
       : new Promise<DecodedVolcengineTtsMessage>((resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error("Timed out waiting for Volcengine TTS response.")), timeoutMs);
-          waiters.push((message) => { clearTimeout(timer); resolve(message); });
-          failures.push((error) => { clearTimeout(timer); reject(error); });
+          const waiter = {
+            resolve,
+            reject,
+            timer: setTimeout(() => {
+              const index = waiters.indexOf(waiter);
+              if (index >= 0) waiters.splice(index, 1);
+              reject(new Error("Timed out waiting for Volcengine TTS response."));
+            }, timeoutMs),
+          };
+          waiters.push(waiter);
         }),
     async expect(event: VolcengineTtsEvent) {
       const message = await this.next();
@@ -293,7 +333,12 @@ function createMessageQueue(socket: WebSocket, timeoutMs: number) {
       if (message.event !== event) throw new Error(`Expected Volcengine TTS event ${event}, received ${message.event ?? "none"}.`);
       return message;
     },
-    dispose: () => socket.off("message", onMessage),
+    dispose: () => {
+      socket.off("message", onMessage);
+      socket.off("error", onError);
+      socket.off("close", onClose);
+      fail(new Error("Volcengine TTS response queue was disposed."));
+    },
   };
 }
 

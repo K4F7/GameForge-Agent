@@ -27,7 +27,16 @@ export class RelayAuthorityDriver implements GameForgeAuthorityDriver {
       this.#client.getTask(this.options.taskId),
       this.#replayNew(),
     ]);
-    const last = events.at(-1) ?? this.#lastEvent;
+    if (task.runId !== this.options.runId) {
+      throw new Error(`Authority Run mismatch: expected ${this.options.runId}, received ${task.runId}`);
+    }
+    if (this.options.projectId !== undefined && task.projectId !== this.options.projectId) {
+      throw new Error(`Authority Project mismatch: expected ${this.options.projectId}, received ${task.projectId ?? "<none>"}`);
+    }
+    const candidate = events.at(-1);
+    const last = candidate !== undefined && candidate.sequence > (this.#lastEvent?.sequence ?? 0)
+      ? candidate
+      : this.#lastEvent;
     this.#lastEvent = last;
     return {
       taskId: task.taskId,

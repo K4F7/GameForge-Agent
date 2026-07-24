@@ -192,7 +192,7 @@ Provider adapters
   └─ AudioGenerationProvider      MiniMax Music 2.6已实现，真实账号待验证
 ```
 
-MCP工具只执行一次明确业务操作、返回结构化结果并记录元数据，不在内部进行自主规划、反思或循环调用。共享传输层只对 408、429、5xx、超时和网络错误做最多三次的有界退避，并把认证、授权、配额、限流、调用方取消、超时、网络、服务端和请求错误分类为 `ProviderRequestError`；调用方取消立即停止，错误消息不读取或回显上游 body。Seedream 生图、MiniMax 配乐和 TTS submit 默认单次发送，因为官方没有幂等保证；TTS query/materialize 与 Freesound GET 可以安全重试。任务拆解与业务级重试仍由CodeArts负责。
+MCP工具只执行一次明确业务操作、返回结构化结果并记录元数据，不在内部进行自主规划、反思或循环调用。共享传输层只对 408、429、5xx、超时和网络错误做最多三次的有界退避，并把认证、授权、配额、限流、调用方取消、超时、网络、服务端和请求错误分类为 `ProviderRequestError`；调用方取消在请求中或退避等待中都必须立即停止，不能再发送下一次请求。即使底层 `fetch` 忽略 signal 并迟到返回成功响应，也必须取消该响应 body 并保留 cancelled 结果，不能把取消翻转为成功；错误消息不读取或回显上游 body。Seedream 生图、MiniMax 配乐和 TTS submit 默认单次发送，因为官方没有幂等保证；TTS query/materialize 与 Freesound GET 可以安全重试。任务拆解与业务级重试仍由CodeArts负责。
 
 所有外部资产都进入统一Manifest，至少记录：
 
@@ -225,7 +225,7 @@ type AssetProvenance = {
 ## 实际结果
 
 已完成官方资料调研、架构决策、Provider配置、运行事件和资产Manifest契约，并实现Seedream文生图与Freesound搜索适配器。Seedream适配器已通过模拟HTTP响应验证Bearer请求、超时/网络错误脱敏、受限 JSON、Base64解码、模型一致性、图片格式识别、SHA-256和资产来源记录；同时限制官方API主机、参考图主机白名单和最大响应字节数。Freesound适配器已通过模拟响应验证Token Header、许可证查询、预览选择、非商业许可证拒绝、官方端点限制和错误脱敏。MCP仅在服务端同时配置API密钥与用途声明时注册`search_sound_asset`。
-此外已经实现 Freesound preview 素材化、安全资产存储、MiniMax 纯音乐生成，以及火山异步长文本 TTS 的提交、查询和素材化闭环。Freesound preview 下载按 16 MiB 上限流式读取，缺少或伪造 `Content-Length` 的 chunked 响应也会在越界时取消，不会先执行无界 `arrayBuffer()`。MiniMax 适配器测试覆盖官方 Bearer/URL/字段、hex 解码、MP3 魔数、Provider 状态、响应上限、单次 POST、超时和凭据脱敏；TTS 适配器测试覆盖官方 Header/URL/字段、签名句柄、跨项目拒绝、下载主机白名单、格式识别、哈希与凭据脱敏。当前仍未使用真实付费账号验证音乐/音色效果、生成耗时、实际 CDN 主机或输出商用权。
+此外已经实现 Freesound preview 素材化、安全资产存储、MiniMax 纯音乐生成，以及火山异步长文本 TTS 的提交、查询和素材化闭环。Freesound preview 下载按 16 MiB 上限流式读取，缺少或伪造 `Content-Length` 的 chunked 响应也会在越界时取消，不会先执行无界 `arrayBuffer()`。MiniMax 适配器测试覆盖官方 Bearer/URL/字段、hex 解码、MP3 魔数、Provider 状态、响应上限、单次 POST、超时和凭据脱敏；TTS 适配器测试覆盖官方 Header/URL/字段、签名句柄、跨项目拒绝、下载主机白名单、格式识别、哈希与凭据脱敏，下载响应缺少或使用不支持的音频 Content-Type 时会先取消 body 再拒绝。当前仍未使用真实付费账号验证音乐/音色效果、生成耗时、实际 CDN 主机或输出商用权。
 
 工作台侧已经增加严格的Wire RunEvent契约、连续序列批次校验、轮询回放函数和SSE客户端边界；它会忽略重复事件，并在序列缺口时要求回补。仓库现在包含只负责保存和发布事件的本地Run Relay，配置`VITE_AGENT_BASE_URL`后工作台可以创建或连接真实运行。Relay不执行游戏生成任务，也不实现Agent循环；任务执行和工具编排仍由CodeArts负责。未配置Relay时界面继续明确显示“事件演示 · 未连接Agent”。
 

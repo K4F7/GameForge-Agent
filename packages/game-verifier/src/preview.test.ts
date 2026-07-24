@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GameProjectGenerator } from "@gameforge/generator";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GamePreviewManager, type GamePreviewRuntime } from "./preview.js";
 
 const roots: string[] = [];
@@ -94,6 +94,37 @@ describe("GamePreviewManager", () => {
     runtime.nextUrl = "http://preview.example.com/game/";
     await expect(manager.start({ projectId: "safety-sprint" })).rejects.toThrow("loopback HTTP");
     expect(runtime.closes).toBe(1);
+  });
+
+  it("closes a server that resolves after startup times out", async () => {
+    const { projects } = await fixture();
+    let resolveServer = (_server: { url: string; close(): Promise<void> }): void => undefined;
+    let markStarted = (): void => undefined;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    const close = vi.fn(async () => undefined);
+    const runtime: GamePreviewRuntime = {
+      startServer: async () => {
+        markStarted();
+        return await new Promise((resolve) => { resolveServer = resolve; });
+      },
+    };
+    const manager = new GamePreviewManager({ projectsRoot: projects, runtime });
+    vi.useFakeTimers();
+    try {
+      const start = manager.start({ projectId: "safety-sprint" });
+      const rejected = expect(start).rejects.toThrow("Preview server startup timed out.");
+      await started;
+      await vi.advanceTimersByTimeAsync(30_000);
+      await rejected;
+
+      resolveServer({ url: "http://127.0.0.1:4173/", close });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("serves and stops a real generated project through the managed preview", async () => {

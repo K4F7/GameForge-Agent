@@ -57,6 +57,7 @@ export async function recoverRunEvents<Event extends RunRecoveryEvent>(options: 
 
   const accept = (event: Event): void => {
     if (event.sequence <= cursor) return;
+    if (terminal) throw new Error(`Run recovery received sequence ${event.sequence} after terminal event ${cursor}.`);
     if (event.sequence !== cursor + 1) throw new RunRecoverySequenceError(cursor + 1, event.sequence);
     options.onEvent(event);
     cursor = event.sequence;

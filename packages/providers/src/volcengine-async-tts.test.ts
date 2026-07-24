@@ -96,6 +96,44 @@ describe("VolcengineAsyncTtsProvider", () => {
     expect(result.provenance.sha256).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it("cancels an audio body with an unsupported content type", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull() { /* keep the unsupported body unread */ },
+      cancel() { cancelled = true; },
+    });
+    const fetchMock = vi.fn<FetchLike>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: "task-42", task_status: 0 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        task_id: "task-42",
+        task_status: 1,
+        audio_url: "https://audio.example.volces.com/output/task-42.mp3",
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(body, {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      }));
+    const tts = provider(fetchMock);
+    const submitted = await tts.submit(baseRequest);
+
+    await expect(tts.materialize({ projectId: baseRequest.projectId, jobHandle: submitted.jobHandle }))
+      .rejects.toThrow("unsupported content type");
+
+    expect(cancelled).toBe(true);
+  });
+
+  it("cancels chunked API JSON as soon as the bounded response limit is exceeded", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new Uint8Array(1024 * 1024 + 1)); },
+      cancel() { cancelled = true; },
+    });
+    const tts = provider(async () => new Response(body, { status: 200 }));
+
+    await expect(tts.submit(baseRequest)).rejects.toThrow("not valid bounded JSON");
+    expect(cancelled).toBe(true);
+  });
+
   it("rejects tampered, cross-project, untrusted-host, and spoofed audio results", async () => {
     const fetchMock = vi.fn<FetchLike>()
       .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: "task-42", task_status: 0 }), { status: 200 }))

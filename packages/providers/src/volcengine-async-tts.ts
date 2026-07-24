@@ -194,6 +194,7 @@ export class VolcengineAsyncTtsProvider {
     if (contentType === undefined || ![
       "audio/mpeg", "audio/mp3", "audio/ogg", "audio/wav", "audio/x-wav", "application/octet-stream",
     ].includes(contentType)) {
+      if (response.body !== null) await response.body.cancel().catch(() => undefined);
       throw new Error("TTS audio response used an unsupported content type.");
     }
     const declaredLength = Number(response.headers.get("content-length"));
@@ -312,8 +313,7 @@ async function parseApiResponse(response: Response, operation: string): Promise<
       if (response.body !== null) await response.body.cancel().catch(() => undefined);
       throw new Error("oversized");
     }
-    const text = await response.text();
-    if (new TextEncoder().encode(text).byteLength > MAX_JSON_BYTES) throw new Error("oversized");
+    const text = new TextDecoder().decode(await readBoundedBody(response, MAX_JSON_BYTES, "oversized", "empty"));
     input = JSON.parse(text) as unknown;
   } catch {
     throw new Error(`TTS ${operation} response was not valid bounded JSON.`);
@@ -325,22 +325,34 @@ async function parseApiResponse(response: Response, operation: string): Promise<
   return parsed;
 }
 
-async function readBoundedBody(response: Response, limit: number): Promise<Uint8Array> {
-  if (response.body === null) throw new Error("TTS audio response was empty.");
+async function readBoundedBody(
+  response: Response,
+  limit: number,
+  exceededMessage = "TTS audio exceeds the byte limit.",
+  emptyMessage = "TTS audio response was empty.",
+): Promise<Uint8Array> {
+  if (response.body === null) throw new Error(emptyMessage);
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let length = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    length += value.byteLength;
-    if (length > limit) {
-      await reader.cancel();
-      throw new Error("TTS audio exceeds the byte limit.");
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > limit) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error(exceededMessage);
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  } finally {
+    reader.releaseLock();
   }
-  if (length === 0) throw new Error("TTS audio response was empty.");
+  if (length === 0) throw new Error(emptyMessage);
   const output = new Uint8Array(length);
   let offset = 0;
   for (const chunk of chunks) {

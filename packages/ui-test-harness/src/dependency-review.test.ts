@@ -3,7 +3,7 @@ import { assertExactDependencyCoverage, verifyHarnessDependencyReview } from "./
 
 describe("UI harness dependency review", () => {
   it("verifies pinned versions, licenses, and runtime dependency closure", async () => {
-    await expect(verifyHarnessDependencyReview()).resolves.toEqual({ verified: 4 });
+    await expect(verifyHarnessDependencyReview()).resolves.toEqual({ verified: 5 });
   });
 
   it("rejects duplicate reviewed dependency names", () => {

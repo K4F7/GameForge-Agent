@@ -6,6 +6,8 @@
 
 点击编辑器状态栏中的 `GameForge: disconnected` 会执行本地连接命令。这样不依赖 DevTool 已占用的 `Ctrl+Shift+P` 快捷键。
 
+连接管理器在底层 client 同步启动失败时进入 `waiting for controller`，清理失败 client，并按有界退避重新读取凭据和连接；坏 client 不能永久阻塞后续手动或自动重连。
+
 ```powershell
 bun run --filter gameforge-douyin-devtool-extension check
 bun run --filter gameforge-douyin-devtool-extension test

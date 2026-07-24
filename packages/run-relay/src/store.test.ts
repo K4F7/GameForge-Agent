@@ -95,4 +95,19 @@ describe("RunStore", () => {
       url: "http://127.0.0.1:5173/",
     })]);
   });
+
+  it("rejects restored runs whose event sequence or terminal status is inconsistent", () => {
+    const started = { type: "run.started" as const, runId: "run-1", sequence: 1, emittedAt };
+    expect(() => new RunStore().restore({ runs: [{
+      runId: "run-1", status: "running", started,
+      events: [started, { type: "run.completed", runId: "run-1", sequence: 2, emittedAt }],
+    }] })).toThrow("status");
+    expect(() => new RunStore().restore({ runs: [{
+      runId: "run-1", status: "running", started,
+      events: [started, { type: "phase.started", runId: "run-1", sequence: 3, emittedAt, phase: "spec", detail: "invalid gap" }],
+    }] })).toThrow("contiguous");
+    expect(() => new RunStore().restore({ runs: [{
+      runId: "run-1", status: "repair", started, events: [started],
+    }] })).toThrow("status");
+  });
 });

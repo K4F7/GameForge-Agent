@@ -10,10 +10,9 @@ import { DouyinBridgeController, type DouyinRuntimeAction } from "./douyin-bridg
 
 const rendezvousPath = resolve(tmpdir(), "gameforge-douyin-bridge-host.json");
 const lockPath = resolve(tmpdir(), "gameforge-douyin-bridge-host.lock");
-await acquireLock();
+const lockOwner = await acquireLock();
 const controller = new DouyinBridgeController();
 const token = randomBytes(32).toString("base64url");
-await controller.start();
 
 const server = createServer(async (request, response) => {
   response.setHeader("content-type", "application/json; charset=utf-8");
@@ -42,13 +41,21 @@ const server = createServer(async (request, response) => {
   }
 });
 
-await new Promise<void>((resolveListen, reject) => {
-  server.once("error", reject);
-  server.listen(0, "127.0.0.1", resolveListen);
-});
-const address = server.address() as AddressInfo;
-await writeRendezvous(address.port, token);
-process.stderr.write(`GameForge Douyin bridge host listening on http://127.0.0.1:${address.port}\n`);
+try {
+  await controller.start();
+  await new Promise<void>((resolveListen, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = server.address() as AddressInfo;
+  await writeRendezvous(address.port, token);
+  process.stderr.write(`GameForge Douyin bridge host listening on http://127.0.0.1:${address.port}\n`);
+} catch (error) {
+  await controller.stop().catch(() => undefined);
+  await closeServer();
+  await releaseLock(lockOwner);
+  throw error;
+}
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => void shutdown(signal === "SIGINT" ? 130 : 143));
@@ -57,18 +64,18 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 async function shutdown(exitCode: number): Promise<void> {
   await controller.stop().catch(() => undefined);
   await rm(rendezvousPath, { force: true }).catch(() => undefined);
-  await rm(lockPath, { force: true }).catch(() => undefined);
-  server.closeAllConnections();
-  await new Promise<void>((resolveClose) => server.close(() => resolveClose())).catch(() => undefined);
+  await releaseLock(lockOwner);
+  await closeServer();
   process.exit(exitCode);
 }
 
-async function acquireLock(): Promise<void> {
+async function acquireLock(): Promise<string> {
+  const owner = String(process.pid);
   try {
     const handle = await open(lockPath, "wx", 0o600);
-    await handle.writeFile(String(process.pid), "utf8");
+    await handle.writeFile(owner, "utf8");
     await handle.close();
-    return;
+    return owner;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   }
@@ -78,8 +85,20 @@ async function acquireLock(): Promise<void> {
   }
   await rm(lockPath, { force: true });
   const handle = await open(lockPath, "wx", 0o600);
-  await handle.writeFile(String(process.pid), "utf8");
+  await handle.writeFile(owner, "utf8");
   await handle.close();
+  return owner;
+}
+
+async function releaseLock(owner: string): Promise<void> {
+  const current = await readFile(lockPath, "utf8").catch(() => undefined);
+  if (current === owner) await rm(lockPath, { force: true }).catch(() => undefined);
+}
+
+async function closeServer(): Promise<void> {
+  server.closeAllConnections();
+  if (!server.listening) return;
+  await new Promise<void>((resolveClose) => server.close(() => resolveClose())).catch(() => undefined);
 }
 
 function isProcessAlive(pid: number): boolean {

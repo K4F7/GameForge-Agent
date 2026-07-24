@@ -62,6 +62,9 @@ export type GuiSnapshot = {
   screenshotPath?: string;
 };
 
+export type GuiWaitState = "attached" | "detached" | "visible" | "hidden";
+export type GuiWaitOptions = { state: GuiWaitState; timeoutMs: number };
+
 export type TuiObserverSnapshot = {
   kind: "independent-xterm";
   sessionId: string;
@@ -113,6 +116,7 @@ export interface OpenChamberGuiDriver {
   click(selector: string): Promise<void>;
   fill(selector: string, value: string): Promise<void>;
   press(selector: string, key: string): Promise<void>;
+  waitFor(selector: string, options: GuiWaitOptions): Promise<void>;
   snapshot(label: string): Promise<GuiSnapshot>;
   close(): Promise<void>;
 }
@@ -158,6 +162,7 @@ export type HarnessStep =
   | { kind: "gui.click"; selector: string }
   | { kind: "gui.fill"; selector: string; value: string }
   | { kind: "gui.press"; selector: string; key: string }
+  | { kind: "gui.wait"; selector: string; options: GuiWaitOptions }
   | { kind: "capture"; label: string }
   | { kind: "authority.wait"; gate: AuthorityGate };
 
@@ -175,6 +180,7 @@ export type HarnessOptions = {
   observationHoldMs: number;
   activityPollMs: number;
   inactivityTimeoutMs: number;
+  shutdownTimeoutMs?: number;
   taskId?: string;
   runId?: string;
   projectId?: string;

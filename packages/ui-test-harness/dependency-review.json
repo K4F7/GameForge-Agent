@@ -3,6 +3,15 @@
   "verification": "bun run --filter @gameforge/ui-test-harness verify:dependencies",
   "dependencies": [
     {
+      "name": "@opencode-ai/sdk",
+      "version": "1.18.3",
+      "license": "MIT",
+      "source": "https://github.com/anomalyco/opencode",
+      "purpose": "Submit prompts to the attached CodeArts session through the native OpenCode-compatible session API while preserving the original TUI VT evidence stream.",
+      "officialGap": "Windows ConPTY input injection cannot submit CodeArts prompts after the TUI enables Win32 input mode while VT capture remains active.",
+      "transitiveRuntimeDependencies": ["cross-spawn"]
+    },
+    {
       "name": "@xterm/headless",
       "version": "6.0.0",
       "license": "MIT",
@@ -26,7 +35,7 @@
       "license": "MIT",
       "source": "https://github.com/sursaone/bun-pty",
       "purpose": "Drive the installed CodeArts TUI through Windows ConPTY from the Bun runtime.",
-      "officialGap": "OpenCode SDK and CodeArts do not provide a deterministic API for real interactive TUI keyboard and resize behavior.",
+      "officialGap": "OpenCode SDK and CodeArts do not provide a deterministic API for real interactive TUI keyboard and resize behavior; bun-pty kill emits its exit event before Windows descendant processes are guaranteed to have terminated, so the Harness must await OS process-tree shutdown.",
       "transitiveRuntimeDependencies": []
     },
     {
