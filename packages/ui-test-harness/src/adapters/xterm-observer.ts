@@ -51,7 +51,8 @@ export class XtermTuiObserverDriver implements CodeArtsTuiObserverDriver {
   }
 
   async #closeOwnedResources(): Promise<void> {
-    await this.#pending; this.#unsubscribe?.(); this.#unsubscribe = undefined;
+    const unsubscribe = this.#unsubscribe; this.#unsubscribe = undefined; unsubscribe?.();
+    await this.#pending;
     this.#terminal?.dispose(); this.#terminal = undefined; this.#session = undefined;
     const windowProcess = this.#windowProcess; this.#windowProcess = undefined; this.#visible = false;
     if (windowProcess !== undefined) {

@@ -19,6 +19,21 @@ describe("MVP adapters", () => {
     expect(await observer.screen()).toContain("first\nsecond"); expect((await observer.snapshot()).sessionId).toBe(session.sessionId); await observer.close();
   });
 
+  it("settles output emitted while the xterm observer unsubscribes", async () => {
+    let listener: ((frame: TuiOutputFrame) => void) | undefined;
+    const source: CodeArtsTuiDriver = { kind: "codearts-original-tui", async start() { return snapshot(); }, async read() { return snapshot(); },
+      subscribeOutput(value) { listener = value; return () => { listener?.({ sessionId: session.sessionId, sequence: 1, data: "late" }); listener = undefined; }; },
+      async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = new XtermTuiObserverDriver();
+    await observer.open({ session, source, visible: false, viewport: { width: 800, height: 600 } });
+    await observer.close();
+    await expect(Promise.race([
+      observer.open({ session, source, visible: false, viewport: { width: 800, height: 600 } }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("xterm reopen timed out")), 100)),
+    ])).resolves.toMatchObject({ sessionId: session.sessionId });
+    await observer.close();
+  });
+
   it("drives a loopback page and writes a correlated PNG screenshot", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-playwright-")); roots.push(root);
     const server = createServer((_request, response) => { response.writeHead(200, { "content-type": "text/html" }); response.end("<title>OpenChamber Test</title><button id=go>Go</button>"); });
