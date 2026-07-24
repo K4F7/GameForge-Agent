@@ -9,7 +9,7 @@ const roots: string[] = [];
 const execFileAsync = promisify(execFile);
 const CONPTY_FIXTURE_TIMEOUT_MS = 40_000;
 const CONPTY_TEST_TIMEOUT_MS = 45_000;
-afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
+afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))); });
 
 describe("ConPtyCodeArtsDriver", () => {
   it("reports an exited snapshot after stopping a real ConPTY session", async () => {
