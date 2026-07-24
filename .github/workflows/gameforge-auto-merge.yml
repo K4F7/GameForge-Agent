@@ -24,6 +24,7 @@ jobs:
       }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
       - name: Verify gates and enable squash auto-merge
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
@@ -169,6 +170,38 @@ jobs:
               return;
             }
 
-            const mutation = "mutation($pullRequestId: ID!) { enablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId, mergeMethod: SQUASH }) { pullRequest { number } } }";
-            await github.graphql(mutation, { pullRequestId: pullRequest.id });
-            core.notice("Enabled squash auto-merge for PR #" + pull_number + " at " + pr.head.sha + ".");
+            const { pathToFileURL } = require("node:url");
+            const policyUrl = pathToFileURL(`${process.env.GITHUB_WORKSPACE}/.github/scripts/auto-merge-policy.js`).href;
+            const { decideMergeAction } = await import(policyUrl);
+            const decision = decideMergeAction({
+              mergeStateStatus: pullRequest.mergeStateStatus,
+              mergeable: pullRequest.mergeable,
+              reviewDecision: pullRequest.reviewDecision,
+              unresolvedThreads: unresolved,
+              hasAutoMergeRequest: Boolean(pullRequest.autoMergeRequest),
+            });
+
+            if (decision.kind === "merge-now") {
+              const { data: merge } = await github.rest.pulls.merge({
+                owner,
+                repo,
+                pull_number,
+                sha: pr.head.sha,
+                merge_method: "squash",
+              });
+              if (!merge.merged) {
+                core.setFailed("GitHub did not merge PR #" + pull_number + ": " + merge.message);
+                return;
+              }
+              core.notice("Squash-merged clean PR #" + pull_number + " at " + pr.head.sha + ".");
+              return;
+            }
+
+            if (decision.kind === "enable-auto-merge") {
+              const mutation = "mutation($pullRequestId: ID!) { enablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId, mergeMethod: SQUASH }) { pullRequest { number } } }";
+              await github.graphql(mutation, { pullRequestId: pullRequest.id });
+              core.notice("Enabled squash auto-merge for blocked PR #" + pull_number + " at " + pr.head.sha + ".");
+              return;
+            }
+
+            core.notice("PR #" + pull_number + " is not ready for a merge mutation: " + decision.reason + ".");
