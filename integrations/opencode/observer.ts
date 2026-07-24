@@ -133,6 +133,8 @@ async function removeDeadWriterLock(lockFile: string): Promise<boolean> {
     const code = (error as NodeJS.ErrnoException).code;
     if (code !== "ESRCH") return false;
   }
+  const current = await readFile(lockFile, "utf8").catch(() => undefined);
+  if (current !== raw) return false;
   return unlink(lockFile).then(() => true, (error: NodeJS.ErrnoException) => error.code === "ENOENT");
 }
 
@@ -141,25 +143,31 @@ export function createSdkEventSource(options: { baseUrl: string; directory: stri
   return async (signal) => {
     const client = createOpencodeClient({ baseUrl, directory: path.resolve(options.directory), signal });
     let lastEventId: string | undefined;
-    let retryDelay = 3_000;
-    async function* frames(): AsyncGenerator<OpenCodeEventFrame> {
-      while (!signal.aborted) {
-        const ids = new WeakMap<object, string>();
-        const result = await client.global.event({
-          ...(lastEventId === undefined ? {} : { headers: { "Last-Event-ID": lastEventId } }),
-          onSseEvent: (frame: { data: unknown; id?: string; retry?: number }) => {
-            if (frame.id !== undefined) lastEventId = frame.id === "" ? undefined : frame.id;
-            if (frame.retry !== undefined) retryDelay = Math.min(Math.max(frame.retry, 0), 30_000);
-            if (frame.id !== undefined && frame.id !== "" && typeof frame.data === "object" && frame.data !== null) ids.set(frame.data, frame.id);
-          },
-        });
-        for await (const data of result.stream) {
-          const sseId = ids.get(data);
-          yield { data, ...(sseId === undefined ? {} : { sseId }) };
+      let retryDelay = 3_000;
+      async function* frames(): AsyncGenerator<OpenCodeEventFrame> {
+        while (!signal.aborted) {
+          const ids = new WeakMap<object, string>();
+          try {
+            const result = await client.global.event({
+              ...(lastEventId === undefined ? {} : { headers: { "Last-Event-ID": lastEventId } }),
+              onSseEvent: (frame: { data: unknown; id?: string; retry?: number }) => {
+                if (frame.id !== undefined) lastEventId = frame.id === "" ? undefined : frame.id;
+                if (frame.retry !== undefined) retryDelay = Math.min(Math.max(frame.retry, 0), 30_000);
+                if (frame.id !== undefined && frame.id !== "" && typeof frame.data === "object" && frame.data !== null) ids.set(frame.data, frame.id);
+              },
+            });
+            for await (const data of result.stream) {
+              const sseId = ids.get(data);
+              yield { data, ...(sseId === undefined ? {} : { sseId }) };
+            }
+          } catch {
+            if (signal.aborted) return;
+            await abortableDelay(retryDelay, signal);
+            continue;
+          }
+          if (!signal.aborted) await abortableDelay(retryDelay, signal);
         }
-        if (!signal.aborted) await abortableDelay(retryDelay, signal);
       }
-    }
     return frames();
   };
 }

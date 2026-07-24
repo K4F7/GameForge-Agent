@@ -300,9 +300,9 @@ export function createMessageQueue(socket: WebSocket, timeoutMs: number) {
       }
     } catch (error) {
       const failure = error instanceof Error ? error : new Error("Invalid Volcengine TTS response.");
-      const waiter = waiters.shift();
-      if (waiter === undefined) fail(failure);
-      else { clearTimeout(waiter.timer); waiter.reject(failure); }
+      queue.splice(0); queuedBytes = 0;
+      fail(failure);
+      socket.close();
     }
   };
   const onError = (): void => fail(new Error("Volcengine TTS connection failed."));

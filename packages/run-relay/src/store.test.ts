@@ -106,5 +106,8 @@ describe("RunStore", () => {
       runId: "run-1", status: "running", started,
       events: [started, { type: "phase.started", runId: "run-1", sequence: 3, emittedAt, phase: "spec", detail: "invalid gap" }],
     }] })).toThrow("contiguous");
+    expect(() => new RunStore().restore({ runs: [{
+      runId: "run-1", status: "repair", started, events: [started],
+    }] })).toThrow("status");
   });
 });

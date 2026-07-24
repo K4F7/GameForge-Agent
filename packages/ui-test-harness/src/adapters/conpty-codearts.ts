@@ -52,6 +52,9 @@ export class ConPtyCodeArtsDriver implements CodeArtsTuiDriver {
     assertTerminalSize(options.columns, options.rows);
     this.#starting = true;
     try {
+    this.#history = "";
+    this.#sequence = 0;
+    this.#win32InputMode = false;
     this.#session = options.session;
     this.#columns = options.columns;
     this.#rows = options.rows;

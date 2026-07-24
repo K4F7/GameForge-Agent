@@ -81,6 +81,18 @@ describe("Volcengine bidirectional TTS protocol", () => {
     await expect(pending).rejects.toThrow("connection closed");
     queue.dispose();
   });
+
+  it("makes a malformed frame terminal even when a consumer is waiting", async () => {
+    const socket = new EventEmitter() as EventEmitter & { close: ReturnType<typeof vi.fn> };
+    socket.close = vi.fn();
+    const queue = createMessageQueue(socket as never, 1_000);
+    const pending = queue.next();
+    socket.emit("message", Uint8Array.from([0]));
+    await expect(pending).rejects.toThrow();
+    await expect(queue.next()).rejects.toThrow();
+    expect(socket.close).toHaveBeenCalledOnce();
+    queue.dispose();
+  });
 });
 
 function audioFrame(payload: Uint8Array): Uint8Array {

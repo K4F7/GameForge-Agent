@@ -205,7 +205,7 @@ export class RunStore {
         }
         previousSequence = event.sequence;
       }
-      if ((terminalStatuses.has(restoredStatus) || terminalStatuses.has(item.status)) && restoredStatus !== item.status) {
+      if (restoredStatus !== item.status) {
         throw new Error("Run snapshot status is inconsistent with its events.");
       }
       this.#runs.set(item.runId, {
