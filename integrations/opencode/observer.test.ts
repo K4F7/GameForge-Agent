@@ -170,6 +170,13 @@ describe("OpenCodeObserver", () => {
     await writeFile(`${outputFile}.lock`, `${JSON.stringify({ pid: 2_147_483_647, createdAt: "2026-07-24T00:00:00.000Z" })}\n`);
     await expect(observer.observe(new AbortController().signal)).resolves.toBeUndefined();
   });
+  it("does not recover a writer lock owned by another host", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-observer-")); roots.push(root); const outputFile = path.join(root, "events.ndjson");
+    const observer = new OpenCodeObserver({ outputFile, observerSessionId: "session-remote-lock", source: async () => (async function* () {})() });
+    await writeFile(`${outputFile}.lock`, `${JSON.stringify({ pid: 2_147_483_647, hostname: "remote-host.invalid", createdAt: "2026-07-24T00:00:00.000Z", token: "remote-writer" })}\n`);
+
+    await expect(observer.observe(new AbortController().signal)).rejects.toThrow("active writer");
+  });
   it("does not remove a replacement writer lock when the old writer exits", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-observer-")); roots.push(root); const outputFile = path.join(root, "events.ndjson");
     const lockFile = `${outputFile}.lock`;

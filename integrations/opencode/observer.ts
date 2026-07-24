@@ -1,5 +1,6 @@
 import { mkdir, open, readFile, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { hostname } from "node:os";
 import path from "node:path";
 import { createOpencodeClient, type GlobalEvent } from "@opencode-ai/sdk";
 
@@ -91,7 +92,7 @@ async function acquireEvidenceLock(lockFile: string, outputFile: string): Promis
       const lock = await open(lockFile, "wx", 0o600);
       const token = randomUUID();
       try {
-        await lock.writeFile(`${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString(), token })}\n`, "utf8");
+        await lock.writeFile(`${JSON.stringify({ pid: process.pid, hostname: hostname(), createdAt: new Date().toISOString(), token })}\n`, "utf8");
         return { file: lock, token };
       } catch (error) {
         await lock.close().catch(() => undefined);
@@ -121,8 +122,9 @@ async function releaseEvidenceLock(lockFile: string, lock: EvidenceLock): Promis
 async function removeDeadWriterLock(lockFile: string): Promise<boolean> {
   const raw = await readFile(lockFile, "utf8").catch(() => undefined);
   if (raw === undefined) return true;
-  let owner: { pid?: unknown };
-  try { owner = JSON.parse(raw) as { pid?: unknown }; } catch { return false; }
+  let owner: { pid?: unknown; hostname?: unknown };
+  try { owner = JSON.parse(raw) as { pid?: unknown; hostname?: unknown }; } catch { return false; }
+  if (typeof owner.hostname === "string" && owner.hostname.toLowerCase() !== hostname().toLowerCase()) return false;
   if (!Number.isSafeInteger(owner.pid) || (owner.pid as number) <= 0) return false;
   try {
     process.kill(owner.pid as number, 0);

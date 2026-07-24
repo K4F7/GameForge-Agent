@@ -136,7 +136,7 @@ export class UiTestController {
       failure = combineFailure(failure, "TUI output evidence failed", outputFailure);
       outputFailure = undefined;
     }
-    if (failure === undefined && cleanupFailure?.status === "rejected") failure = cleanupFailure.reason;
+    if (cleanupFailure?.status === "rejected") failure = combineFailure(failure, "Cleanup failed", cleanupFailure.reason);
 
     let result: HarnessResult = {
       status: failure === undefined ? "completed" : "failed",
@@ -156,7 +156,7 @@ export class UiTestController {
       result = { ...result, failure: errorMessage(failure) };
     }
     try {
-      await withTimeout(this.drivers.evidence.finalize(result), shutdownTimeoutMs, "Evidence finalization");
+      await this.drivers.evidence.finalize(result);
     } catch (error) {
       if (result.status === "completed") {
         result = { ...result, status: "failed", finishedAt: new Date().toISOString(), failure: errorMessage(error) };
