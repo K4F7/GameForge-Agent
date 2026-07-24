@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { decideMergeAction, isOrdinaryDocumentationPath } from "./auto-merge-policy.js";
+import {
+  decideMergeAction,
+  isOrdinaryDocumentationChange,
+  isOrdinaryDocumentationPath,
+} from "./auto-merge-policy.js";
 
 describe("decideMergeAction", () => {
   test("merges immediately when every gate passed and GitHub reports a clean PR", () => {
@@ -50,5 +54,9 @@ describe("isOrdinaryDocumentationPath", () => {
     expect(isOrdinaryDocumentationPath(".codeartsdoer/skills/build/SKILL.md")).toBe(false);
     expect(isOrdinaryDocumentationPath(".codeartsdoer/agents/reviewer.md")).toBe(false);
     expect(isOrdinaryDocumentationPath("docs/example.ts")).toBe(false);
+  });
+
+  test("rejects a mixed change when any policy boundary file is present", () => {
+    expect(isOrdinaryDocumentationChange(["docs/guide.md", ".github/scripts/policy.js"])).toBe(false);
   });
 });

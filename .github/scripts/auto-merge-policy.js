@@ -45,3 +45,10 @@ export function isOrdinaryDocumentationPath(path) {
 
   return path.endsWith(".md");
 }
+
+/**
+ * @param {string[]} paths
+ */
+export function isOrdinaryDocumentationChange(paths) {
+  return paths.length > 0 && paths.every(isOrdinaryDocumentationPath);
+}
