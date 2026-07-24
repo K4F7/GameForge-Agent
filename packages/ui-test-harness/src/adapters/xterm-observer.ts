@@ -25,7 +25,10 @@ export class XtermTuiObserverDriver implements CodeArtsTuiObserverDriver {
       this.#unsubscribe = options.source.subscribeOutput((frame) => {
         if (frame.sessionId !== options.session.sessionId) throw new Error("xterm received output from another session.");
         this.#pending = this.#pending.then(async () => {
-          await new Promise<void>((resolve) => this.#terminal?.write(frame.data, resolve));
+          await new Promise<void>((resolve) => {
+            if (this.#terminal === undefined) { resolve(); return; }
+            this.#terminal.write(frame.data, resolve);
+          });
           if (this.#windowProcess?.stdin?.writable) this.#windowProcess.stdin.write(`${JSON.stringify(frame.data)}\n`);
         });
       });
