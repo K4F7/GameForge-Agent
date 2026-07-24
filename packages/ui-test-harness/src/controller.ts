@@ -16,6 +16,10 @@ import type {
 } from "./contracts.js";
 import { compareActivity, inactiveForMs } from "./watchdog.js";
 
+const MAX_GUI_WAIT_TIMEOUT_MS = 900_000;
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const MAX_PENDING_TUI_OUTPUT_FRAMES = 1_024;
+
 export type HarnessDrivers = {
   tui: CodeArtsTuiDriver;
   tuiObserver: CodeArtsTuiObserverDriver;
@@ -36,8 +40,6 @@ export class UiTestController {
     const session: HarnessSession = { sessionId: this.options.sessionId ?? randomUUID(), startedAt, mode: this.options.mode,
       ...(this.options.taskId === undefined ? {} : { taskId: this.options.taskId }), ...(this.options.runId === undefined ? {} : { runId: this.options.runId }),
       ...(this.options.projectId === undefined ? {} : { projectId: this.options.projectId }) };
-    await this.drivers.evidence.recordSession(session);
-    await this.recordLifecycle(session, "starting");
     let failure: unknown;
     let tuiStarted = false;
     let observerOpened = false;
@@ -46,14 +48,28 @@ export class UiTestController {
     let unsubscribeOutput: (() => void) | undefined;
     let outputQueue = Promise.resolve();
     let outputFailure: unknown;
+    let pendingOutputFrames = 0;
+    const shutdownTimeoutMs = this.options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
+    if (!Number.isSafeInteger(shutdownTimeoutMs) || shutdownTimeoutMs < 1 || shutdownTimeoutMs > 60_000) {
+      throw new Error("Harness shutdownTimeoutMs must be an integer between 1 and 60000.");
+    }
 
     try {
+      await this.drivers.evidence.recordSession(session);
+      await this.recordLifecycle(session, "starting");
       unsubscribeOutput = this.drivers.tui.subscribeOutput((frame) => {
+        if (pendingOutputFrames >= MAX_PENDING_TUI_OUTPUT_FRAMES) {
+          outputFailure ??= new Error(`TUI output evidence queue exceeded ${MAX_PENDING_TUI_OUTPUT_FRAMES} pending frames.`);
+          return;
+        }
+        pendingOutputFrames += 1;
         outputQueue = outputQueue.then(async () => {
           try {
             await this.drivers.evidence.recordTuiOutput(frame);
           } catch (error) {
             outputFailure ??= error;
+          } finally {
+            pendingOutputFrames -= 1;
           }
         });
       });
@@ -61,13 +77,13 @@ export class UiTestController {
       const tui = await this.drivers.tui.start({ session, ...this.options.terminal });
       this.assertTuiSession(session, tui.sessionId);
       await this.drivers.evidence.recordTuiSnapshot(tui);
+      observerOpened = true;
       const observer = await this.drivers.tuiObserver.open({
         session,
         source: this.drivers.tui,
         visible: this.options.mode === "headed/watch",
         viewport: this.options.tuiObserverViewport,
       });
-      observerOpened = true;
       this.assertTuiSession(session, observer.sessionId);
       await this.drivers.evidence.recordTuiObserverSnapshot(observer);
       guiLaunched = true;
@@ -86,35 +102,68 @@ export class UiTestController {
       if (guiLaunched) { await this.captureGui(session, "failed").catch(() => undefined); failureCaptured = true; }
     }
 
-    await outputQueue;
-    if (failure === undefined && outputFailure !== undefined) failure = outputFailure;
+    try { await withTimeout(outputQueue, shutdownTimeoutMs, "TUI output drain"); }
+    catch (error) { failure = combineFailure(failure, "TUI output drain failed", error); }
+    if (outputFailure !== undefined) {
+      failure = combineFailure(failure, "TUI output evidence failed", outputFailure);
+      outputFailure = undefined;
+    }
     if (tuiStarted) {
-      const finalTui = await this.drivers.tui.read().catch(() => undefined);
-      if (finalTui !== undefined) await this.drivers.evidence.recordTuiSnapshot(finalTui);
+      try {
+        const finalTui = await withTimeout(this.drivers.tui.read(), shutdownTimeoutMs, "Final TUI read");
+        await withTimeout(this.drivers.evidence.recordTuiSnapshot(finalTui), shutdownTimeoutMs, "Final TUI evidence");
+      } catch (error) {
+        failure = combineFailure(failure, "Final TUI evidence failed", error);
+      }
     }
     if (guiLaunched && failure === undefined) await this.captureGui(session, "success", true).catch((error) => { failure = error; });
     if (guiLaunched && failure !== undefined && !failureCaptured) await this.captureGui(session, "failed").catch(() => undefined);
-    await this.recordLifecycle(session, "stopping");
+    try {
+      await withTimeout(this.recordLifecycle(session, "stopping"), shutdownTimeoutMs, "Stopping lifecycle evidence");
+    } catch (error) {
+      failure ??= error;
+    }
     const cleanup = await Promise.allSettled([
-      guiLaunched ? this.drivers.gui.close() : Promise.resolve(),
-      observerOpened ? this.drivers.tuiObserver.close() : Promise.resolve(),
-      tuiStarted ? this.drivers.tui.stop(failure === undefined ? "completed" : "failed") : Promise.resolve(),
+      guiLaunched ? withTimeout(this.drivers.gui.close(), shutdownTimeoutMs, "GUI cleanup") : Promise.resolve(),
+      observerOpened ? withTimeout(this.drivers.tuiObserver.close(), shutdownTimeoutMs, "TUI observer cleanup") : Promise.resolve(),
+      tuiStarted ? withTimeout(this.drivers.tui.stop(failure === undefined ? "completed" : "failed"), shutdownTimeoutMs, "TUI cleanup") : Promise.resolve(),
     ]);
     const cleanupFailure = cleanup.find((result) => result.status === "rejected");
     unsubscribeOutput?.();
-    await outputQueue;
-    if (failure === undefined && outputFailure !== undefined) failure = outputFailure;
+    try { await withTimeout(outputQueue, shutdownTimeoutMs, "Shutdown TUI output drain"); }
+    catch (error) { failure = combineFailure(failure, "Shutdown TUI output drain failed", error); }
+    if (outputFailure !== undefined) {
+      failure = combineFailure(failure, "TUI output evidence failed", outputFailure);
+      outputFailure = undefined;
+    }
     if (failure === undefined && cleanupFailure?.status === "rejected") failure = cleanupFailure.reason;
 
-    const result: HarnessResult = {
+    let result: HarnessResult = {
       status: failure === undefined ? "completed" : "failed",
       scenario: scenario.name,
       startedAt,
       finishedAt: new Date().toISOString(),
       ...(failure === undefined ? {} : { failure: errorMessage(failure) }),
     };
-    await this.recordLifecycle(session, result.status);
-    await this.drivers.evidence.finalize(result);
+    try {
+      await withTimeout(this.recordLifecycle(session, result.status), shutdownTimeoutMs, "Final lifecycle evidence");
+    } catch (error) {
+      failure ??= error;
+    }
+    if (failure !== undefined && result.status === "completed") {
+      result = { ...result, status: "failed", finishedAt: new Date().toISOString(), failure: errorMessage(failure) };
+    } else if (failure !== undefined && result.failure === undefined) {
+      result = { ...result, failure: errorMessage(failure) };
+    }
+    try {
+      await withTimeout(this.drivers.evidence.finalize(result), shutdownTimeoutMs, "Evidence finalization");
+    } catch (error) {
+      if (result.status === "completed") {
+        result = { ...result, status: "failed", finishedAt: new Date().toISOString(), failure: errorMessage(error) };
+      } else {
+        result = { ...result, finishedAt: new Date().toISOString(), failure: `${result.failure ?? "Scenario failed"}; Evidence finalization failed: ${errorMessage(error)}` };
+      }
+    }
     return result;
   }
 
@@ -151,6 +200,16 @@ export class UiTestController {
         await this.drivers.gui.press(step.selector, step.key);
         await this.captureGui(session, "after-interaction");
         return;
+      case "gui.wait":
+        if (!Number.isSafeInteger(step.options.timeoutMs) || step.options.timeoutMs <= 0) {
+          throw new Error("GUI wait timeout must be a positive safe integer.");
+        }
+        if (step.options.timeoutMs > MAX_GUI_WAIT_TIMEOUT_MS) {
+          throw new Error(`GUI wait timeout must not exceed ${MAX_GUI_WAIT_TIMEOUT_MS} milliseconds.`);
+        }
+        await this.drivers.gui.waitFor(step.selector, step.options);
+        await this.captureGui(session, "after-gui-wait");
+        return;
       case "capture": {
         const [tui, gui, authority] = await Promise.all([
           this.drivers.tui.read(),
@@ -175,18 +234,26 @@ export class UiTestController {
 
   private async waitForAuthority(session: HarnessSession, gate: AuthorityGate): Promise<void> {
     const startedAt = Date.now();
+    const deadline = startedAt + gate.timeoutMs;
     let lastActivityAt = startedAt;
-    let previous = await this.sampleActivity(session);
-    await this.drivers.evidence.recordActivity(previous);
+    let previous = await this.withAuthorityDeadline(() => this.sampleActivity(session), deadline, gate.description);
+    await this.withAuthorityDeadline(() => this.drivers.evidence.recordActivity(previous), deadline, gate.description);
 
-    while (Date.now() - startedAt <= gate.timeoutMs) {
-      const authority = await this.drivers.authority.snapshot();
-      await this.drivers.evidence.recordAuthoritySnapshot({ ...authority, sessionId: session.sessionId });
+    while (Date.now() <= deadline) {
+      const authority = await this.withAuthorityDeadline(() => this.drivers.authority.snapshot(), deadline, gate.description);
+      await this.withAuthorityDeadline(
+        () => this.drivers.evidence.recordAuthoritySnapshot({ ...authority, sessionId: session.sessionId }),
+        deadline,
+        gate.description,
+      );
+      if (Date.now() > deadline) {
+        throw new Error(`Authority gate timed out: ${gate.description}`);
+      }
       if (gate.accepts(authority)) return;
 
-      await delay(this.options.activityPollMs);
-      const current = await this.sampleActivity(session);
-      await this.drivers.evidence.recordActivity(current);
+      await this.withAuthorityDeadline(() => delay(this.options.activityPollMs), deadline, gate.description);
+      const current = await this.withAuthorityDeadline(() => this.sampleActivity(session), deadline, gate.description);
+      await this.withAuthorityDeadline(() => this.drivers.evidence.recordActivity(current), deadline, gate.description);
       if (compareActivity(previous, current).active) lastActivityAt = Date.now();
       if (inactiveForMs(lastActivityAt, Date.now()) >= this.options.inactivityTimeoutMs) {
         throw new Error(`Activity watchdog timed out while waiting for: ${gate.description}`);
@@ -194,6 +261,22 @@ export class UiTestController {
       previous = current;
     }
     throw new Error(`Authority gate timed out: ${gate.description}`);
+  }
+
+  private async withAuthorityDeadline<T>(operation: () => Promise<T>, deadline: number, description: string): Promise<T> {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error(`Authority gate timed out: ${description}`);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        operation(),
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`Authority gate timed out: ${description}`)), remaining);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   private async sampleActivity(session: HarnessSession): Promise<ActivitySample> {
@@ -239,4 +322,21 @@ function delay(milliseconds: number): Promise<void> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function combineFailure(primary: unknown, context: string, secondary: unknown): unknown {
+  if (primary === undefined) return secondary;
+  return new Error(`${errorMessage(primary)}; ${context}: ${errorMessage(secondary)}`);
+}
+
+async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs} milliseconds.`)), timeoutMs); }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }

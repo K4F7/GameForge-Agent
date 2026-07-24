@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { safeEvidenceSegment, safeRelayUrl } from "./cli-safety.js";
+import { safeCodeArtsServerUrl, safeEvidenceSegment, safeRelayUrl } from "./cli-safety.js";
 
 describe("UI harness CLI safety", () => {
   test.each(["../outside", "..\\outside", "nested/path", "nested\\path", ".", "..", ""])
@@ -19,6 +19,15 @@ describe("UI harness CLI safety", () => {
     expect(safeRelayUrl("https://relay.example.com/api")).toBe("https://relay.example.com/api/");
   });
 
+  test.each(["https://example.com:4097/", "http://127.0.0.1:4097/?token=secret", "http://user:secret@127.0.0.1:4097/"])
+    ("rejects unsafe CodeArts attach URLs: %s", (value) => {
+      expect(() => safeCodeArtsServerUrl(value)).toThrow(/codearts server url/i);
+    });
+
+  test("accepts a credential-free loopback CodeArts attach URL", () => {
+    expect(safeCodeArtsServerUrl("http://127.0.0.1:4097")).toBe("http://127.0.0.1:4097/");
+  });
+
   test("evaluates the default projects root before contacting Relay", async () => {
     const output = await runCli(["--headless", "--relay-url", "http://127.0.0.1:1/"], { GAMEFORGE_PROJECT_OUTPUT_ROOT: undefined });
     expect(output).not.toContain("Cannot access 'repoRoot' before initialization");
@@ -27,6 +36,16 @@ describe("UI harness CLI safety", () => {
   test("rejects a traversal project id before contacting Relay", async () => {
     const output = await runCli(["--headless", "--task-id", "task-1", "--run-id", "run-1", "--project-id", "../../outside"]);
     expect(output).toContain("--project-id must be a safe path segment");
+  });
+
+  test("rejects an unsafe CodeArts attach URL before contacting Relay", async () => {
+    const output = await runCli(["--headless", "--codearts-server-url", "https://example.com:4097", "--codearts-session", "ses_probe"]);
+    expect(output).toContain("CodeArts server URL");
+  });
+
+  test("requires CodeArts attach URL and session together", async () => {
+    const output = await runCli(["--headless", "--codearts-server-url", "http://127.0.0.1:4097"]);
+    expect(output).toContain("--codearts-server-url and --codearts-session must be provided together");
   });
 });
 

@@ -80,4 +80,17 @@ describe("shared run recovery", () => {
     });
     expect(result).toEqual({ cursor: 0, terminal: false, aborted: true });
   });
+
+  it("rejects events delivered after a terminal run event", async () => {
+    await expect(recoverRunEvents<Event>({
+      after: 0,
+      replay: async () => [{ type: "run.started", sequence: 1 }],
+      async stream({ onEvent }) {
+        onEvent({ type: "run.completed", sequence: 2 });
+        onEvent({ type: "log.appended", sequence: 3 });
+      },
+      onEvent() {},
+      retry: () => false,
+    })).rejects.toThrow("after terminal");
+  });
 });

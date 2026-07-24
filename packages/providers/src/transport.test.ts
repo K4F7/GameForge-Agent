@@ -94,4 +94,71 @@ describe("provider transport", () => {
     })).rejects.toMatchObject({ kind: "cancelled", retryable: false, attempts: 1 });
     expect(fetchMock).toHaveBeenCalledOnce();
   });
+
+  it("rejects and discards a successful response returned after caller cancellation", async () => {
+    const controller = new AbortController();
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull() { /* keep the late success body unread */ },
+      cancel() { cancelled = true; },
+    });
+    const fetchMock = vi.fn(async () => {
+      controller.abort();
+      return new Response(body, { status: 200 });
+    });
+
+    await expect(fetchProvider({
+      provider: "Example",
+      fetch: fetchMock,
+      input: "https://example.test/api",
+      init: { signal: controller.signal },
+      timeoutMs: 1_000,
+    })).rejects.toMatchObject({ kind: "cancelled", retryable: false, attempts: 1 });
+    expect(cancelled).toBe(true);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("cancels immediately while waiting to retry", async () => {
+    const controller = new AbortController();
+    let requestCount = 0;
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      requestCount += 1;
+      if (requestCount === 1) return new Response("busy", { status: 503 });
+      throw init?.signal?.reason ?? new Error("aborted");
+    });
+    let releaseSleep = (): void => undefined;
+    let markSleepStarted = (): void => undefined;
+    const sleepStarted = new Promise<void>((resolve) => { markSleepStarted = resolve; });
+    const pending = fetchProvider({
+      provider: "Example",
+      fetch: fetchMock,
+      input: "https://example.test/api",
+      init: { signal: controller.signal },
+      timeoutMs: 1_000,
+      retry: {
+        maxAttempts: 2,
+        baseDelayMs: 100,
+        maxDelayMs: 100,
+        sleep: async () => {
+          markSleepStarted();
+          await new Promise<void>((resolve) => { releaseSleep = resolve; });
+        },
+      },
+    });
+    const outcomePromise = pending.then(
+      () => ({ status: "resolved" as const }),
+      (error: unknown) => ({ status: "rejected" as const, error }),
+    );
+    await sleepStarted;
+
+    controller.abort();
+    const outcome = await Promise.race([
+      outcomePromise,
+      new Promise<{ status: "timed-out" }>((resolve) => setTimeout(() => resolve({ status: "timed-out" }), 50)),
+    ]);
+    releaseSleep();
+
+    expect(outcome).toMatchObject({ status: "rejected", error: { kind: "cancelled", attempts: 1 } });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
 });

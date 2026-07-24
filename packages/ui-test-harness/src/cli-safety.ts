@@ -15,3 +15,13 @@ export function safeRelayUrl(input: string): string {
   if (!url.pathname.endsWith("/")) url.pathname += "/";
   return url.href;
 }
+
+export function safeCodeArtsServerUrl(input: string): string {
+  const url = new URL(input);
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (url.protocol !== "http:" || !loopback || url.username || url.password || url.search || url.hash) {
+    throw new Error("CodeArts server URL must use HTTP on loopback without credentials, query, or fragment.");
+  }
+  if (!url.pathname.endsWith("/")) url.pathname += "/";
+  return url.href;
+}

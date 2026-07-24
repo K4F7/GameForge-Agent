@@ -29,6 +29,7 @@ export class HeadlessGuiDriver implements OpenChamberGuiDriver {
   async click(): Promise<void> { throw new Error("Headless minimal closure does not include OpenChamber clicks."); }
   async fill(): Promise<void> { throw new Error("Headless minimal closure does not include OpenChamber input."); }
   async press(): Promise<void> { throw new Error("Headless minimal closure does not include OpenChamber keys."); }
+  async waitFor(): Promise<void> { throw new Error("Headless minimal closure does not include OpenChamber state waits."); }
   async snapshot(): Promise<GuiSnapshot> {
     if (!this.#launched) throw new Error("Headless GUI placeholder has not launched.");
     return { url: "about:blank", title: "headless-minimal-closure", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } };

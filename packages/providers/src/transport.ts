@@ -40,7 +40,7 @@ export type ProviderRetryOptions = {
   maxAttempts?: number;
   baseDelayMs?: number;
   maxDelayMs?: number;
-  sleep?: (milliseconds: number) => Promise<void>;
+  sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
   random?: () => number;
 };
 
@@ -62,19 +62,23 @@ export async function fetchProvider(options: {
       : AbortSignal.any([callerSignal, timeoutSignal]);
     try {
       const response = await options.fetch(options.input, { ...options.init, signal });
+      if (callerSignal?.aborted === true || timeoutSignal.aborted) {
+        await discardResponse(response);
+        throw networkError(options.provider, callerSignal?.aborted === true, timeoutSignal.aborted, attempt);
+      }
       if (response.ok) return response;
       const classified = classifyHttp(options.provider, response.status, attempt);
       await discardResponse(response);
       if (!classified.retryable || attempt === policy.maxAttempts) throw classified;
       lastError = classified;
-      await policy.sleep(retryDelay(response, attempt, policy));
+      await waitForRetry(options.provider, attempt, retryDelay(response, attempt, policy), policy.sleep, callerSignal);
     } catch (error) {
       const classified = error instanceof ProviderRequestError
         ? error
         : networkError(options.provider, callerSignal?.aborted === true, timeoutSignal.aborted, attempt);
       if (!classified.retryable || attempt === policy.maxAttempts) throw classified;
       lastError = classified;
-      await policy.sleep(backoffDelay(attempt, policy));
+      await waitForRetry(options.provider, attempt, backoffDelay(attempt, policy), policy.sleep, callerSignal);
     }
   }
   throw lastError ?? new Error(`${options.provider} request failed.`);
@@ -130,9 +134,46 @@ function retryPolicy(options: ProviderRetryOptions | undefined) {
     maxAttempts,
     baseDelayMs,
     maxDelayMs,
-    sleep: options?.sleep ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds))),
+    sleep: options?.sleep ?? abortableSleep,
     random: options?.random ?? Math.random,
   };
+}
+
+async function waitForRetry(
+  provider: string,
+  attempt: number,
+  milliseconds: number,
+  sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>,
+  callerSignal: AbortSignal | undefined,
+): Promise<void> {
+  if (callerSignal?.aborted === true) throw networkError(provider, true, false, attempt);
+  if (callerSignal === undefined) {
+    await sleep(milliseconds);
+    return;
+  }
+  let onAbort = (): void => undefined;
+  const cancelled = new Promise<never>((_, reject) => {
+    onAbort = () => reject(networkError(provider, true, false, attempt));
+    callerSignal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    await Promise.race([sleep(milliseconds, callerSignal), cancelled]);
+  } finally {
+    callerSignal.removeEventListener("abort", onAbort);
+  }
+  if (callerSignal.aborted) throw networkError(provider, true, false, attempt);
+}
+
+function abortableSleep(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted === true) { reject(signal.reason); return; }
+    const onAbort = (): void => { clearTimeout(timer); reject(signal?.reason); };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function retryDelay(response: Response, attempt: number, policy: ReturnType<typeof retryPolicy>): number {

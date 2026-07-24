@@ -188,6 +188,26 @@ export class RunStore {
       if (started === undefined || started.runId !== item.runId || started.sequence !== 1) {
         throw new Error("Run snapshot does not contain its authoritative start event.");
       }
+      let restoredStatus: RunStatus = "running";
+      let previousSequence: number | undefined;
+      for (const event of item.events) {
+        if (event.runId !== item.runId) throw new Error("Run snapshot event run IDs must match.");
+        if (previousSequence !== undefined && event.sequence !== previousSequence + 1) {
+          throw new Error("Run snapshot events must be contiguous.");
+        }
+        if (terminalStatuses.has(restoredStatus)) throw new Error("Run snapshot contains an event after terminal state.");
+        if (event.type === "run.started") {
+          if (event.sequence !== 1 || event.runId !== started.runId || event.emittedAt !== started.emittedAt) {
+            throw new Error("Run snapshot start event is inconsistent.");
+          }
+        } else {
+          restoredStatus = statusAfter(restoredStatus, event);
+        }
+        previousSequence = event.sequence;
+      }
+      if ((terminalStatuses.has(restoredStatus) || terminalStatuses.has(item.status)) && restoredStatus !== item.status) {
+        throw new Error("Run snapshot status is inconsistent with its events.");
+      }
       this.#runs.set(item.runId, {
         status: item.status,
         started: { ...started },

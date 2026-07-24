@@ -1,6 +1,8 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { access, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import type { HarnessResult, HarnessSession } from "../contracts.js";
 import { FileEvidenceSink } from "./file-evidence.js";
@@ -30,4 +32,141 @@ describe("FileEvidenceSink", () => {
     expect(evidence).not.toContain("token-sensitive-value");
     expect(evidence).not.toContain("authorization-sensitive-value");
   });
+
+  it("does not publish a completed result before MCP audit consolidation succeeds", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
+    const sink = new FileEvidenceSink(root);
+    const session: HarnessSession = { sessionId: "session-finalize-failure", startedAt: "2026-07-23T00:00:00.000Z", mode: "headless" };
+    await sink.recordSession(session);
+    await mkdir(path.join(root, "mcp-audit.json"));
+    const result: HarnessResult = { status: "completed", scenario: "finalize-failure", startedAt: session.startedAt, finishedAt: "2026-07-23T00:01:00.000Z" };
+
+    await expect(sink.finalize(result)).rejects.toThrow();
+
+    await expect(readFile(path.join(root, "result.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await rm(path.join(root, "mcp-audit.json"), { recursive: true });
+    const retry = new FileEvidenceSink(root);
+    await retry.recordSession(session);
+    await retry.finalize(result);
+  });
+
+  it("keeps concurrent activity appends within the NDJSON size limit", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
+    const sample = {
+      sampledAt: "2026-07-23T00:00:00.000Z",
+      tuiOutputSequence: 1,
+      authorityEventSequence: 1,
+      projectFingerprint: "x".repeat(5 * 1024 * 1024),
+    };
+    const sink = new FileEvidenceSink(root);
+    await Promise.all([sink.recordActivity(sample), sink.recordActivity(sample)]);
+    await sink.finalize({ status: "completed", scenario: "concurrent-activity", startedAt: sample.sampledAt, finishedAt: sample.sampledAt });
+
+    const size = (await readFile(path.join(root, "activity.ndjson"))).byteLength;
+    expect(size).toBeLessThanOrEqual(8 * 1024 * 1024);
+  });
+
+  it("shares concurrent finalization of the same evidence session", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
+    const sink = new FileEvidenceSink(root);
+    const session: HarnessSession = { sessionId: "session-concurrent-finalize", startedAt: "2026-07-24T00:00:00.000Z", mode: "headless" };
+    const result: HarnessResult = { status: "completed", scenario: "concurrent-finalize", startedAt: session.startedAt, finishedAt: "2026-07-24T00:01:00.000Z" };
+    await sink.recordSession(session);
+
+    await Promise.all([sink.finalize(result), sink.finalize(result)]);
+
+    expect(JSON.parse(await readFile(path.join(root, "result.json"), "utf8"))).toEqual(result);
+    const retry = new FileEvidenceSink(root);
+    await retry.recordSession(session);
+    await retry.finalize(result);
+  });
+
+  it("rejects new evidence records once finalization has started", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
+    const sink = new FileEvidenceSink(root);
+    const session: HarnessSession = { sessionId: "session-finalize-barrier", startedAt: "2026-07-24T00:00:00.000Z", mode: "headless" };
+    const result: HarnessResult = { status: "completed", scenario: "finalize-barrier", startedAt: session.startedAt, finishedAt: "2026-07-24T00:01:00.000Z" };
+    await sink.recordSession(session);
+
+    const finalizing = sink.finalize(result);
+    await expect(sink.recordActivity({ sampledAt: session.startedAt, tuiOutputSequence: 1, authorityEventSequence: 1 }))
+      .rejects.toThrow("Evidence session finalization has already started");
+    await finalizing;
+  });
+
+  it("waits for an accepted evidence record before publishing the final result", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
+    const sink = new FileEvidenceSink(root);
+    const session: HarnessSession = { sessionId: "session-finalize-drain", startedAt: "2026-07-24T00:00:00.000Z", mode: "headless" };
+    const result: HarnessResult = { status: "completed", scenario: "finalize-drain", startedAt: session.startedAt, finishedAt: "2026-07-24T00:01:00.000Z" };
+    await sink.recordSession(session);
+    let recordSettled = false;
+    const recording = sink.recordTuiSnapshot({
+      sessionId: session.sessionId,
+      status: "running",
+      columns: 80,
+      rows: 24,
+      outputSequence: 1,
+      lastChangedAt: session.startedAt,
+      screen: "x".repeat(12 * 1024 * 1024),
+    }).then(() => { recordSettled = true; });
+
+    await sink.finalize(result);
+
+    expect(recordSettled).toBe(true);
+    await recording;
+  });
+
+  it("rejects a second process while another process owns the evidence session", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
+    const child = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "file-evidence-lock-child.ts");
+    const holder = spawn("bun", [child, root, "holder"], { stdio: ["ignore", "pipe", "pipe"] });
+    try {
+      await waitForFile(path.join(root, "holder-ready"));
+      const contender = spawn("bun", [child, root, "contender"], { stdio: ["ignore", "pipe", "pipe"] });
+      const [contenderExit, contenderError] = await Promise.all([waitForExit(contender), readStream(contender.stderr)]);
+
+      expect(contenderExit).not.toBe(0);
+      expect(contenderError).toContain("Evidence session is locked by an active writer");
+    } finally {
+      await writeFile(path.join(root, "release-holder"), "release\n", "utf8");
+      await waitForExit(holder);
+    }
+  }, 20_000);
+
+  it("recovers an old incomplete lock left by a crashed writer", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
+    const lock = path.join(root, ".evidence.lock");
+    await writeFile(lock, "", "utf8");
+    const old = new Date(Date.now() - 11 * 60 * 1000);
+    await utimes(lock, old, old);
+    const sink = new FileEvidenceSink(root);
+    const session: HarnessSession = { sessionId: "stale-incomplete-lock", startedAt: "2026-07-24T00:00:00.000Z", mode: "headless" };
+    await sink.recordSession(session);
+    await sink.finalize({ status: "completed", scenario: "stale-incomplete-lock", startedAt: session.startedAt, finishedAt: session.startedAt });
+  });
 });
+
+async function waitForFile(file: string): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  while (!await access(file).then(() => true, () => false)) {
+    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${file}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+async function waitForExit(child: ReturnType<typeof spawn>): Promise<number | null> {
+  if (child.exitCode !== null) return child.exitCode;
+  return await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", resolve);
+  });
+}
+
+async function readStream(stream: NodeJS.ReadableStream | null): Promise<string> {
+  if (stream === null) return "";
+  let output = "";
+  stream.setEncoding("utf8");
+  for await (const chunk of stream) output += chunk;
+  return output;
+}

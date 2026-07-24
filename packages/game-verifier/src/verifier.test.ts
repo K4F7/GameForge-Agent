@@ -154,6 +154,19 @@ describe("GameVerifier", () => {
     expect(runtime.serverClosed).toBe(true);
   });
 
+  it("supports concurrent first verification of the same project", async () => {
+    const { verifier } = await fixture();
+
+    const [first, second] = await Promise.all([
+      verifier.verify({ projectId: "safety-sprint", actions: [], expectedOutcome: "won" }),
+      verifier.verify({ projectId: "safety-sprint", actions: [], expectedOutcome: "won" }),
+    ]);
+
+    expect(first.passed).toBe(true);
+    expect(second.passed).toBe(true);
+    expect(second.screenshotPath).not.toBe(first.screenshotPath);
+  });
+
   it("loads one bounded named scenario from the managed project", async () => {
     const { root, runtime, verifier } = await fixture();
     const actions = [

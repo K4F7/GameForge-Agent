@@ -89,3 +89,19 @@
 - 本实验结果文档。
 
 剩余风险：OpenChamber 生产服务的受控生命周期需要独立、可监测的持久进程管理；Harness 的同 URL `gui.navigate` 会制造可预期的 abort 诊断；Observer 需要单写者锁、可靠子进程清理，以及真实业务事件与 SSE ID 的后续实证。
+
+## 后续复验：重复导航与延迟配置探测
+
+当前 HEAD 已完成两项 TDD 修复并通过真实 Bun/Node helper 路径复验：
+
+- `launch(url)` 后再次 `navigate(url)` 不再触发第二次文档请求；真实联合运行未再出现 `ERR_ABORTED`。
+- console error Evidence 现在保留 Playwright `location()` 的 URL、行号和列号，避免只记录无法定位的 `Failed to load resource`。
+
+真实 CodeArts 最小任务 `task-704c6dbe-4b47-46ea-896e-aad72e13ab6f`、Run `ui-harness-1784822571736-ff7c1381` 的 Authority 均 completed，RunEvent 到 sequence 6；MCP Audit 共 9 次调用，8 次成功，`get_project_assets` 因无项目资产按预期返回 error。Harness 最终仍因 4 个 console error 失败，证明 Authority completed 未掩盖 GUI 问题。
+
+修复诊断来源后保持生产页面 160 秒，4 个错误被确定为两个缺失可选配置文件各请求两次：
+
+- `/api/fs/read?path=.../.config/openchamber/projects/<project-id>.json`：404；
+- `/api/fs/read?path=.../.openchamber/openchamber.json`：404。
+
+OpenChamber v1.16.3 前端配置读取明确把缺失文件解释为 `null`，但 Web fallback 未传服务端已支持的 `optional=true`，因此浏览器仍记录资源 404。`v1.16.3` 是当前最新正式标签，`dev-latest` 也未包含对应修复。本仓库不在 Harness 中忽略或重写该请求，也不修改 submodule 源码；该项保留为上游缺陷。manifest 与 `useAppFontEffects` 动态 chunk 在本次复验中均未失败。

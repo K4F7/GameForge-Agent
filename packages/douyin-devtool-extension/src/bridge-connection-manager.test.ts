@@ -78,4 +78,26 @@ describe("BridgeConnectionManager", () => {
     expect(createClient).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
+
+  test("retries when a client throws synchronously while connecting", () => {
+    vi.useFakeTimers();
+    try {
+      let attempt = 0;
+      const createClient = vi.fn((options: BridgeClientOptions) => {
+        const client = new FakeClient(options.onStateChange);
+        if (attempt++ === 0) client.connect = () => { throw new Error("bridge connect failed"); };
+        return client;
+      });
+      const manager = new BridgeConnectionManager({ loadOptions: () => baseOptions, createClient });
+
+      expect(() => manager.connect()).not.toThrow();
+      expect(manager.connectionState).toBe("waiting");
+      vi.advanceTimersByTime(250);
+
+      expect(createClient).toHaveBeenCalledTimes(2);
+      expect(manager.connectionState).toBe("connecting");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

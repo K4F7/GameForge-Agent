@@ -1,7 +1,7 @@
 import { gamePreviewUrlSchema, projectIdSchema } from "@gameforge/contracts";
 import path from "node:path";
 import { z } from "zod";
-import { PlaywrightVerificationRuntime, verifiedManagedProject } from "./verifier.js";
+import { PlaywrightVerificationRuntime, verifiedManagedProject, withTimeoutAndLateCleanup } from "./verifier.js";
 
 const START_TIMEOUT_MS = 30_000;
 const CLOSE_TIMEOUT_MS = 10_000;
@@ -71,10 +71,11 @@ export class GamePreviewManager {
 
   async #start(projectId: string): Promise<GamePreviewResult> {
     const projectPath = await verifiedManagedProject(this.#projectsRoot, projectId);
-    const server = await withTimeout(
+    const server = await withTimeoutAndLateCleanup(
       this.#runtime.startServer(projectPath),
       START_TIMEOUT_MS,
       "Preview server startup timed out.",
+      (lateServer) => lateServer.close(),
     );
     try {
       const url = gamePreviewUrlSchema.parse(server.url);

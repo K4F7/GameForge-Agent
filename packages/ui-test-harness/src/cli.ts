@@ -10,7 +10,7 @@ import { PlaywrightOpenChamberDriver } from "./adapters/playwright-openchamber.j
 import { RelayAuthorityDriver } from "./adapters/relay-authority.js";
 import { XtermTuiObserverDriver } from "./adapters/xterm-observer.js";
 import { projectFingerprint } from "./adapters/project-fingerprint.js";
-import { safeEvidenceSegment, safeRelayUrl } from "./cli-safety.js";
+import { safeCodeArtsServerUrl, safeEvidenceSegment, safeRelayUrl } from "./cli-safety.js";
 import type { HarnessResult } from "./contracts.js";
 import { UiTestController } from "./controller.js";
 
@@ -44,7 +44,12 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
   const sessionRoot = path.join(repoRoot, ".gameforge-validation", options.experiment, "sessions", sessionId);
   await mkdir(sessionRoot, { recursive: true });
   const evidence = new FileEvidenceSink(sessionRoot);
-  const tui = new ConPtyCodeArtsDriver({ repoRoot, sessionRoot, environment: {} });
+  const tui = new ConPtyCodeArtsDriver({
+    repoRoot, sessionRoot, environment: {},
+    ...(options.codeartsServerUrl === undefined ? {} : {
+      attach: { serverUrl: options.codeartsServerUrl, sessionId: options.codeartsSession! },
+    }),
+  });
   const authority = new RelayAuthorityDriver({
     baseUrl: options.relayUrl, taskId: created.task.taskId, runId, projectId,
     ...(process.env.GAMEFORGE_RUN_RELAY_TOKEN === undefined ? {} : { authToken: process.env.GAMEFORGE_RUN_RELAY_TOKEN }),
@@ -69,6 +74,7 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
     { kind: "gui.navigate", url: options.openChamberUrl },
     { kind: "tui.text", text: instruction, appendEnter: true },
     { kind: "authority.wait", gate: { description: "Task and Run completed", timeoutMs: options.totalTimeoutMs, accepts: (snapshot) => snapshot.taskStatus === "completed" && snapshot.runStatus === "completed" } },
+    { kind: "gui.press", selector: "body", key: "Escape" },
     { kind: "capture", label: "completed" },
   ] });
   return { attempt, result, sessionRoot };
@@ -79,6 +85,7 @@ function parseArguments(args: string[]): {
   inactivityTimeoutMs: number; totalTimeoutMs: number; mode: "headed/watch" | "headless";
   openChamberUrl: string; browserChannel?: string; observationHoldMs: number;
   sessionId?: string; taskId?: string; runId?: string; projectId?: string;
+  codeartsServerUrl?: string; codeartsSession?: string;
 } {
   const headless = args.includes("--headless"); const headed = args.includes("--headed");
   if (headless === headed) throw new Error("Choose exactly one of --headless or --headed.");
@@ -89,7 +96,10 @@ function parseArguments(args: string[]): {
   const taskId = optionalValue(args, "--task-id"); const existingRunId = optionalValue(args, "--run-id"); const existingProjectId = optionalValue(args, "--project-id");
   const browserChannel = optionalValue(args, "--browser-channel") ?? process.env.GAMEFORGE_BROWSER_CHANNEL?.trim();
   const sessionId = optionalValue(args, "--session-id");
+  const codeartsServerUrl = optionalValue(args, "--codearts-server-url");
+  const codeartsSession = optionalValue(args, "--codearts-session");
   if ([taskId, existingRunId, existingProjectId].filter((entry) => entry !== undefined).length % 3 !== 0) throw new Error("--task-id, --run-id and --project-id must be provided together.");
+  if ((codeartsServerUrl === undefined) !== (codeartsSession === undefined)) throw new Error("--codearts-server-url and --codearts-session must be provided together.");
   return {
     experiment: safeEvidenceSegment(value("--experiment", `ui-harness-${new Date().toISOString().replace(/[:.]/g, "-")}`), "--experiment"),
     relayUrl: safeRelayUrl(value("--relay-url", process.env.GAMEFORGE_RUN_RELAY_URL?.trim() ?? "http://127.0.0.1:8787/")),
@@ -103,6 +113,10 @@ function parseArguments(args: string[]): {
     ...(browserChannel === undefined ? {} : { browserChannel }),
     observationHoldMs: positiveInteger(value("--observation-hold-ms", "10000")),
     ...(sessionId === undefined ? {} : { sessionId: safeEvidenceSegment(sessionId, "--session-id") }),
+    ...(codeartsServerUrl === undefined ? {} : {
+      codeartsServerUrl: safeCodeArtsServerUrl(codeartsServerUrl),
+      codeartsSession: safeEvidenceSegment(codeartsSession!, "--codearts-session"),
+    }),
     ...(taskId === undefined ? {} : { taskId, runId: existingRunId!, projectId: safeEvidenceSegment(existingProjectId!, "--project-id") }),
   };
 }

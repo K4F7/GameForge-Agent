@@ -72,7 +72,15 @@ export class BridgeConnectionManager {
       },
     });
     this.client = candidate;
-    candidate.connect();
+    try {
+      candidate.connect();
+    } catch {
+      if (this.client !== candidate) return;
+      this.client = undefined;
+      try { candidate.disconnect(); } catch { /* best-effort cleanup */ }
+      this.options.onStateChange?.("waiting");
+      this.scheduleReconnect();
+    }
   }
 
   private scheduleReconnect(): void {

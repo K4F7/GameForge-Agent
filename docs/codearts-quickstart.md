@@ -109,7 +109,7 @@ bun run dev:local
 }
 ```
 
-`host` 模式让 CodeArts 的 stdio MCP 通过 `%TEMP%/gameforge-douyin-bridge-host.json` 中的本地随机端口和 token 访问持久 Bridge Host。该文件只用于本机进程认证，不纳入仓库；MCP 会话退出不会关闭 DevTool 连接。未设置该变量时继续使用兼容的 `embedded` 模式，controller 生命周期仍跟随单个 MCP 进程。
+`host` 模式让 CodeArts 的 stdio MCP 通过 `%TEMP%/gameforge-douyin-bridge-host.json` 中的本地随机端口和 token 访问持久 Bridge Host。该文件只用于本机进程认证，不纳入仓库；MCP 会话退出不会关闭 DevTool 连接。Bridge Host 在 controller、HTTP 监听或 rendezvous 写入任一启动阶段失败时，必须停止已分配资源并释放仍由当前进程持有的 host lock，不能让失败启动阻塞后续实例。未设置该变量时继续使用兼容的 `embedded` 模式，controller 生命周期仍跟随单个 MCP 进程。
 
 `GAMEFORGE_LAYAIR_CLI` 必须是固定 LayaAir 3.4.0 CLI 的绝对普通文件路径。官方 `dispatcher.js`、`layaair.cmd`、`layaair` 或 `Resources/cli-main.js` 入口只用于定位安装：Builder 核验 `versions.json`、`Resources/package.json` 与固定的 `Resources/cli-main.js` 后，以当前 Node、`shell: false` 和受限环境直接运行主入口，不执行 `.cmd` wrapper，也不继承用户 PATH 或凭据。与项目输出根同时配置后，MCP 同时注册 `build_douyin_mini_game` 与 `build_wechat_mini_game`，只对 target 匹配的托管 Manifest 分别执行一次固定 `bytedancegame` 或 `wxgame` 构建并离线校验；不接受任意命令/参数，不登录、预览、上传、提审或发布。CLI 缺失、版本不符、并发锁、超时、非零退出、路径/符号链接异常或包体校验失败都返回稳定错误。
 
