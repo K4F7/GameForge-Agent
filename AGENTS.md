@@ -22,19 +22,13 @@
 5. 不得声称测试通过，除非已经实际运行对应命令。
 6. 完成后汇报修改文件、验证命令、结果与剩余风险。
 
-## 子代理使用
-
-- 单次最多并行派发两个子代理。
-- 已达到两个子代理的并发上限但仍需派发新任务时，必须先等待已有子代理返回并释放名额，再继续派发。
-
 ## PR 与 GitHub Agent 流程
 
 1. 需要交付远程代码时使用 `yeet` 流程完成分支确认、暂存、英文 Conventional Commit、推送以及 Draft PR 的创建或更新；不得把仅执行 `git push` 视为交付完成。
 2. PR 进入 Ready 前必须实际运行并通过仓库规定的 `check`、`test`、`build` 与 `bundle:check`；PR 描述按模板记录 Why、What、风险和行为证据。
-   仅修改普通 Markdown 文档的 PR 可跳过完整 Bun CI；`AGENTS.md`、`.github/**`、`.codeartsdoer/skills/**` 与 `.codeartsdoer/agents/**` 属于策略或自动化边界，不视为普通文档，仍须执行完整门禁。
 3. 门禁通过后使用 `gh pr ready`，由 opened、ready_for_review、synchronize 或 reopened PR 事件触发已编译的 GitHub Agent Reviewer；不得用手动 `gh aw run` 代替标准 PR 事件链路。
 4. Reviewer 必须审查当前 head SHA；任何后续 push 都会使旧批准失效，并由 CI、Reviewer 与 Comment Fixer 针对新 SHA 重新闭环。
-5. 合并由 Auto Merge Gate 在当前 SHA、必需检查、批准、线程解决、同仓库来源和分支保护全部满足后执行：PR 已处于 `CLEAN` 时直接 squash merge，仍受分支保护阻塞时启用原生 squash auto-merge；不得手动执行 `gh pr merge` 绕过门禁。普通文档 PR 可通过轻量 CI 后进入同一受控合并流程。
+5. 合并由 Auto Merge Gate 在当前 SHA、必需检查、批准、线程解决、同仓库来源和分支保护全部满足后启用原生 squash auto-merge；不得手动执行 `gh pr merge` 绕过门禁。
 6. `.playwright-mcp/`、`openchamber_probe2/` 与 `opencode_probe_20260721/` 属于可再生本地探针产物，不得暂存、提交或纳入 PR。
 
 ## 依赖优先级与适配边界

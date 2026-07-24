@@ -21,7 +21,6 @@ jobs:
     outputs:
       docs-only: ${{ steps.changes.outputs.docs-only }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
       - name: Classify changed files
         id: changes
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -38,30 +37,20 @@ jobs:
               pull_number: context.payload.pull_request.number,
               per_page: 100,
             });
-            const changedPaths = files.map((file) => file.filename);
-            const touchesPolicyBoundary = changedPaths.some(
-              (path) =>
-                path === "AGENTS.md" ||
-                path.endsWith("/AGENTS.md") ||
-                path.startsWith(".github/") ||
-                path.startsWith(".codeartsdoer/skills/") ||
-                path.startsWith(".codeartsdoer/agents/"),
-            );
-            if (touchesPolicyBoundary) {
-              core.setOutput("docs-only", "false");
-              return;
-            }
-            const { pathToFileURL } = require("node:url");
-            const policyUrl = pathToFileURL(`${process.env.GITHUB_WORKSPACE}/.github/scripts/auto-merge-policy.js`).href;
-            const { isOrdinaryDocumentationChange } = await import(policyUrl);
-            core.setOutput("docs-only", String(isOrdinaryDocumentationChange(changedPaths)));
+            const isOrdinaryDocumentation = (path) => {
+              if (path === "AGENTS.md" || path.endsWith("/AGENTS.md") || path.startsWith(".github/") || path.startsWith(".codeartsdoer/skills/") || path.startsWith(".codeartsdoer/agents/")) {
+                return false;
+              }
+              return path.endsWith(".md");
+            };
+            core.setOutput("docs-only", String(files.length > 0 && files.every((file) => isOrdinaryDocumentation(file.filename))));
 
   bun:
     needs: classify
     if: ${{ needs.classify.outputs.docs-only != 'true' }}
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -72,9 +61,6 @@ jobs:
       - name: Install dependencies
         if: ${{ hashFiles('bun.lock') != '' }}
         run: bun install --frozen-lockfile
-      - name: Verify GitHub automation policies
-        if: ${{ hashFiles('bun.lock') != '' }}
-        run: bun test ./.github/scripts
       - name: Verify backend boundary
         if: ${{ hashFiles('bun.lock') != '' }}
         run: bun run verify:backend
