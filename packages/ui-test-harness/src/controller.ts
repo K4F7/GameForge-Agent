@@ -49,6 +49,13 @@ export class UiTestController {
     let outputQueue = Promise.resolve();
     let outputFailure: unknown;
     let pendingOutputFrames = 0;
+    const pendingEvidenceOperations = new Set<Promise<void>>();
+    const trackEvidence = <T>(operation: Promise<T>): Promise<T> => {
+      const settlement = operation.then(() => undefined, () => undefined);
+      pendingEvidenceOperations.add(settlement);
+      void settlement.then(() => pendingEvidenceOperations.delete(settlement));
+      return operation;
+    };
     const shutdownTimeoutMs = this.options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
     if (!Number.isSafeInteger(shutdownTimeoutMs) || shutdownTimeoutMs < 1 || shutdownTimeoutMs > 60_000) {
       throw new Error("Harness shutdownTimeoutMs must be an integer between 1 and 60000.");
@@ -91,7 +98,7 @@ export class UiTestController {
       await this.captureGui(session, "loaded");
       await this.recordLifecycle(session, "running");
 
-      for (const step of scenario.steps) await this.execute(session, step);
+      for (const step of scenario.steps) await this.execute(session, step, trackEvidence);
 
       if (this.options.mode === "headed/watch" && this.options.observationHoldMs > 0) {
         await this.recordLifecycle(session, "observing");
@@ -137,6 +144,7 @@ export class UiTestController {
       outputFailure = undefined;
     }
     if (cleanupFailure?.status === "rejected") failure = combineFailure(failure, "Cleanup failed", cleanupFailure.reason);
+    await Promise.all([...pendingEvidenceOperations]);
 
     let result: HarnessResult = {
       status: failure === undefined ? "completed" : "failed",
@@ -167,7 +175,7 @@ export class UiTestController {
     return result;
   }
 
-  private async execute(session: HarnessSession, step: HarnessStep): Promise<void> {
+  private async execute(session: HarnessSession, step: HarnessStep, trackEvidence: <T>(operation: Promise<T>) => Promise<T>): Promise<void> {
     switch (step.kind) {
       case "tui.text":
         await this.drivers.tui.sendText(step.text, { appendEnter: step.appendEnter });
@@ -228,11 +236,11 @@ export class UiTestController {
         return;
       }
       case "authority.wait":
-        await this.waitForAuthority(session, step.gate);
+        await this.waitForAuthority(session, step.gate, trackEvidence);
     }
   }
 
-  private async waitForAuthority(session: HarnessSession, gate: AuthorityGate): Promise<void> {
+  private async waitForAuthority(session: HarnessSession, gate: AuthorityGate, trackEvidence: <T>(operation: Promise<T>) => Promise<T>): Promise<void> {
     const startedAt = Date.now();
     const deadline = startedAt + gate.timeoutMs;
     let lastActivityAt = startedAt;
@@ -241,15 +249,18 @@ export class UiTestController {
 
     while (Date.now() <= deadline) {
       const authority = await this.withAuthorityDeadline(() => this.drivers.authority.snapshot(), deadline, gate.description);
+      if (gate.accepts(authority)) {
+        await trackEvidence(this.drivers.evidence.recordAuthoritySnapshot({ ...authority, sessionId: session.sessionId }));
+        return;
+      }
       await this.withAuthorityDeadline(
-        () => this.drivers.evidence.recordAuthoritySnapshot({ ...authority, sessionId: session.sessionId }),
+        () => trackEvidence(this.drivers.evidence.recordAuthoritySnapshot({ ...authority, sessionId: session.sessionId })),
         deadline,
         gate.description,
       );
       if (Date.now() > deadline) {
         throw new Error(`Authority gate timed out: ${gate.description}`);
       }
-      if (gate.accepts(authority)) return;
 
       await this.withAuthorityDeadline(() => delay(this.options.activityPollMs), deadline, gate.description);
       const current = await this.withAuthorityDeadline(() => this.sampleActivity(session), deadline, gate.description);
@@ -266,10 +277,12 @@ export class UiTestController {
   private async withAuthorityDeadline<T>(operation: () => Promise<T>, deadline: number, description: string): Promise<T> {
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new Error(`Authority gate timed out: ${description}`);
+    const operationPromise = operation();
+    void operationPromise.catch(() => undefined);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
-        operation(),
+        operationPromise,
         new Promise<T>((_, reject) => {
           timer = setTimeout(() => reject(new Error(`Authority gate timed out: ${description}`)), remaining);
         }),
@@ -330,6 +343,7 @@ function combineFailure(primary: unknown, context: string, secondary: unknown): 
 }
 
 async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  void operation.catch(() => undefined);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([

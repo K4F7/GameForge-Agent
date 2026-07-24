@@ -46,7 +46,7 @@ Driver 对已经位于同一规范化 loopback URL 的 `navigate` 执行 no-op�
 
 异步 GUI 状态必须通过显式 `gui.wait` 场景步骤等待，支持 Playwright locator 的 `attached`、`detached`、`visible` 与 `hidden` 状态；逐步超时必须是 `1`–`900000` 毫秒的安全整数，`0` 不得用于禁用超时。条件满足后记录 `after-gui-wait` 截图，超时则场景失败。不得用固定 sleep 或通用 `networkidle` 冒充业务完成条件。
 
-Authority gate 的初始活动采样、快照、Evidence 记录、轮询延迟和后续采样共享同一个 `timeoutMs` deadline；任一步骤停止响应时 Controller 也必须按时停止等待。快照即使最终返回可接受终态，只要到达时已经超时，也必须以 `Authority gate timed out` 失败，不能把迟到结果误报为通过。
+Authority gate 的初始活动采样、快照、Evidence 记录、轮询延迟和后续采样共享同一个 `timeoutMs` deadline；任一步骤停止响应时 Controller 也必须按时停止等待。快照即使最终返回可接受终态，只要到达时已经超时，也必须以 `Authority gate timed out` 失败，不能把迟到结果误报为通过。若可接受快照在 deadline 前已经返回，则权威终态立即成立，Controller 随后完整记录该快照，不得因 Evidence 写入跨过 deadline 把已完成的 Task/Run 反转为超时。非终态 Evidence 写入发生 deadline race 时，其 Promise 终态必须继续被观察，并在最终 `finalize()` 前收敛，避免迟到拒绝或写入穿越最终提交屏障。
 
 构建产物必须通过独立 Bun 进程调用 Node Playwright helper 的黑盒用例，验证 `gui.wait`、截图、空诊断与成功 `close()` 后父进程自然退出；Windows 用例还必须确认 `close()` 返回时 Node helper 及其已启动的 Chromium 后代 PID 均已消失，不能在 `browser.close()` 完成前强杀 helper，也不能在 `browser.close()` 返回后用 `process.exit()` 截断尾部资源释放。并发 `close()` 必须共享同一项进行中的清理工作，任一调用成功返回都代表清理已经完成；旧 helper 关闭完成前必须拒绝新的 `launch()`。本地 Node Playwright 测试不能替代这条跨运行时门禁。远程页面启动失败时 `launch()` 必须自行回滚已经创建的 helper，无需调用方追加 `close()`；已经成功启动后再次 `launch()` 必须拒绝，不能用第二个 helper 覆盖首个进程句柄。
 
