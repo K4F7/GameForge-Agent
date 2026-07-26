@@ -27,6 +27,7 @@ const shutdownMarker = path.join(repoRoot, ".gameforge-validation", "testenv-shu
 const execFileAsync = promisify(execFile);
 
 const relayUrl = safeRelayUrl(process.env.GAMEFORGE_RUN_RELAY_URL?.trim() || DEFAULT_RELAY_URL);
+loopbackHttpPort(relayUrl, "Relay URL");
 const openChamberUrl = safeOpenChamberUrl(process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() || DEFAULT_OPENCHAMBER_URL);
 
 const command = process.argv[2] ?? "status";

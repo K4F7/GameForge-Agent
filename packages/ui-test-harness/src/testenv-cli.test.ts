@@ -17,6 +17,16 @@ describe("testenv CLI", () => {
     expect(result.stderr).toContain("Relay URL must use HTTPS");
   });
 
+  it("rejects a remote HTTPS Relay before forwarding the status token", () => {
+    const result = spawnSync("bun", [fileURLToPath(new URL("./testenv-cli.ts", import.meta.url)), "status"], {
+      encoding: "utf8", timeout: 5_000, windowsHide: true,
+      env: { ...process.env, GAMEFORGE_RUN_RELAY_URL: "https://example.com:8787/", GAMEFORGE_RUN_RELAY_TOKEN: "must-not-leak" },
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Relay URL must be a loopback URL for testenv port management");
+  });
+
   it("rejects an unsafe OpenChamber URL before a status probe", () => {
     const result = spawnSync("bun", [fileURLToPath(new URL("./testenv-cli.ts", import.meta.url)), "status"], {
       encoding: "utf8", timeout: 5_000, windowsHide: true,
