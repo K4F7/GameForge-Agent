@@ -30,25 +30,48 @@ export function decideMergeAction(input) {
 }
 
 /**
- * Paths that define how this repository governs itself. A change here can widen
- * permissions or relax a gate, so it never qualifies for any reduced-scrutiny
- * path regardless of file extension.
+ * The agent-config surface the gh-aw workflows sparse-checkout and restore from
+ * the base branch (see GH_AW_AGENT_FOLDERS / GH_AW_AGENT_FILES in the compiled
+ * lock workflows), plus this repository's own skill and agent directories. Keep
+ * in sync with that restoration list when gh-aw is upgraded.
+ */
+const AGENT_CONFIG_DIRECTORIES = [
+  ".github/",
+  ".agents/",
+  ".antigravity/",
+  ".claude/",
+  ".codex/",
+  ".crush/",
+  ".gemini/",
+  ".opencode/",
+  ".pi/",
+  ".codeartsdoer/skills/",
+  ".codeartsdoer/agents/",
+];
+
+const AGENT_CONFIG_BASENAMES = [
+  "AGENTS.md",
+  "ANTIGRAVITY.md",
+  "CLAUDE.md",
+  "GEMINI.md",
+  "PI.md",
+  ".crush.json",
+  "opencode.jsonc",
+];
+
+/**
+ * Paths that define how this repository governs itself: workflow sources plus
+ * every file an agent engine loads as executable instructions. A change here can
+ * widen permissions, relax a gate, or steer future reviews, so it never
+ * qualifies for any reduced-scrutiny path regardless of file extension.
  *
  * @param {string} path
  */
 export function isPolicyBoundaryPath(path) {
+  const basename = path.slice(path.lastIndexOf("/") + 1);
   return (
-    path === "AGENTS.md" ||
-    path.endsWith("/AGENTS.md") ||
-    path === "CLAUDE.md" ||
-    path.endsWith("/CLAUDE.md") ||
-    path.startsWith(".github/") ||
-    path.startsWith(".claude/") ||
-    path.startsWith(".codex/") ||
-    path.startsWith(".agents/") ||
-    path.startsWith(".opencode/") ||
-    path.startsWith(".codeartsdoer/skills/") ||
-    path.startsWith(".codeartsdoer/agents/")
+    AGENT_CONFIG_BASENAMES.includes(basename) ||
+    AGENT_CONFIG_DIRECTORIES.some((directory) => path.startsWith(directory))
   );
 }
 
