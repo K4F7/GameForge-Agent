@@ -48,6 +48,9 @@ const prepared = await prepareHarnessSession({
     if (options.codeartsServerUrl === undefined) {
       throw new Error("Preflight failed: codearts-session (the UI harness requires an external CodeArts server and session; provide --codearts-server-url/--codearts-session or GAMEFORGE_CODEARTS_SERVER_URL/GAMEFORGE_CODEARTS_SESSION)");
     }
+    if (options.tier === "acceptance" && options.sessionId === undefined) {
+      throw new Error("Preflight failed: attached acceptance requires an explicit --session-id shared with the CodeArts server MCP audit directory.");
+    }
     // Preflight runs after the Evidence session exists, so a missing
     // dependency is a named, on-disk failure instead of a bare stack trace.
     const preflight = evaluatePreflight(await probeRunDependencies({

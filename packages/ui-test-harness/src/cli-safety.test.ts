@@ -83,6 +83,16 @@ describe("UI harness CLI safety", () => {
     expect(output).toContain("result.json");
   });
 
+  test("requires an explicit shared Evidence session for attached acceptance", async () => {
+    const experiment = `missing-shared-session-${Date.now()}`;
+    const output = await runCli(["--headed", "--tier", "acceptance", "--experiment", experiment], {
+      GAMEFORGE_CODEARTS_SERVER_URL: "http://127.0.0.1:4097/",
+      GAMEFORGE_CODEARTS_SESSION: "ses_shared",
+    });
+    expect(output).toContain("acceptance requires an explicit --session-id");
+    expect(output).toContain("result.json");
+  });
+
   test("rejects an unknown option instead of silently running the acceptance tier", async () => {
     const output = await runCli(["--headless", "--tire", "readiness"]);
     expect(output).toContain("Unknown option: --tire");

@@ -10,6 +10,7 @@ import { evaluatePreflight, type PreflightProbe, type PreflightReport } from "./
 import { probeBrowser, probeCodeArts, probeFile, probeHttp } from "./preflight-probes.js";
 import { DEFAULT_OPENCHAMBER_URL, DEFAULT_RELAY_URL } from "./testenv-config.js";
 import { TestEnvSupervisor, stopPortListeners, type ManagedServiceSpec } from "./testenv-supervisor.js";
+import { rollbackStartupFailure } from "./startup-rollback.js";
 
 /**
  * Resident test environment control surface (ADR-0005).
@@ -97,8 +98,7 @@ async function runUp(): Promise<void> {
     await supervisor.up();
     await registerOpenChamberDirectory(openChamberUrl, repoRoot);
   } catch (error) {
-    await supervisor.down().catch(() => undefined);
-    throw error;
+    await rollbackStartupFailure(error, () => supervisor.down());
   }
   process.stdout.write([
     "常驻测试环境已就绪：",

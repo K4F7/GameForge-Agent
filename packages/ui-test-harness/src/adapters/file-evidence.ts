@@ -195,8 +195,15 @@ export class FileEvidenceSink implements EvidenceSink {
     const bound = audits.filter((audit) => audit.context?.taskId === session.taskId && audit.context?.runId === session.runId);
     if (bound.length === 0) throw new Error("Completed acceptance requires a bound MCP audit for its Task and Run.");
     if (bound.some((audit) => audit.truncated)) throw new Error("A truncated MCP audit cannot prove acceptance.");
-    const hasReadOnlyCall = bound.some((audit) => audit.calls.some((call) => call.outcome === "success" && ACCEPTANCE_READ_ONLY_TOOLS.has(call.tool)));
-    if (!hasReadOnlyCall) throw new Error("Completed acceptance requires a successful deterministic read-only MCP call.");
+    const hasReadOnly = bound.some((audit) => audit.calls.some((call) => call.outcome === "success" && ACCEPTANCE_READ_ONLY_TOOLS.has(call.tool)));
+    if (!hasReadOnly) throw new Error("Completed acceptance requires a successful deterministic read-only MCP call.");
+    const hasRequiredSequence = bound.some((audit) => {
+      const successful = audit.calls.filter((call) => call.outcome === "success");
+      return successful.some((readOnly) => ACCEPTANCE_READ_ONLY_TOOLS.has(readOnly.tool)
+        && successful.some((call) => call.tool === "bind_mcp_audit_context" && call.sequence < readOnly.sequence)
+        && successful.some((call) => call.tool === "complete_game_run" && call.sequence > readOnly.sequence));
+    });
+    if (!hasRequiredSequence) throw new Error("Completed acceptance requires the successful MCP call sequence bind, read-only, complete.");
   }
 }
 

@@ -20,7 +20,7 @@ describe("FileEvidenceSink", () => {
     await writeFile(path.join(root, "mcp-audit", "session.json"), JSON.stringify({
       schemaVersion: 1, sessionId: "00000000-0000-4000-8000-000000000000", startedAt: session.startedAt, truncated: false,
       context: { taskId: session.taskId, runId: session.runId, boundAt: session.startedAt },
-      calls: [{ sequence: 1, tool: "get_game_task", startedAt: session.startedAt, durationMs: 1, outcome: "success" }],
+      calls: ["bind_mcp_audit_context", "get_game_task", "complete_game_run"].map((tool, index) => ({ sequence: index + 1, tool, startedAt: session.startedAt, durationMs: 1, outcome: "success" })),
     }), "utf8");
     const result: HarnessResult = { status: "completed", scenario: "acceptance", startedAt: session.startedAt, finishedAt: "2026-07-23T00:01:00.000Z" };
 
@@ -32,6 +32,7 @@ describe("FileEvidenceSink", () => {
     { name: "truncated", audit: { truncated: true, taskId: "task-00000000-0000-0000-0000-000000000000", runId: "run-evidence", tool: "get_game_task" }, message: "truncated" },
     { name: "wrong context", audit: { truncated: false, taskId: "task-11111111-1111-1111-1111-111111111111", runId: "run-evidence", tool: "get_game_task" }, message: "bound MCP audit" },
     { name: "no read-only call", audit: { truncated: false, taskId: "task-00000000-0000-0000-0000-000000000000", runId: "run-evidence", tool: "complete_game_run" }, message: "read-only MCP call" },
+    { name: "wrong call order", audit: { truncated: false, taskId: "task-00000000-0000-0000-0000-000000000000", runId: "run-evidence", tool: "get_game_task", wrongOrder: true }, message: "call sequence" },
   ])("rejects $name audit evidence for a completed acceptance", async ({ audit, message }) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
     const sink = new FileEvidenceSink(root);
@@ -41,7 +42,10 @@ describe("FileEvidenceSink", () => {
     if (audit !== undefined) await writeFile(path.join(root, "mcp-audit", "session.json"), JSON.stringify({
       schemaVersion: 1, sessionId: "00000000-0000-4000-8000-000000000000", startedAt: session.startedAt, truncated: audit.truncated,
       context: { taskId: audit.taskId, runId: audit.runId, boundAt: session.startedAt },
-      calls: [{ sequence: 1, tool: audit.tool, startedAt: session.startedAt, durationMs: 1, outcome: "success" }],
+      calls: (audit.wrongOrder === true
+        ? ["complete_game_run", audit.tool, "bind_mcp_audit_context"]
+        : ["bind_mcp_audit_context", audit.tool, "complete_game_run"])
+        .map((tool, index) => ({ sequence: index + 1, tool, startedAt: session.startedAt, durationMs: 1, outcome: "success" })),
     }), "utf8");
     const result: HarnessResult = { status: "completed", scenario: "acceptance", startedAt: session.startedAt, finishedAt: session.startedAt };
 
