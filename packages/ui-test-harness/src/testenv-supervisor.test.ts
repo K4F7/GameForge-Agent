@@ -104,6 +104,46 @@ describe("TestEnvSupervisor", () => {
     await supervisor.down();
   }, SUPERVISOR_TEST_TIMEOUT_MS);
 
+  it("aborts an in-flight up when down arrives, leaving no process behind", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-testenv-")); roots.push(root);
+    const script = path.join(root, "never-ready.mjs");
+    // Never listens: up() stays in its readiness poll until down() interrupts.
+    await writeFile(script, "setInterval(() => undefined, 1_000);\n", "utf8");
+    const port = await freePort();
+    const supervisor = new TestEnvSupervisor([{ name: "never-ready", command: process.execPath, args: [script], port }]);
+    cleanups.push(() => supervisor.down().catch(() => undefined));
+
+    const upPromise = supervisor.up();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const pids = supervisor.managedPids();
+    await supervisor.down();
+
+    await expect(upPromise).rejects.toThrow();
+    for (const pid of pids) expect(() => process.kill(pid, 0)).toThrow();
+    expect(supervisor.managedPids()).toEqual([]);
+  }, SUPERVISOR_TEST_TIMEOUT_MS);
+
+  it("does not leak parent credentials into resident service environments", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-testenv-")); roots.push(root);
+    const script = path.join(root, "canary.mjs");
+    // Exits nonzero when the canary secret is visible, so up() only succeeds
+    // if the parent environment was stripped.
+    await writeFile(script, `
+      import net from "node:net";
+      if (process.env.GAMEFORGE_CANARY_SECRET !== undefined) process.exit(17);
+      net.createServer(() => undefined).listen(Number(process.env.SERVICE_PORT), "127.0.0.1");
+      setInterval(() => undefined, 1_000);
+    `, "utf8");
+    const port = await freePort();
+    process.env.GAMEFORGE_CANARY_SECRET = "leak-me";
+    cleanups.push(() => { delete process.env.GAMEFORGE_CANARY_SECRET; });
+    const supervisor = new TestEnvSupervisor([{ name: "canary", command: process.execPath, args: [script], port, env: { SERVICE_PORT: String(port) } }]);
+    cleanups.push(() => supervisor.down().catch(() => undefined));
+
+    await supervisor.up();
+    await supervisor.down();
+  }, SUPERVISOR_TEST_TIMEOUT_MS);
+
   it("finds and stops a dual-stack listener, verifying the port is released", async () => {
     const port = await freePort();
     // Node's default listen() binds "::" (dual-stack) - netstat shows [::]:port.

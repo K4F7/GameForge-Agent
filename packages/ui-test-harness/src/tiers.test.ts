@@ -16,8 +16,10 @@ describe("buildScenario", () => {
     const kinds = scenario.steps.map((step) => step.kind);
     expect(kinds).not.toContain("tui.text");
     expect(kinds).not.toContain("authority.wait");
-    expect(kinds).toContain("gui.navigate");
-    expect(kinds).toContain("capture");
+    // The diagnostics-gated capture must come after the app has visibly
+    // mounted, or the readiness pass could green-light a page whose async
+    // initialization errors have not arrived yet.
+    expect(kinds).toEqual(["gui.navigate", "gui.wait", "capture"]);
   });
 });
 

@@ -17,6 +17,11 @@ export function buildScenario(tier: HarnessTier, options: { openChamberUrl: stri
       name: "testenv-readiness:baseline",
       steps: [
         { kind: "gui.navigate", url: options.openChamberUrl },
+        // Wait for the app to actually mount before the diagnostics-gated
+        // capture: navigation resolves at domcontentloaded, and capturing
+        // immediately could green-light the page before its asynchronous
+        // initialization requests and console errors have arrived.
+        { kind: "gui.wait", selector: "#root > *", options: { state: "visible", timeoutMs: 30_000 } },
         { kind: "capture", label: "readiness" },
       ],
     };

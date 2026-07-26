@@ -185,6 +185,8 @@ export type HarnessScenario = {
 export type HarnessOptions = {
   sessionId?: string;
   mode: HarnessMode;
+  /** Propagated into the recorded evidence session so metadata.json keeps the tier. */
+  tier?: HarnessTier;
   terminal: { columns: number; rows: number };
   tuiObserverViewport: { width: number; height: number };
   viewport: { width: number; height: number };

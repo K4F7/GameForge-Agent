@@ -100,6 +100,7 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
   }, {
     sessionId,
     mode: options.mode,
+    tier: options.tier,
     taskId: task.taskId, runId, projectId,
     terminal: { columns: 120, rows: 36 },
     tuiObserverViewport: { width: 1280, height: 800 },
@@ -190,7 +191,9 @@ function parseArguments(args: string[]): {
     openChamberUrl: value("--openchamber-url", process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() ?? DEFAULT_OPENCHAMBER_URL),
     ...(browserChannel === undefined ? {} : { browserChannel }),
     observationHoldMs: positiveInteger(value("--observation-hold-ms", "10000")),
-    failureHoldMs: positiveInteger(value("--failure-hold-ms", "30000")),
+    // Bounded at parse time: the controller enforces the same cap, but a
+    // rejection there would land after the evidence lock is already held.
+    failureHoldMs: boundedInteger(value("--failure-hold-ms", "30000"), 300_000, "--failure-hold-ms"),
     softBudgetMs: positiveInteger(value("--soft-budget-ms", "60000")),
     tier: tierInput,
     ...(sessionId === undefined ? {} : { sessionId: safeEvidenceSegment(sessionId, "--session-id") }),
@@ -207,5 +210,11 @@ function optionalValue(args: string[], name: string): string | undefined { const
 function positiveInteger(value: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error("Timeout values must be positive integers.");
+  return parsed;
+}
+
+function boundedInteger(value: string, max: number, name: string): number {
+  const parsed = positiveInteger(value);
+  if (parsed > max) throw new Error(`${name} must not exceed ${max}.`);
   return parsed;
 }

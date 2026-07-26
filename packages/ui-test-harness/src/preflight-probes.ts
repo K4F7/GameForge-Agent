@@ -9,16 +9,40 @@ import type { PreflightProbe } from "./preflight.js";
  */
 const PROBE_TIMEOUT_MS = 2_000;
 
+/**
+ * A dependency is only available when the endpoint speaks that dependency's
+ * actual contract - a 200 from the wrong service parked on the pinned port
+ * must not read as ready, and any non-2xx (401/403/404 included) is down.
+ */
 export async function probeHttp(dependency: PreflightProbe["dependency"], url: string): Promise<PreflightProbe> {
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS), redirect: "manual" });
-    // A 5xx means the process is listening but not serving; treat it as down so
-    // the report cannot show OK for a dependency the run will fail against.
-    if (response.status >= 500) return { dependency, available: false, detail: `${url} responded ${response.status}` };
+    const headers = dependency === "authority-relay" && process.env.GAMEFORGE_RUN_RELAY_TOKEN !== undefined
+      ? { authorization: `Bearer ${process.env.GAMEFORGE_RUN_RELAY_TOKEN}` }
+      : undefined;
+    const response = await fetch(url, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS), redirect: "manual", ...(headers === undefined ? {} : { headers }) });
+    if (response.status < 200 || response.status >= 300) return { dependency, available: false, detail: `${url} responded ${response.status}` };
+    const body = await response.text();
+    const contract = matchesContract(dependency, body);
+    if (!contract.matches) return { dependency, available: false, detail: `${url} responded 200 but ${contract.reason}` };
     return { dependency, available: true, detail: `${url} responded ${response.status}` };
   } catch (error) {
     return { dependency, available: false, detail: `${url} is not reachable: ${errorMessage(error)}` };
   }
+}
+
+function matchesContract(dependency: PreflightProbe["dependency"], body: string): { matches: boolean; reason?: string } {
+  if (dependency === "authority-relay") {
+    try {
+      const parsed: unknown = JSON.parse(body);
+      if (typeof parsed === "object" && parsed !== null && Array.isArray((parsed as { tasks?: unknown }).tasks)) return { matches: true };
+    } catch { /* fall through to the mismatch below */ }
+    return { matches: false, reason: "did not return the relay task-list contract; another service may own this port" };
+  }
+  if (dependency === "openchamber-service") {
+    if (body.includes("OpenChamber") && body.includes('id="root"')) return { matches: true };
+    return { matches: false, reason: "did not serve the OpenChamber landing page; another service may own this port" };
+  }
+  return { matches: true };
 }
 
 export async function probeFile(dependency: PreflightProbe["dependency"], target: string): Promise<PreflightProbe> {
@@ -31,22 +55,35 @@ export async function probeFile(dependency: PreflightProbe["dependency"], target
 }
 
 /**
- * Mirrors the candidate list used by the repository CodeArts launcher. The
- * harness only detects the client - it never manages its authorization or
- * private data directory (ADR-0005).
+ * Mirrors the repository CodeArts launcher's resolution: CODEARTS_BIN, then
+ * the Windows installer paths on win32, then `codearts` on PATH elsewhere -
+ * matching `resolveCodeArtsLaunchTarget`. The harness only detects the
+ * client; it never manages its authorization or private data directory
+ * (ADR-0005).
  */
-export async function probeCodeArts(): Promise<PreflightProbe> {
-  const configured = process.env.CODEARTS_BIN?.trim();
-  const home = process.env.USERPROFILE?.trim() || process.env.HOME?.trim() || "";
-  const installers = path.join(home, ".codeartsdoer", "installers");
-  const candidates = configured ? [configured] : [path.join(installers, "bin", "codearts.exe"), path.join(installers, "codearts.cmd")];
-  for (const candidate of candidates) {
-    try {
-      await access(candidate);
-      return { dependency: "codearts", available: true, detail: candidate };
-    } catch { continue; }
+export async function probeCodeArts(options?: { platform?: NodeJS.Platform; env?: Readonly<Record<string, string | undefined>> }): Promise<PreflightProbe> {
+  const platform = options?.platform ?? process.platform;
+  const env = options?.env ?? process.env;
+  const configured = env.CODEARTS_BIN?.trim();
+  if (configured) {
+    try { await access(configured); return { dependency: "codearts", available: true, detail: configured }; }
+    catch { return { dependency: "codearts", available: false, detail: `CODEARTS_BIN points at ${configured}, which is not accessible` }; }
   }
-  return { dependency: "codearts", available: false, detail: `No CodeArts client under ${installers}; set CODEARTS_BIN to override` };
+  if (platform === "win32") {
+    const home = env.USERPROFILE?.trim() || env.HOME?.trim() || "";
+    const installers = path.join(home, ".codeartsdoer", "installers");
+    for (const candidate of [path.join(installers, "bin", "codearts.exe"), path.join(installers, "codearts.cmd")]) {
+      try { await access(candidate); return { dependency: "codearts", available: true, detail: candidate }; }
+      catch { continue; }
+    }
+    return { dependency: "codearts", available: false, detail: `No CodeArts client under ${installers}; set CODEARTS_BIN to override` };
+  }
+  for (const directory of (env.PATH ?? "").split(path.delimiter).filter((entry) => entry.length > 0)) {
+    const candidate = path.join(directory, "codearts");
+    try { await access(candidate); return { dependency: "codearts", available: true, detail: candidate }; }
+    catch { continue; }
+  }
+  return { dependency: "codearts", available: false, detail: "No codearts executable on PATH; set CODEARTS_BIN to override" };
 }
 
 /**

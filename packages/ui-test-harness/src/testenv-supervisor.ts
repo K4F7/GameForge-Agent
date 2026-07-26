@@ -25,9 +25,18 @@ type ManagedService = { spec: ManagedServiceSpec; child: ChildProcess };
 const READY_TIMEOUT_MS = 30_000;
 const STOP_TIMEOUT_MS = 10_000;
 
+/**
+ * Only these parent variables reach the resident services; everything else -
+ * relay tokens, provider keys, CodeArts credentials - is deliberately absent
+ * so the environment stays the credential-free one it promises to be. Service
+ * specifics arrive via each spec's explicit env.
+ */
+const CHILD_ENV_ALLOWLIST = ["PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "NODE_PATH", "LANG", "LC_ALL"];
+
 export class TestEnvSupervisor {
   #services: ManagedService[] = [];
-  #upInProgress = false;
+  #upPromise: Promise<void> | undefined;
+  #stopRequested = false;
   #downPromise: Promise<void> | undefined;
 
   constructor(private readonly specs: readonly ManagedServiceSpec[]) {}
@@ -39,17 +48,25 @@ export class TestEnvSupervisor {
   }
 
   async up(): Promise<void> {
-    if (this.#upInProgress || this.#services.length > 0) throw new Error("Test environment is already up.");
+    if (this.#upPromise !== undefined || this.#services.length > 0) throw new Error("Test environment is already up.");
     if (this.#downPromise !== undefined) throw new Error("Test environment is still stopping.");
-    this.#upInProgress = true;
+    this.#stopRequested = false;
+    const upPromise = this.#startAll();
+    this.#upPromise = upPromise;
+    try { await upPromise; } finally { if (this.#upPromise === upPromise) this.#upPromise = undefined; }
+  }
+
+  async #startAll(): Promise<void> {
     try {
       for (const spec of this.specs) {
+        this.#throwIfStopRequested();
         if (await portListening(spec.port)) {
           throw new Error(`Port ${spec.port} for ${spec.name} is already occupied; refusing to start over it.`);
         }
+        this.#throwIfStopRequested();
         const child = spawn(spec.command, spec.args, {
           cwd: spec.cwd,
-          env: { ...process.env, ...spec.env },
+          env: { ...allowlistedEnvironment(), ...spec.env },
           stdio: ["ignore", "ignore", "pipe"],
           windowsHide: true,
         });
@@ -59,13 +76,24 @@ export class TestEnvSupervisor {
     } catch (error) {
       await this.#stopAll();
       throw error;
-    } finally {
-      this.#upInProgress = false;
     }
   }
 
+  #throwIfStopRequested(): void {
+    if (this.#stopRequested) throw new Error("Test environment startup was stopped by a concurrent down().");
+  }
+
+  /**
+   * Coordinates with an in-flight up(): no further service may spawn after a
+   * down() arrives, and down() only resolves once the startup has settled and
+   * every already-spawned process is gone.
+   */
   down(): Promise<void> {
-    this.#downPromise ??= this.#stopAll().finally(() => { this.#downPromise = undefined; });
+    this.#downPromise ??= (async () => {
+      this.#stopRequested = true;
+      await this.#upPromise?.catch(() => undefined);
+      await this.#stopAll();
+    })().finally(() => { this.#downPromise = undefined; });
     return this.#downPromise;
   }
 
@@ -74,6 +102,7 @@ export class TestEnvSupervisor {
     child.stderr?.on("data", (chunk: unknown) => { stderrTail = (stderrTail + String(chunk)).slice(-2_048); });
     const startedAt = Date.now();
     while (Date.now() - startedAt < READY_TIMEOUT_MS) {
+      this.#throwIfStopRequested();
       if (child.exitCode !== null || child.signalCode !== null) {
         throw new Error(`${spec.name} exited before listening on ${spec.port}: ${stderrTail.trim()}`);
       }
@@ -138,6 +167,14 @@ async function waitUntilPortFree(port: number, timeoutMs: number, name: string):
 }
 
 function delay(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+function allowlistedEnvironment(): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined && CHILD_ENV_ALLOWLIST.includes(key.toUpperCase())) result[key] = value;
+  }
+  return result;
+}
 
 /**
  * Windows netstat listeners on a loopback-reachable port. Matches IPv4 any,

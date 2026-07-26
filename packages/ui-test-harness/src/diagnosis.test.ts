@@ -23,15 +23,27 @@ describe("diagnose", () => {
     expect(diagnosis.nextCommand).toBe("bun run testenv:status");
   });
 
+  it("names the dependency that actually failed preflight, not always the relay", () => {
+    const diagnosis = diagnose({
+      failure: "Preflight failed: codearts (fix: bun run codearts)",
+      files: ["result.json"],
+    });
+
+    expect(diagnosis.category).toBe("environment");
+    expect(diagnosis.likelyCause).toContain("codearts");
+    expect(diagnosis.likelyCause).not.toContain("Relay");
+  });
+
   it("attributes dirty browser diagnostics to the page under test, not the harness", () => {
     const diagnosis = diagnose({
       failure: "OpenChamber browser diagnostics are not clean: 4 issue(s)",
-      files: ["result.json", "gui/browser-report.ndjson", "gui/failed.png", "output.vtlog"],
+      // Screenshots are written as gui/<timestamp>-<label>.png.
+      files: ["result.json", "gui/browser-report.ndjson", "gui/1753500000000-failed.png", "output.vtlog"],
     });
 
     expect(diagnosis.category).toBe("gui-diagnostics");
     expect(diagnosis.evidence).toContain("gui/browser-report.ndjson");
-    expect(diagnosis.evidence).toContain("gui/failed.png");
+    expect(diagnosis.evidence).toContain("gui/1753500000000-failed.png");
     expect(diagnosis.responsibility).toContain("OpenChamber");
   });
 

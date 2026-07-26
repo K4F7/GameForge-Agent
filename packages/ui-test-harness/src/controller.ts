@@ -46,6 +46,7 @@ export class UiTestController {
   async run(scenario: HarnessScenario): Promise<HarnessResult> {
     const startedAt = new Date().toISOString();
     const session: HarnessSession = { sessionId: this.options.sessionId ?? randomUUID(), startedAt, mode: this.options.mode,
+      ...(this.options.tier === undefined ? {} : { tier: this.options.tier }),
       ...(this.options.taskId === undefined ? {} : { taskId: this.options.taskId }), ...(this.options.runId === undefined ? {} : { runId: this.options.runId }),
       ...(this.options.projectId === undefined ? {} : { projectId: this.options.projectId }) };
     let failure: unknown;
