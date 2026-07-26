@@ -103,13 +103,16 @@ export function decideApprovalCarryForward(input) {
     return { kind: "carry-forward", rule: "documentation" };
   }
 
-  const removed = changedFiles.find((file) => file.status === "removed");
+  const removed = changedFiles.find((file) => isTestPath(file.filename) && file.status === "removed");
   if (removed !== undefined) {
     return { kind: "skip", reason: `${removed.filename} was deleted` };
   }
 
-  const additions = changedFiles.reduce((total, file) => total + file.additions, 0);
-  const deletions = changedFiles.reduce((total, file) => total + file.deletions, 0);
+  // Budget only over test files. Documentation additions must not offset a
+  // subtractive test delta -- +100 docs / -80 assertions is a coverage cut.
+  const testFiles = changedFiles.filter((file) => isTestPath(file.filename));
+  const additions = testFiles.reduce((total, file) => total + file.additions, 0);
+  const deletions = testFiles.reduce((total, file) => total + file.deletions, 0);
   if (deletions > additions) {
     return {
       kind: "skip",

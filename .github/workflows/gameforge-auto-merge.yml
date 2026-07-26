@@ -102,7 +102,10 @@ jobs:
               review.user?.login === "github-actions[bot]" && (review.body ?? "").includes(reviewerMarker);
 
             // dismiss_stale_reviews rewrites a dismissed review's state to DISMISSED, so the
-            // original verdict only survives on the timeline event that dismissed it.
+            // original verdict only survives on the timeline event that dismissed it. Only
+            // automatic stale dismissals are recovered: they carry no dismissal message,
+            // whereas a deliberate dismissal (UI or API) always requires one. A verdict a
+            // maintainer explicitly revoked must stay revoked.
             const timeline = await github.paginate(github.rest.issues.listEventsForTimeline, {
               owner,
               repo,
@@ -111,7 +114,12 @@ jobs:
             });
             const dismissedVerdicts = new Map(
               timeline
-                .filter((entry) => entry.event === "review_dismissed" && entry.dismissed_review)
+                .filter(
+                  (entry) =>
+                    entry.event === "review_dismissed" &&
+                    entry.dismissed_review &&
+                    !entry.dismissed_review.dismissal_message,
+                )
                 .map((entry) => [
                   entry.dismissed_review.review_id,
                   String(entry.dismissed_review.state ?? "").toUpperCase(),

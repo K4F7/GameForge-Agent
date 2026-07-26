@@ -101,6 +101,13 @@ describe("decideApprovalCarryForward", () => {
     });
   });
 
+  test("refuses when documentation additions mask a subtractive test delta", () => {
+    expect(decide([file("docs/guide.md", 100, 0), file("packages/run-relay/src/store.test.ts", 0, 80)])).toEqual({
+      kind: "skip",
+      reason: "test delta removes more than it adds (+0 / -80)",
+    });
+  });
+
   test("refuses after the reviewer requested changes", () => {
     expect(decide([file("docs/guide.md")], { hasNewerChangesRequested: true })).toEqual({
       kind: "skip",
