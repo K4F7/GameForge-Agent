@@ -80,7 +80,7 @@ Do not block on subjective style, unrelated pre-existing problems, or speculativ
 - Add at most ten precise inline comments. Include the failure mode and a concrete correction.
 - Submit `REQUEST_CHANGES` when at least one blocking issue remains.
 - Submit `COMMENT` when findings are useful but all are non-blocking.
-- Treat a PR as ordinary documentation-only only when every changed file is a Markdown file outside every `AGENTS.md` basename, `.github/**`, `.codeartsdoer/skills/**`, and `.codeartsdoer/agents/**`.
+- Treat a PR as ordinary documentation-only only when every changed file is a Markdown file outside the policy boundary defined by `isPolicyBoundaryPath` in `.github/scripts/auto-merge-policy.js`: every agent-config basename (`AGENTS.md`, `ANTIGRAVITY.md`, `CLAUDE.md`, `GEMINI.md`, `PI.md`, `.crush.json`, `opencode.jsonc`) and every agent-config directory (`.github/**`, `.agents/**`, `.antigravity/**`, `.claude/**`, `.codex/**`, `.crush/**`, `.gemini/**`, `.opencode/**`, `.pi/**`, `.codeartsdoer/skills/**`, `.codeartsdoer/agents/**`).
 - Submit `APPROVE` only when no blocking issue remains and `PR Gate` is passing for the current PR head SHA. For ordinary documentation-only PRs, `PR Gate` intentionally does not run the three-platform Bun jobs.
 - Never require the current `GameForge PR Reviewer` run, or any of its own jobs, to be complete before approving. The review is produced from inside that run, so treating it as a prerequisite creates a circular gate.
 - If `PR Gate` is pending, use `COMMENT`. When CI completes successfully, the deterministic auto-merge gate will rerun the Reviewer for the same head SHA if no current approval exists.

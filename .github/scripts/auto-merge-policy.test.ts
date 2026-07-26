@@ -56,6 +56,27 @@ describe("isOrdinaryDocumentationPath", () => {
     expect(isOrdinaryDocumentationPath("docs/example.ts")).toBe(false);
   });
 
+  test("treats every agent-config surface the workflows restore as policy boundary", () => {
+    for (const path of [
+      "CLAUDE.md",
+      "packages/game/CLAUDE.md",
+      "GEMINI.md",
+      "ANTIGRAVITY.md",
+      "PI.md",
+      "docs/nested/GEMINI.md",
+      ".claude/skills/deploy/SKILL.md",
+      ".codex/config.md",
+      ".agents/reviewer.md",
+      ".antigravity/notes.md",
+      ".crush/setup.md",
+      ".gemini/styleguide.md",
+      ".opencode/plugin.md",
+      ".pi/prompt.md",
+    ]) {
+      expect(isOrdinaryDocumentationPath(path)).toBe(false);
+    }
+  });
+
   test("rejects a mixed change when any policy boundary file is present", () => {
     expect(isOrdinaryDocumentationChange(["docs/guide.md", ".github/scripts/policy.js"])).toBe(false);
   });
