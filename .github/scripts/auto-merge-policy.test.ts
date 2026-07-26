@@ -56,6 +56,15 @@ describe("isOrdinaryDocumentationPath", () => {
     expect(isOrdinaryDocumentationPath("docs/example.ts")).toBe(false);
   });
 
+  test("treats agent configuration as policy boundary, not documentation", () => {
+    expect(isOrdinaryDocumentationPath("CLAUDE.md")).toBe(false);
+    expect(isOrdinaryDocumentationPath("packages/game/CLAUDE.md")).toBe(false);
+    expect(isOrdinaryDocumentationPath(".claude/skills/deploy/SKILL.md")).toBe(false);
+    expect(isOrdinaryDocumentationPath(".codex/config.md")).toBe(false);
+    expect(isOrdinaryDocumentationPath(".agents/reviewer.md")).toBe(false);
+    expect(isOrdinaryDocumentationPath(".opencode/plugin.md")).toBe(false);
+  });
+
   test("rejects a mixed change when any policy boundary file is present", () => {
     expect(isOrdinaryDocumentationChange(["docs/guide.md", ".github/scripts/policy.js"])).toBe(false);
   });

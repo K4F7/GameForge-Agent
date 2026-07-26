@@ -40,7 +40,13 @@ export function isPolicyBoundaryPath(path) {
   return (
     path === "AGENTS.md" ||
     path.endsWith("/AGENTS.md") ||
+    path === "CLAUDE.md" ||
+    path.endsWith("/CLAUDE.md") ||
     path.startsWith(".github/") ||
+    path.startsWith(".claude/") ||
+    path.startsWith(".codex/") ||
+    path.startsWith(".agents/") ||
+    path.startsWith(".opencode/") ||
     path.startsWith(".codeartsdoer/skills/") ||
     path.startsWith(".codeartsdoer/agents/")
   );
