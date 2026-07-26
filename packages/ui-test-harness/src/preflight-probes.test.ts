@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { probeCodeArts, probeHttp } from "./preflight-probes.js";
+import { probeCodeArts, probeHttp, probeRunDependencies } from "./preflight-probes.js";
 
 const servers: Server[] = [];
 const roots: string[] = [];
@@ -58,5 +58,27 @@ describe("probeCodeArts", () => {
 
     const missing = await probeCodeArts({ platform: "linux", env: { PATH: path.join(root, "does-not-exist") } });
     expect(missing.available).toBe(false);
+  });
+
+  it("probes the configured attach session instead of the local executable", async () => {
+    const relayUrl = await serve((request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(request.url?.startsWith("/tasks") ? JSON.stringify({ tasks: [] }) : "missing");
+    });
+    const openChamberUrl = await serve((_request, response) => {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end('<html><title>OpenChamber</title><div id="root"></div></html>');
+    });
+    const unavailableAttachUrl = "http://127.0.0.1:1/";
+
+    const probes = await probeRunDependencies({
+      relayUrl,
+      openChamberUrl,
+      codeArtsAttach: { serverUrl: unavailableAttachUrl, sessionId: "ses_missing" },
+    });
+
+    const codeArts = probes.find((probe) => probe.dependency === "codearts");
+    expect(codeArts?.available).toBe(false);
+    expect(codeArts?.detail).toContain("/session/ses_missing");
   });
 });

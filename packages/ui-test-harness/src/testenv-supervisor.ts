@@ -97,6 +97,21 @@ export class TestEnvSupervisor {
     return this.#downPromise;
   }
 
+  /**
+   * Keeps the foreground owner alive while every managed service is alive.
+   * If an external `testenv down` (or a crash) removes any listener process,
+   * the remaining services are stopped as one environment before resolving.
+   */
+  async waitUntilStopped(): Promise<void> {
+    const children = this.#services.map((service) => service.child);
+    if (children.length === 0) return;
+    await Promise.race(children.map((child) => {
+      if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+      return new Promise<void>((resolve) => { child.once("exit", () => resolve()); });
+    }));
+    await this.down();
+  }
+
   async #waitUntilReady(spec: ManagedServiceSpec, child: ChildProcess): Promise<void> {
     let stderrTail = "";
     child.stderr?.on("data", (chunk: unknown) => { stderrTail = (stderrTail + String(chunk)).slice(-2_048); });

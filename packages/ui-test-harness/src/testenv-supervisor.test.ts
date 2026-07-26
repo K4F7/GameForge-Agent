@@ -180,4 +180,17 @@ describe("TestEnvSupervisor", () => {
     await first;
     expect(await portListening(port)).toBe(false);
   }, SUPERVISOR_TEST_TIMEOUT_MS);
+
+  it("settles foreground residency after an external stop removes a managed listener", async () => {
+    const port = await freePort();
+    const supervisor = new TestEnvSupervisor([await fixtureService("external-down-fixture", port)]);
+    cleanups.push(() => supervisor.down().catch(() => undefined));
+
+    await supervisor.up();
+    const residency = (supervisor as TestEnvSupervisor & { waitUntilStopped(): Promise<void> }).waitUntilStopped();
+    await stopPortListeners(port, { allowImages: /^(node|bun)(\.exe)?$/i });
+
+    await expect(residency).resolves.toBeUndefined();
+    expect(supervisor.managedPids()).toEqual([]);
+  }, SUPERVISOR_TEST_TIMEOUT_MS);
 });

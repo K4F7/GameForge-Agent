@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 import { loopbackHttpPort, safeCodeArtsServerUrl, safeEvidenceSegment, safeRelayUrl } from "./cli-safety.js";
 
@@ -56,6 +58,18 @@ describe("UI harness CLI safety", () => {
   test("requires CodeArts attach URL and session together", async () => {
     const output = await runCli(["--headless", "--codearts-server-url", "http://127.0.0.1:4097"]);
     expect(output).toContain("--codearts-server-url and --codearts-session must be provided together");
+  });
+
+  test("rejects an unknown option instead of silently running the acceptance tier", async () => {
+    const output = await runCli(["--headless", "--tire", "readiness"]);
+    expect(output).toContain("Unknown option: --tire");
+  });
+
+  test("rejects an unsafe OpenChamber URL before creating Evidence", async () => {
+    const experiment = `unsafe-openchamber-${Date.now()}`;
+    const output = await runCli(["--headless", "--experiment", experiment, "--openchamber-url", "https://example.com:43163/"]);
+    expect(output).toContain("OpenChamber URL must be credential-free loopback HTTP(S)");
+    expect(existsSync(path.resolve(process.cwd(), "../..", ".gameforge-validation", experiment))).toBe(false);
   });
 });
 

@@ -9,7 +9,7 @@ import { PlaywrightOpenChamberDriver } from "./adapters/playwright-openchamber.j
 import { RelayAuthorityDriver } from "./adapters/relay-authority.js";
 import { XtermTuiObserverDriver } from "./adapters/xterm-observer.js";
 import { projectFingerprint } from "./adapters/project-fingerprint.js";
-import { safeCodeArtsServerUrl, safeEvidenceSegment, safeRelayUrl } from "./cli-safety.js";
+import { safeCodeArtsServerUrl, safeEvidenceSegment, safeOpenChamberUrl, safeRelayUrl } from "./cli-safety.js";
 import type { HarnessResult } from "./contracts.js";
 import { UiTestController } from "./controller.js";
 import { diagnose, renderDiagnosisMarkdown, renderDiagnosisTerminal } from "./diagnosis.js";
@@ -43,7 +43,13 @@ const prepared = await prepareHarnessSession({
   correlate: async () => {
     // Preflight runs after the Evidence session exists, so a missing
     // dependency is a named, on-disk failure instead of a bare stack trace.
-    const preflight = evaluatePreflight(await probeRunDependencies({ relayUrl: options.relayUrl, openChamberUrl: options.openChamberUrl }));
+    const preflight = evaluatePreflight(await probeRunDependencies({
+      relayUrl: options.relayUrl,
+      openChamberUrl: options.openChamberUrl,
+      ...(options.codeartsServerUrl === undefined ? {} : {
+        codeArtsAttach: { serverUrl: options.codeartsServerUrl, sessionId: options.codeartsSession! },
+      }),
+    }));
     if (!preflight.ready) {
       const blocking = preflight.entries
         .filter((entry) => !entry.available)
@@ -164,6 +170,14 @@ function parseArguments(args: string[]): {
   sessionId?: string; taskId?: string; runId?: string; projectId?: string;
   codeartsServerUrl?: string; codeartsSession?: string;
 } {
+  const knownOptions = new Set([
+    "--headless", "--headed", "--tier", "--experiment", "--relay-url", "--task-prompt", "--agent-id",
+    "--projects-root", "--inactivity-timeout-ms", "--total-timeout-ms", "--openchamber-url", "--browser-channel",
+    "--observation-hold-ms", "--failure-hold-ms", "--soft-budget-ms", "--session-id", "--task-id", "--run-id",
+    "--project-id", "--codearts-server-url", "--codearts-session",
+  ]);
+  const unknownOption = args.find((argument) => argument.startsWith("--") && !knownOptions.has(argument));
+  if (unknownOption !== undefined) throw new Error(`Unknown option: ${unknownOption}`);
   const headless = args.includes("--headless"); const headed = args.includes("--headed");
   if (headless === headed) throw new Error("Choose exactly one of --headless or --headed.");
   const tierInput = optionalValue(args, "--tier") ?? "acceptance";
@@ -188,7 +202,7 @@ function parseArguments(args: string[]): {
     inactivityTimeoutMs: positiveInteger(value("--inactivity-timeout-ms", "120000")),
     totalTimeoutMs: positiveInteger(value("--total-timeout-ms", "900000")),
     mode: headed ? "headed/watch" : "headless",
-    openChamberUrl: value("--openchamber-url", process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() ?? DEFAULT_OPENCHAMBER_URL),
+    openChamberUrl: safeOpenChamberUrl(value("--openchamber-url", process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() ?? DEFAULT_OPENCHAMBER_URL)),
     ...(browserChannel === undefined ? {} : { browserChannel }),
     observationHoldMs: positiveInteger(value("--observation-hold-ms", "10000")),
     // Bounded at parse time: the controller enforces the same cap, but a

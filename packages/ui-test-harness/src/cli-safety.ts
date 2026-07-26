@@ -45,3 +45,13 @@ export function safeCodeArtsServerUrl(input: string): string {
   if (!url.pathname.endsWith("/")) url.pathname += "/";
   return url.href;
 }
+
+export function safeOpenChamberUrl(input: string): string {
+  const url = new URL(input);
+  if (!["http:", "https:"].includes(url.protocol)
+    || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+    || url.username || url.password) {
+    throw new Error("OpenChamber URL must be credential-free loopback HTTP(S).");
+  }
+  return url.href;
+}

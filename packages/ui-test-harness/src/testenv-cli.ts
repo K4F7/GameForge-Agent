@@ -86,8 +86,9 @@ async function runUp(): Promise<void> {
     "保持此终端运行；Ctrl+C 停止。另一个终端可运行 bun run testenv:down 停止。",
     "",
   ].join("\n"));
-  // Foreground residency: stay alive until a signal arrives.
-  await new Promise<void>(() => undefined);
+  // Foreground residency ends on a signal, an unexpected child exit, or an
+  // external `testenv down` removing either managed listener.
+  await supervisor.waitUntilStopped();
 }
 
 /**
@@ -140,4 +141,3 @@ function formatReport(value: PreflightReport): string {
     : `Test environment is not ready: ${value.blocking.join(", ")}`;
   return `${lines.join("\n")}\n\n${summary}\n`;
 }
-

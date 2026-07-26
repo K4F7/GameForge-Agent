@@ -92,11 +92,18 @@ export async function probeCodeArts(options?: { platform?: NodeJS.Platform; env?
  * build probe is deliberately absent - it only matters for starting the
  * service, which is `testenv up`'s concern, not the run's.
  */
-export async function probeRunDependencies(options: { relayUrl: string; openChamberUrl: string }): Promise<PreflightProbe[]> {
+export async function probeRunDependencies(options: {
+  relayUrl: string;
+  openChamberUrl: string;
+  codeArtsAttach?: { serverUrl: string; sessionId: string };
+}): Promise<PreflightProbe[]> {
+  const codeArtsProbe = options.codeArtsAttach === undefined
+    ? probeCodeArts()
+    : probeHttp("codearts", new URL(`/session/${encodeURIComponent(options.codeArtsAttach.sessionId)}`, options.codeArtsAttach.serverUrl).href);
   return await Promise.all([
     probeHttp("authority-relay", new URL("tasks?limit=1", options.relayUrl).href),
     probeHttp("openchamber-service", options.openChamberUrl),
-    probeCodeArts(),
+    codeArtsProbe,
   ]);
 }
 
