@@ -165,12 +165,31 @@ async function runDown(): Promise<void> {
 
 
 async function probeAll(): Promise<PreflightProbe[]> {
-  return await Promise.all([
+  const probes: Array<Promise<PreflightProbe>> = [
     probeHttp("authority-relay", new URL("tasks?limit=1", relayUrl).href),
     probeHttp("openchamber-service", openChamberUrl),
     probeFile("openchamber-build", path.join(repoRoot, "vendor", "openchamber", "packages", "web", "dist", "index.html")),
     probeCodeArts(),
-  ]);
+  ];
+  const configuredServer = process.env.GAMEFORGE_CODEARTS_SERVER_URL?.trim();
+  const configuredSession = process.env.GAMEFORGE_CODEARTS_SESSION?.trim();
+  if (configuredServer !== undefined || configuredSession !== undefined) {
+    if (!configuredServer || !configuredSession) {
+      probes.push(Promise.resolve({ dependency: "codearts-session", available: false, detail: "GAMEFORGE_CODEARTS_SERVER_URL and GAMEFORGE_CODEARTS_SESSION must be provided together" }));
+    } else {
+      try {
+        const serverUrl = safeCodeArtsServerUrl(configuredServer);
+        probes.push(probeHttp(
+          "codearts-session",
+          new URL(`/session/${encodeURIComponent(configuredSession)}`, serverUrl).href,
+          { expectedCodeArtsSessionId: configuredSession },
+        ));
+      } catch (error) {
+        probes.push(Promise.resolve({ dependency: "codearts-session", available: false, detail: error instanceof Error ? error.message : String(error) }));
+      }
+    }
+  }
+  return await Promise.all(probes);
 }
 
 function formatReport(value: PreflightReport): string {

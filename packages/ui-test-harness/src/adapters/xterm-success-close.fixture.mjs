@@ -31,7 +31,13 @@ const browserPids = execFileSync("powershell.exe", [
   `$root = Get-CimInstance Win32_Process -Filter \"ProcessId = ${helperPid}\"; $all = @(Get-CimInstance Win32_Process | Where-Object { $_.CreationDate -ge $root.CreationDate }); $parents = @(${helperPid}); $descendants = @(); do { $children = @($all | Where-Object { $parents -contains $_.ParentProcessId -and $descendants -notcontains $_.ProcessId } | Select-Object -ExpandProperty ProcessId); $descendants += $children; $parents = $children } while ($children.Count -gt 0); $descendants -join ','`,
 ], { encoding: "utf8", windowsHide: true }).trim().split(",").filter(Boolean).map(Number);
 if (browserPids.length === 0 || browserPids.some((pid) => !Number.isSafeInteger(pid))) throw new Error("Expected xterm browser process PIDs.");
-if (process.argv.includes("--open-during-close")) {
+if (process.argv.includes("--kill-before-snapshot")) {
+  execFileSync("taskkill.exe", ["/PID", String(helperPid), "/T", "/F"], { windowsHide: true });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  try { await observer.snapshot(); process.stdout.write("snapshot accepted exited helper"); }
+  catch { process.stdout.write("snapshot rejected exited helper"); }
+  await observer.close();
+} else if (process.argv.includes("--open-during-close")) {
   const closing = observer.close();
   await new Promise((resolve) => setImmediate(resolve));
   try {

@@ -59,4 +59,32 @@ describe("testenv CLI", () => {
 
     expect(requests).toEqual(["/session/ses_shared"]);
   });
+
+  it("includes the configured external CodeArts session in status probes", async () => {
+    const requests: string[] = [];
+    const server = createServer((request, response) => {
+      requests.push(request.url ?? "");
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ id: "ses_status" }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("No CodeArts fixture port assigned.");
+    try {
+      await promisify(execFile)("bun", [fileURLToPath(new URL("./testenv-cli.ts", import.meta.url)), "status"], {
+        encoding: "utf8",
+        timeout: 5_000,
+        windowsHide: true,
+        env: {
+          ...process.env,
+          GAMEFORGE_CODEARTS_SERVER_URL: `http://127.0.0.1:${address.port}/`,
+          GAMEFORGE_CODEARTS_SESSION: "ses_status",
+        },
+      }).catch(() => undefined);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+
+    expect(requests).toContain("/session/ses_status");
+  });
 });

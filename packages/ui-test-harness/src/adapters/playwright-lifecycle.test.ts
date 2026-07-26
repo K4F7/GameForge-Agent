@@ -106,6 +106,16 @@ describe("Browser helper lifecycle", () => {
     expect(JSON.parse(result.stdout.trim())).toEqual({ visible: true, helperAliveAfterClose: false, browserPidsAliveAfterClose: [] });
   }, 40_000);
 
+  it.skipIf(process.platform !== "win32")("rejects a snapshot after the visible xterm helper exits", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-xterm-exited-snapshot-")); roots.push(root);
+    const child = spawn("bun", [xtermSuccessCloseFixture, root, "--kill-before-snapshot"], { cwd: packageRoot, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const result = await waitForExit(child, 30_000);
+
+    expect(result.timedOut).toBe(false);
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe("snapshot rejected exited helper");
+  }, 40_000);
+
   it.skipIf(process.platform !== "win32")("shares in-flight visible xterm cleanup across concurrent close calls", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-xterm-concurrent-close-")); roots.push(root);
     const child = spawn("bun", [xtermSuccessCloseFixture, root, "--concurrent-close"], { cwd: packageRoot, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });

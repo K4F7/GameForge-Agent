@@ -84,6 +84,19 @@ export class UiTestController {
     if (!Number.isSafeInteger(configuredFailureHoldMs) || configuredFailureHoldMs < 0 || configuredFailureHoldMs > MAX_FAILURE_HOLD_MS) {
       throw new Error(`Harness failureHoldMs must be an integer between 0 and ${MAX_FAILURE_HOLD_MS}.`);
     }
+    let failureObserved = false;
+    const observeFailure = async (error: unknown): Promise<void> => {
+      if (failureObserved) return;
+      failureObserved = true;
+      if (this.options.onFailureObserved !== undefined) {
+        try { await this.options.onFailureObserved(errorMessage(error)); } catch { /* guidance must never worsen the failure */ }
+      }
+      if (guiLaunched && this.options.mode === "headed/watch" && configuredFailureHoldMs > 0) {
+        await this.recordLifecycle(session, "observing").catch(() => undefined);
+        await delay(configuredFailureHoldMs);
+      }
+      markPhase("hold");
+    };
 
     try {
       await this.drivers.evidence.recordSession(session);
@@ -139,16 +152,7 @@ export class UiTestController {
       // misattributed to teardown on exactly the path timings exist for.
       markPhase(pendingPhase);
       if (guiLaunched) { await this.captureGui(session, "failed").catch(() => undefined); failureCaptured = true; }
-      if (this.options.onFailureObserved !== undefined) {
-        try { await this.options.onFailureObserved(errorMessage(error)); } catch { /* guidance must never worsen the failure */ }
-      }
-      // Only worth holding once the windows are actually on screen; a startup
-      // failure has nothing for the operator to look at.
-      if (guiLaunched && this.options.mode === "headed/watch" && configuredFailureHoldMs > 0) {
-        await this.recordLifecycle(session, "observing").catch(() => undefined);
-        await delay(configuredFailureHoldMs);
-      }
-      markPhase("hold");
+      await observeFailure(error);
     }
 
     try { await withTimeout(outputQueue, shutdownTimeoutMs, "TUI output drain"); }
@@ -167,6 +171,7 @@ export class UiTestController {
     }
     if (guiLaunched && failure === undefined) await this.captureGui(session, "success", true).catch((error) => { failure = error; });
     if (guiLaunched && failure !== undefined && !failureCaptured) await this.captureGui(session, "failed").catch(() => undefined);
+    if (failure !== undefined) await observeFailure(failure);
     try {
       await withTimeout(this.recordLifecycle(session, "stopping"), shutdownTimeoutMs, "Stopping lifecycle evidence");
     } catch (error) {

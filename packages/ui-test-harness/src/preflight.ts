@@ -22,8 +22,8 @@ export type PreflightReport = {
  * or private data directory (ADR-0005).
  */
 const REMEDIATION: Record<PreflightDependency, string> = {
-  "authority-relay": "bun run testenv:up",
-  "openchamber-service": "bun run testenv:up",
+  "authority-relay": "bun run testenv:down; bun run testenv:up",
+  "openchamber-service": "bun run testenv:down; bun run testenv:up",
   "openchamber-build": "git submodule update --init --recursive && bun --cwd vendor/openchamber install --frozen-lockfile && bun --cwd vendor/openchamber run build:web",
   codearts: "Set CODEARTS_BIN to the installed CodeArts executable (see docs/codearts-quickstart.md)",
   "codearts-session": "Verify --codearts-server-url and --codearts-session identify a live CodeArts session",

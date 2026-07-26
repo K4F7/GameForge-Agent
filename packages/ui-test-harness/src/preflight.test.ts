@@ -14,7 +14,7 @@ describe("evaluatePreflight", () => {
 
     expect(report.ready).toBe(false);
     expect(report.blocking).toEqual(["authority-relay", "openchamber-build"]);
-    expect(entry(report, "authority-relay").remediation).toBe("bun run testenv:up");
+    expect(entry(report, "authority-relay").remediation).toBe("bun run testenv:down; bun run testenv:up");
     expect(entry(report, "authority-relay").detail).toBe("127.0.0.1:8787 is not listening");
     expect(entry(report, "openchamber-build").remediation).toContain("bun --cwd vendor/openchamber run build:web");
     expect(entry(report, "openchamber-service").remediation).toBeUndefined();
@@ -29,6 +29,12 @@ describe("evaluatePreflight", () => {
     expect(entry(report, "codearts").remediation).not.toContain("bun run codearts");
   });
 
+  it("recovers a partially resident environment before starting it again", () => {
+    const report = evaluatePreflight([{ dependency: "openchamber-service", available: false }]);
+
+    expect(entry(report, "openchamber-service").remediation).toBe("bun run testenv:down; bun run testenv:up");
+  });
+
 
   it("only names repository scripts that actually exist", async () => {
     const manifest = JSON.parse(await readFile(path.resolve(import.meta.dirname, "..", "..", "..", "package.json"), "utf8")) as { scripts: Record<string, string> };
@@ -38,7 +44,7 @@ describe("evaluatePreflight", () => {
       const report = evaluatePreflight([{ dependency, available: false }]);
       const remediation = entry(report, dependency).remediation;
       expect(remediation, `${dependency} has no remediation`).toBeDefined();
-      for (const script of [...remediation!.matchAll(/(?:^|&&\s*)bun run ([\w:-]+)/g)].map((match) => match[1]!)) {
+      for (const script of [...remediation!.matchAll(/(?:^|&&\s*|;\s*)bun run ([\w:-]+)/g)].map((match) => match[1]!)) {
         expect(Object.keys(manifest.scripts), `${dependency} names missing root script ${script}`).toContain(script);
       }
     }

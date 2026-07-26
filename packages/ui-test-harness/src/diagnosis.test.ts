@@ -13,6 +13,13 @@ describe("diagnose", () => {
     expect(diagnosis.likelyCause).toContain("Relay");
   });
 
+  it("does not blame Relay for an unscoped browser-helper fetch failure", () => {
+    const diagnosis = diagnose({ failure: "fetch failed", files: ["gui/browser-report.ndjson", "result.json"] });
+
+    expect(diagnosis.category).toBe("unknown");
+    expect(diagnosis.likelyCause).not.toContain("Relay");
+  });
+
   it("classifies a preflight failure as environment", () => {
     const diagnosis = diagnose({
       failure: "Preflight failed: authority-relay (fix: bun run testenv:up)",

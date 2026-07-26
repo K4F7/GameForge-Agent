@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -201,6 +201,26 @@ describe("TestEnvSupervisor", () => {
     expect(await portListening(port)).toBe(false);
   }, SUPERVISOR_TEST_TIMEOUT_MS);
 
+  it.skipIf(process.platform !== "win32")("retains a managed service when cleanup cannot verify its port release", async () => {
+    const port = await freePort();
+    const supervisor = new TestEnvSupervisor([await fixtureService("cleanup-retry-fixture", port)]);
+    cleanups.push(() => supervisor.down().catch(() => undefined));
+    await supervisor.up();
+    const [managedPid] = supervisor.managedPids();
+    if (managedPid === undefined) throw new Error("Expected a managed fixture PID.");
+    await new Promise<void>((resolve) => execFile("taskkill.exe", ["/PID", String(managedPid), "/T", "/F"], { windowsHide: true }, () => resolve()));
+    while (await portListening(port)) await new Promise((resolve) => setTimeout(resolve, 50));
+    const blocker = spawn(process.execPath, ["-e", `require("net").createServer(()=>{}).listen(${port},"127.0.0.1");setInterval(()=>{},1000)`], { stdio: "ignore", windowsHide: true });
+    cleanups.push(() => { try { blocker.kill(); } catch { /* already gone */ } });
+    while (!(await portListening(port))) await new Promise((resolve) => setTimeout(resolve, 50));
+
+    await expect(supervisor.down()).rejects.toThrow("still occupied after cleanup");
+    expect(supervisor.managedPids()).toContain(managedPid);
+    blocker.kill();
+    while (await portListening(port)) await new Promise((resolve) => setTimeout(resolve, 50));
+    await expect(supervisor.down()).resolves.toBeUndefined();
+  }, SUPERVISOR_TEST_TIMEOUT_MS);
+
   it("settles foreground residency after an external stop removes a managed listener", async () => {
     const port = await freePort();
     const supervisor = new TestEnvSupervisor([await fixtureService("external-down-fixture", port)]);
@@ -211,6 +231,23 @@ describe("TestEnvSupervisor", () => {
     await stopPortListeners(port, { allowImages: /^(node|bun)(\.exe)?$/i });
 
     await expect(residency).resolves.toBeUndefined();
+    expect(supervisor.managedPids()).toEqual([]);
+  }, SUPERVISOR_TEST_TIMEOUT_MS);
+
+  it.skipIf(process.platform !== "win32")("reports a single resident-service crash instead of a clean shutdown", async () => {
+    const firstPort = await freePort(); const secondPort = await freePort();
+    const supervisor = new TestEnvSupervisor([
+      await fixtureService("crashed-resident", firstPort),
+      await fixtureService("surviving-resident", secondPort),
+    ]);
+    cleanups.push(() => supervisor.down().catch(() => undefined));
+    await supervisor.up();
+    const [crashedPid] = supervisor.managedPids();
+    if (crashedPid === undefined) throw new Error("Expected a managed fixture PID.");
+    const residency = supervisor.waitUntilStopped();
+    await new Promise<void>((resolve) => execFile("taskkill.exe", ["/PID", String(crashedPid), "/T", "/F"], { windowsHide: true }, () => resolve()));
+
+    await expect(residency).rejects.toThrow("crashed-resident exited unexpectedly");
     expect(supervisor.managedPids()).toEqual([]);
   }, SUPERVISOR_TEST_TIMEOUT_MS);
 });

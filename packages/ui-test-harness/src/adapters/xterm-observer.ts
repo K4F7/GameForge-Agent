@@ -47,6 +47,9 @@ export class XtermTuiObserverDriver implements CodeArtsTuiObserverDriver {
     const session = this.#session; const terminal = this.#terminal;
     if (session === undefined || terminal === undefined) throw new Error("xterm observer has not opened.");
     await this.#pending;
+    if (this.#visible && (this.#windowProcess === undefined || this.#windowProcess.exitCode !== null || this.#windowProcess.signalCode !== null)) {
+      throw new Error("xterm observer window exited before the readiness snapshot.");
+    }
     return { kind: this.kind, sessionId: session.sessionId, visible: this.#visible, status: "open", title: this.#visible ? "CodeArts TUI · xterm observer" : "CodeArts TUI · xterm headless",
       capturedAt: new Date().toISOString() };
   }

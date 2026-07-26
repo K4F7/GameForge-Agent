@@ -103,13 +103,22 @@ export class TestEnvSupervisor {
    * the remaining services are stopped as one environment before resolving.
    */
   async waitUntilStopped(): Promise<void> {
-    const children = this.#services.map((service) => service.child);
-    if (children.length === 0) return;
-    await Promise.race(children.map((child) => {
+    const services = [...this.#services];
+    if (services.length === 0) return;
+    await Promise.race(services.map(({ child }) => {
       if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
       return new Promise<void>((resolve) => { child.once("exit", () => resolve()); });
     }));
+    // A deliberate external `testenv:down` removes both resident services in
+    // one operation. Give its second taskkill a brief chance to land; if only
+    // one child disappeared, classify that asymmetric exit as a crash.
+    if (services.length > 1) await delay(500);
+    const exited = services.filter(({ child }) => child.exitCode !== null || child.signalCode !== null);
+    const survivors = services.filter(({ child }) => child.exitCode === null && child.signalCode === null);
     await this.down();
+    if (exited.length > 0 && survivors.length > 0) {
+      throw new Error(`${exited.map(({ spec }) => spec.name).join(", ")} exited unexpectedly; the remaining resident services were stopped.`);
+    }
   }
 
   async #waitUntilReady(spec: ManagedServiceSpec, child: ChildProcess): Promise<void> {
@@ -128,12 +137,15 @@ export class TestEnvSupervisor {
   }
 
   async #stopAll(): Promise<void> {
-    const services = this.#services.splice(0);
+    const services = [...this.#services];
     const failures: string[] = [];
-    await Promise.all(services.map(async ({ spec, child }) => {
+    await Promise.all(services.map(async (service) => {
+      const { spec, child } = service;
       try {
         await stopProcessTree(child);
         await waitUntilPortFree(spec.port, STOP_TIMEOUT_MS, spec.name);
+        const index = this.#services.indexOf(service);
+        if (index >= 0) this.#services.splice(index, 1);
       } catch (error) {
         failures.push(`${spec.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
