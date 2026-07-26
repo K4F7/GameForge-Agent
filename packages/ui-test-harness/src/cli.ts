@@ -182,6 +182,7 @@ function parseArguments(args: string[]): {
   if (headless === headed) throw new Error("Choose exactly one of --headless or --headed.");
   const tierInput = optionalValue(args, "--tier") ?? "acceptance";
   if (tierInput !== "readiness" && tierInput !== "acceptance") throw new Error("--tier must be readiness or acceptance.");
+  if (tierInput === "readiness" && headless) throw new Error("The readiness tier requires --headed.");
   const value = (name: string, fallback: string): string => {
     const index = args.indexOf(name);
     return index < 0 ? fallback : args[index + 1] ?? (() => { throw new Error(`${name} requires a value.`); })();
@@ -192,6 +193,7 @@ function parseArguments(args: string[]): {
   const codeartsServerUrl = optionalValue(args, "--codearts-server-url");
   const codeartsSession = optionalValue(args, "--codearts-session");
   if ([taskId, existingRunId, existingProjectId].filter((entry) => entry !== undefined).length % 3 !== 0) throw new Error("--task-id, --run-id and --project-id must be provided together.");
+  if (tierInput === "readiness" && taskId !== undefined) throw new Error("The readiness tier must create a fresh Authority task; omit --task-id, --run-id and --project-id.");
   if ((codeartsServerUrl === undefined) !== (codeartsSession === undefined)) throw new Error("--codearts-server-url and --codearts-session must be provided together.");
   return {
     experiment: safeEvidenceSegment(value("--experiment", `ui-harness-${new Date().toISOString().replace(/[:.]/g, "-")}`), "--experiment"),

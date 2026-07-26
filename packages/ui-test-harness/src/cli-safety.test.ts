@@ -65,6 +65,19 @@ describe("UI harness CLI safety", () => {
     expect(output).toContain("Unknown option: --tire");
   });
 
+  test("rejects headless readiness before contacting Relay", async () => {
+    const output = await runCli(["--headless", "--tier", "readiness"]);
+    expect(output).toContain("readiness tier requires --headed");
+  });
+
+  test("rejects an existing task tuple for readiness before contacting Relay", async () => {
+    const output = await runCli([
+      "--headed", "--tier", "readiness",
+      "--task-id", "task-1", "--run-id", "run-1", "--project-id", "project-1",
+    ]);
+    expect(output).toContain("readiness tier must create a fresh Authority task");
+  });
+
   test("rejects an unsafe OpenChamber URL before creating Evidence", async () => {
     const experiment = `unsafe-openchamber-${Date.now()}`;
     const output = await runCli(["--headless", "--experiment", experiment, "--openchamber-url", "https://example.com:43163/"]);

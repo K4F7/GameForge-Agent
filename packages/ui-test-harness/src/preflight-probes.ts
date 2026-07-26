@@ -1,4 +1,4 @@
-import { access } from "node:fs/promises";
+import { access, stat } from "node:fs/promises";
 import path from "node:path";
 import type { PreflightProbe } from "./preflight.js";
 
@@ -91,7 +91,10 @@ export async function probeCodeArts(options?: { platform?: NodeJS.Platform; env?
   }
   for (const directory of (env.PATH ?? "").split(path.delimiter).filter((entry) => entry.length > 0)) {
     const candidate = path.join(directory, "codearts");
-    try { await access(candidate); return { dependency: "codearts", available: true, detail: candidate }; }
+    try {
+      const metadata = await stat(candidate);
+      if (metadata.isFile() && (metadata.mode & 0o111) !== 0) return { dependency: "codearts", available: true, detail: candidate };
+    }
     catch { continue; }
   }
   return { dependency: "codearts", available: false, detail: "No codearts executable on PATH; set CODEARTS_BIN to override" };

@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -48,9 +48,18 @@ describe("probeHttp", () => {
 });
 
 describe("probeCodeArts", () => {
-  it("finds a PATH-installed codearts on non-Windows platforms like the launcher does", async () => {
+  it("rejects a non-executable codearts file on non-Windows PATH", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-codearts-nonexec-")); roots.push(root);
+    await writeFile(path.join(root, "codearts"), "#!/bin/sh\n", { encoding: "utf8", mode: 0o644 });
+
+    const found = await probeCodeArts({ platform: "linux", env: { PATH: root } });
+    expect(found.available).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")("finds a PATH-installed codearts on non-Windows platforms like the launcher does", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-codearts-path-")); roots.push(root);
     await writeFile(path.join(root, "codearts"), "#!/bin/sh\n", "utf8");
+    await chmod(path.join(root, "codearts"), 0o755);
 
     const found = await probeCodeArts({ platform: "linux", env: { PATH: root } });
     expect(found.available).toBe(true);
