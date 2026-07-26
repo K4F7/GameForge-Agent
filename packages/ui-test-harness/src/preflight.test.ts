@@ -14,7 +14,7 @@ describe("evaluatePreflight", () => {
 
     expect(report.ready).toBe(false);
     expect(report.blocking).toEqual(["authority-relay", "openchamber-build"]);
-    expect(entry(report, "authority-relay").remediation).toBe("bun run dev:relay");
+    expect(entry(report, "authority-relay").remediation).toBe("bun run testenv:up");
     expect(entry(report, "authority-relay").detail).toBe("127.0.0.1:8787 is not listening");
     expect(entry(report, "openchamber-build").remediation).toContain("bun --cwd vendor/openchamber run build:web");
     expect(entry(report, "openchamber-service").remediation).toBeUndefined();

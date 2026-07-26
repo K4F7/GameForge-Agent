@@ -22,8 +22,8 @@ export type PreflightReport = {
  * or private data directory (ADR-0005).
  */
 const REMEDIATION: Record<PreflightDependency, string> = {
-  "authority-relay": "bun run dev:relay",
-  "openchamber-service": "bun --cwd vendor/openchamber run start:web",
+  "authority-relay": "bun run testenv:up",
+  "openchamber-service": "bun run testenv:up",
   "openchamber-build": "git submodule update --init --recursive && bun --cwd vendor/openchamber install --frozen-lockfile && bun --cwd vendor/openchamber run build:web",
   codearts: "bun run codearts",
 };
