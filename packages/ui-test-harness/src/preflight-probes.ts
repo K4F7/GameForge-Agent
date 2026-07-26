@@ -77,8 +77,10 @@ export async function probeCodeArts(options?: { platform?: NodeJS.Platform; env?
   const env = options?.env ?? process.env;
   const configured = env.CODEARTS_BIN?.trim();
   if (configured) {
-    try { await access(configured); return { dependency: "codearts", available: true, detail: configured }; }
-    catch { return { dependency: "codearts", available: false, detail: `CODEARTS_BIN points at ${configured}, which is not accessible` }; }
+    try {
+      if (await executableRegularFile(configured, platform !== "win32")) return { dependency: "codearts", available: true, detail: configured };
+      return { dependency: "codearts", available: false, detail: `CODEARTS_BIN points at ${configured}, which is not an executable regular file` };
+    } catch { return { dependency: "codearts", available: false, detail: `CODEARTS_BIN points at ${configured}, which is not accessible` }; }
   }
   if (platform === "win32") {
     const home = env.USERPROFILE?.trim() || env.HOME?.trim() || "";
@@ -92,12 +94,16 @@ export async function probeCodeArts(options?: { platform?: NodeJS.Platform; env?
   for (const directory of (env.PATH ?? "").split(path.delimiter).filter((entry) => entry.length > 0)) {
     const candidate = path.join(directory, "codearts");
     try {
-      const metadata = await stat(candidate);
-      if (metadata.isFile() && (metadata.mode & 0o111) !== 0) return { dependency: "codearts", available: true, detail: candidate };
+      if (await executableRegularFile(candidate, true)) return { dependency: "codearts", available: true, detail: candidate };
     }
     catch { continue; }
   }
   return { dependency: "codearts", available: false, detail: "No codearts executable on PATH; set CODEARTS_BIN to override" };
+}
+
+async function executableRegularFile(target: string, requireExecuteBits: boolean): Promise<boolean> {
+  const metadata = await stat(target);
+  return metadata.isFile() && (!requireExecuteBits || (metadata.mode & 0o111) !== 0);
 }
 
 /**

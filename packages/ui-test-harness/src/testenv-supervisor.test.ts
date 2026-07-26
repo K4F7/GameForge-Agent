@@ -158,10 +158,30 @@ describe("TestEnvSupervisor", () => {
     const pids = await pidsListeningOn(port);
     expect(pids).toContain(child.pid);
 
-    const stopped = await stopPortListeners(port, { allowImages: /^node(\.exe)?$/i });
+    const stopped = await stopPortListeners(port, { allowImages: /^(node|bun)(\.exe)?$/i });
     expect(stopped.stopped.map((entry) => entry.pid)).toContain(child.pid);
     expect(stopped.refused).toEqual([]);
     expect(await portListening(port)).toBe(false);
+  }, SUPERVISOR_TEST_TIMEOUT_MS);
+
+  it("refuses to stop an unrelated node listener when the service contract does not match", async () => {
+    const port = await freePort();
+    const child = spawn(process.execPath, ["-e", `require("net").createServer(()=>{}).listen(${port},"127.0.0.1");setInterval(()=>{},1000)`], { stdio: "ignore", windowsHide: true });
+    cleanups.push(() => { try { child.kill(); } catch { /* already gone */ } });
+    const deadline = Date.now() + 10_000;
+    while (!(await portListening(port))) {
+      if (Date.now() > deadline) throw new Error("fixture listener never came up");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    const outcome = await stopPortListeners(port, {
+      allowImages: /^(node|bun)(\.exe)?$/i,
+      verifyOwnership: async () => false,
+    });
+
+    expect(outcome.stopped).toEqual([]);
+    expect(outcome.refused.map((entry) => entry.pid)).toContain(child.pid);
+    expect(await portListening(port)).toBe(true);
   }, SUPERVISOR_TEST_TIMEOUT_MS);
 
   it("shares one cleanup across concurrent down calls", async () => {

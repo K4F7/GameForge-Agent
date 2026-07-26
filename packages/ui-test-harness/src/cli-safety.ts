@@ -40,8 +40,14 @@ export function loopbackHttpPort(input: string, label: string): number {
   if (!isLoopback(url)) {
     throw new Error(`${label} must be a loopback URL for testenv port management; got host ${url.hostname}.`);
   }
+  if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") {
+    throw new Error(`${label} must use 127.0.0.1 or localhost because managed services bind IPv4 loopback.`);
+  }
   if (url.protocol !== "http:") {
     throw new Error(`${label} must use plain HTTP for testenv port management; testenv:up serves plain HTTP only.`);
+  }
+  if (url.pathname !== "/" || url.search !== "" || url.hash !== "") {
+    throw new Error(`${label} must use the root path without query or fragment for testenv port management.`);
   }
   const port = url.port === "" ? 80 : Number(url.port);
   if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error(`${label} has an invalid port.`);

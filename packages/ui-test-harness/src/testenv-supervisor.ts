@@ -225,15 +225,20 @@ export type StopPortListenersResult = {
 };
 
 /**
- * Stateless stop for `testenv down`: kills listeners whose image matches
- * allowImages, refuses everything else, and only reports a PID as stopped
- * after verifying the process tree is gone and the port is released.
+ * Stateless stop for `testenv down`: requires the caller's public service
+ * contract probe and the process image to match, then verifies that the
+ * process tree is gone and the port is released.
  */
-export async function stopPortListeners(port: number, options: { allowImages: RegExp }): Promise<StopPortListenersResult> {
+export async function stopPortListeners(port: number, options: {
+  allowImages: RegExp;
+  verifyOwnership?: () => Promise<boolean>;
+}): Promise<StopPortListenersResult> {
   const result: StopPortListenersResult = { stopped: [], refused: [] };
-  for (const pid of await pidsListeningOn(port)) {
+  const pids = await pidsListeningOn(port);
+  const ownershipVerified = pids.length === 0 || options.verifyOwnership === undefined || await options.verifyOwnership();
+  for (const pid of pids) {
     const image = await processImage(pid);
-    if (image === undefined || !options.allowImages.test(image)) {
+    if (!ownershipVerified || image === undefined || !options.allowImages.test(image)) {
       result.refused.push({ pid, image });
       continue;
     }

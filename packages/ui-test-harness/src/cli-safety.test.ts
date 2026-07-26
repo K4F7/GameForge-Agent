@@ -38,6 +38,8 @@ describe("UI harness CLI safety", () => {
     expect(() => loopbackHttpPort("https://127.0.0.1:43163/", "OpenChamber URL")).toThrow(/plain HTTP/i);
     expect(() => loopbackHttpPort("http://relay.example.com/", "Relay URL")).toThrow(/loopback/i);
     expect(() => loopbackHttpPort("http://user:secret@127.0.0.1:8787/", "Relay URL")).toThrow(/credentials/i);
+    expect(() => loopbackHttpPort("http://127.0.0.1:8787/api", "Relay URL")).toThrow(/root path/i);
+    expect(() => loopbackHttpPort("http://[::1]:8787/", "Relay URL")).toThrow(/127\.0\.0\.1|localhost/i);
   });
 
   test("evaluates the default projects root before contacting Relay", async () => {
@@ -60,6 +62,24 @@ describe("UI harness CLI safety", () => {
     expect(output).toContain("--codearts-server-url and --codearts-session must be provided together");
   });
 
+  test("requires environment-provided CodeArts attach URL and session together", async () => {
+    const output = await runCli(["--headed"], {
+      GAMEFORGE_CODEARTS_SERVER_URL: "http://127.0.0.1:4097",
+      GAMEFORGE_CODEARTS_SESSION: undefined,
+    });
+    expect(output).toContain("--codearts-server-url and --codearts-session must be provided together");
+  });
+
+  test("requires an external CodeArts session for acceptance before creating Evidence", async () => {
+    const experiment = `missing-attach-${Date.now()}`;
+    const output = await runCli(["--headed", "--tier", "acceptance", "--experiment", experiment], {
+      GAMEFORGE_CODEARTS_SERVER_URL: undefined,
+      GAMEFORGE_CODEARTS_SESSION: undefined,
+    });
+    expect(output).toContain("requires an external CodeArts server and session");
+    expect(existsSync(path.resolve(process.cwd(), "../..", ".gameforge-validation", experiment))).toBe(false);
+  });
+
   test("rejects an unknown option instead of silently running the acceptance tier", async () => {
     const output = await runCli(["--headless", "--tire", "readiness"]);
     expect(output).toContain("Unknown option: --tire");
@@ -76,6 +96,11 @@ describe("UI harness CLI safety", () => {
       "--task-id", "task-1", "--run-id", "run-1", "--project-id", "project-1",
     ]);
     expect(output).toContain("readiness tier must create a fresh Authority task");
+  });
+
+  test("accepts zero to disable the headed failure hold", async () => {
+    const output = await runCli(["--headed", "--failure-hold-ms", "0", "--relay-url", "http://127.0.0.1:1/"]);
+    expect(output).not.toContain("Timeout values must be positive integers");
   });
 
   test("rejects an unsafe OpenChamber URL before creating Evidence", async () => {

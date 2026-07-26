@@ -11,21 +11,25 @@ export async function prepareHarnessSession<T>(options: {
   sessionRoot: string;
   session: HarnessSession;
   scenario: string;
-  correlate: () => Promise<T>;
+  correlate: (evidence: FileEvidenceSink) => Promise<T>;
 }): Promise<{ evidence: FileEvidenceSink; correlated: T }> {
   await mkdir(options.sessionRoot, { recursive: true });
   const evidence = new FileEvidenceSink(options.sessionRoot);
-  await evidence.recordSession(options.session);
   try {
-    return { evidence, correlated: await options.correlate() };
+    await evidence.recordSession(options.session);
+    return { evidence, correlated: await options.correlate(evidence) };
   } catch (error) {
-    await evidence.finalize({
-      status: "failed",
-      scenario: options.scenario,
-      startedAt: options.session.startedAt,
-      finishedAt: new Date().toISOString(),
-      failure: errorMessage(error),
-    });
+    try {
+      await evidence.finalize({
+        status: "failed",
+        scenario: options.scenario,
+        startedAt: options.session.startedAt,
+        finishedAt: new Date().toISOString(),
+        failure: errorMessage(error),
+      });
+    } catch (finalizeError) {
+      throw new Error(`${errorMessage(error)}; Evidence finalization failed: ${errorMessage(finalizeError)}`);
+    }
     throw error;
   }
 }

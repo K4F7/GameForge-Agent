@@ -48,6 +48,14 @@ describe("probeHttp", () => {
 });
 
 describe("probeCodeArts", () => {
+  it("rejects a configured non-executable CodeArts file on non-Windows", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-codearts-configured-")); roots.push(root);
+    const configured = path.join(root, "codearts");
+    await writeFile(configured, "#!/bin/sh\n", { encoding: "utf8", mode: 0o644 });
+
+    expect((await probeCodeArts({ platform: "linux", env: { CODEARTS_BIN: configured } })).available).toBe(false);
+  });
+
   it("rejects a non-executable codearts file on non-Windows PATH", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-codearts-nonexec-")); roots.push(root);
     await writeFile(path.join(root, "codearts"), "#!/bin/sh\n", { encoding: "utf8", mode: 0o644 });

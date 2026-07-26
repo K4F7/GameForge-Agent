@@ -15,6 +15,7 @@ import { UiTestController } from "./controller.js";
 import { diagnose, renderDiagnosisMarkdown, renderDiagnosisTerminal } from "./diagnosis.js";
 import { evaluatePreflight } from "./preflight.js";
 import { probeRunDependencies } from "./preflight-probes.js";
+import { correlateAfterCodeArtsReady } from "./codearts-readiness.js";
 import { prepareHarnessSession } from "./session-bootstrap.js";
 import { READINESS_PROJECT_PREFIX, buildScenario, tierBanner, type HarnessTier } from "./tiers.js";
 import { DEFAULT_OPENCHAMBER_URL, DEFAULT_RELAY_URL } from "./testenv-config.js";
@@ -24,6 +25,9 @@ const reportedFailures = new Set<string>();
 
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
 const options = parseArguments(process.argv.slice(2));
+if (options.codeartsServerUrl === undefined) {
+  throw new Error("The UI harness requires an external CodeArts server and session; provide --codearts-server-url/--codearts-session or GAMEFORGE_CODEARTS_SERVER_URL/GAMEFORGE_CODEARTS_SESSION.");
+}
 const relay = new RunRelayClient({
   baseUrl: options.relayUrl,
   timeoutMilliseconds: 10_000,
@@ -34,13 +38,14 @@ const projectId = options.projectId
   ?? (options.tier === "readiness" ? `${READINESS_PROJECT_PREFIX}${randomUUID().slice(0, 8)}` : `ui-harness-${randomUUID().slice(0, 8)}`);
 const sessionId = options.sessionId ?? randomUUID();
 const sessionRoot = path.join(repoRoot, ".gameforge-validation", options.experiment, "sessions", sessionId);
+const bootstrapSession = { sessionId, startedAt: new Date().toISOString(), mode: options.mode, tier: options.tier } as const;
 process.stderr.write(`${tierBanner(options.tier)}\n`);
 
 const prepared = await prepareHarnessSession({
   sessionRoot,
-  session: { sessionId, startedAt: new Date().toISOString(), mode: options.mode, tier: options.tier },
+  session: bootstrapSession,
   scenario: buildScenario(options.tier, { openChamberUrl: options.openChamberUrl, instruction: "", totalTimeoutMs: options.totalTimeoutMs }).name,
-  correlate: async () => {
+  correlate: async (evidence) => {
     // Preflight runs after the Evidence session exists, so a missing
     // dependency is a named, on-disk failure instead of a bare stack trace.
     const preflight = evaluatePreflight(await probeRunDependencies({
@@ -56,15 +61,24 @@ const prepared = await prepareHarnessSession({
         .map((entry) => `${entry.dependency}${entry.remediation === undefined ? "" : ` (fix: ${entry.remediation})`}`);
       throw new Error(`Preflight failed: ${blocking.join(", ")}`);
     }
-    const created = options.taskId === undefined
-      ? await relay.createTask({ runId, projectId, language: "zh-CN", prompt: options.taskPrompt })
-      : { task: await relay.getTask(options.taskId) };
-    if (created.task.runId !== runId || created.task.projectId !== projectId) throw new Error("Existing Task correlation does not match --run-id/--project-id.");
-    // Read the Task back independently: the write path is only proven usable
-    // once the created Task is observable through the read path too.
-    const readBack = await relay.getTask(created.task.taskId);
-    if (readBack.taskId !== created.task.taskId) throw new Error("Authority read-back returned a different Task.");
-    return created.task;
+    const tui = createCodeArtsDriver();
+    return await correlateAfterCodeArtsReady({
+      tui,
+      evidence,
+      session: bootstrapSession,
+      terminal: { columns: 120, rows: 36 },
+      correlate: async () => {
+        const created = options.taskId === undefined
+          ? await relay.createTask({ runId, projectId, language: "zh-CN", prompt: options.taskPrompt })
+          : { task: await relay.getTask(options.taskId) };
+        if (created.task.runId !== runId || created.task.projectId !== projectId) throw new Error("Existing Task correlation does not match --run-id/--project-id.");
+        // Read the Task back independently: the write path is only proven usable
+        // once the created Task is observable through the read path too.
+        const readBack = await relay.getTask(created.task.taskId);
+        if (readBack.taskId !== created.task.taskId) throw new Error("Authority read-back returned a different Task.");
+        return created.task;
+      },
+    });
   },
 }).catch(async (error: unknown) => {
   await reportFailure(error instanceof Error ? error.message : String(error));
@@ -88,12 +102,7 @@ process.exitCode = final.result.status === "completed" ? 0 : 1;
 async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResult }> {
   const attempt = "baseline" as const;
   const evidence = prepared.evidence;
-  const tui = new ConPtyCodeArtsDriver({
-    repoRoot, sessionRoot, environment: {},
-    ...(options.codeartsServerUrl === undefined ? {} : {
-      attach: { serverUrl: options.codeartsServerUrl, sessionId: options.codeartsSession! },
-    }),
-  });
+  const tui = createCodeArtsDriver();
   const authority = new RelayAuthorityDriver({
     baseUrl: options.relayUrl, taskId: task.taskId, runId, projectId,
     ...(process.env.GAMEFORGE_RUN_RELAY_TOKEN === undefined ? {} : { authToken: process.env.GAMEFORGE_RUN_RELAY_TOKEN }),
@@ -121,6 +130,15 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
   });
   const result = await controller.run(buildScenario(options.tier, { openChamberUrl: options.openChamberUrl, instruction, totalTimeoutMs: options.totalTimeoutMs }));
   return { attempt, result };
+}
+
+function createCodeArtsDriver(): ConPtyCodeArtsDriver {
+  return new ConPtyCodeArtsDriver({
+    repoRoot, sessionRoot, environment: {},
+    ...(options.codeartsServerUrl === undefined ? {} : {
+      attach: { serverUrl: options.codeartsServerUrl, sessionId: options.codeartsSession! },
+    }),
+  });
 }
 
 /**
@@ -190,8 +208,8 @@ function parseArguments(args: string[]): {
   const taskId = optionalValue(args, "--task-id"); const existingRunId = optionalValue(args, "--run-id"); const existingProjectId = optionalValue(args, "--project-id");
   const browserChannel = optionalValue(args, "--browser-channel") ?? process.env.GAMEFORGE_BROWSER_CHANNEL?.trim();
   const sessionId = optionalValue(args, "--session-id");
-  const codeartsServerUrl = optionalValue(args, "--codearts-server-url");
-  const codeartsSession = optionalValue(args, "--codearts-session");
+  const codeartsServerUrl = optionalValue(args, "--codearts-server-url") ?? process.env.GAMEFORGE_CODEARTS_SERVER_URL?.trim();
+  const codeartsSession = optionalValue(args, "--codearts-session") ?? process.env.GAMEFORGE_CODEARTS_SESSION?.trim();
   if ([taskId, existingRunId, existingProjectId].filter((entry) => entry !== undefined).length % 3 !== 0) throw new Error("--task-id, --run-id and --project-id must be provided together.");
   if (tierInput === "readiness" && taskId !== undefined) throw new Error("The readiness tier must create a fresh Authority task; omit --task-id, --run-id and --project-id.");
   if ((codeartsServerUrl === undefined) !== (codeartsSession === undefined)) throw new Error("--codearts-server-url and --codearts-session must be provided together.");
@@ -209,7 +227,7 @@ function parseArguments(args: string[]): {
     observationHoldMs: positiveInteger(value("--observation-hold-ms", "10000")),
     // Bounded at parse time: the controller enforces the same cap, but a
     // rejection there would land after the evidence lock is already held.
-    failureHoldMs: boundedInteger(value("--failure-hold-ms", "30000"), 300_000, "--failure-hold-ms"),
+    failureHoldMs: nonNegativeBoundedInteger(value("--failure-hold-ms", "30000"), 300_000, "--failure-hold-ms"),
     softBudgetMs: positiveInteger(value("--soft-budget-ms", "60000")),
     tier: tierInput,
     ...(sessionId === undefined ? {} : { sessionId: safeEvidenceSegment(sessionId, "--session-id") }),
@@ -232,5 +250,11 @@ function positiveInteger(value: string): number {
 function boundedInteger(value: string, max: number, name: string): number {
   const parsed = positiveInteger(value);
   if (parsed > max) throw new Error(`${name} must not exceed ${max}.`);
+  return parsed;
+}
+
+function nonNegativeBoundedInteger(value: string, max: number, name: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > max) throw new Error(`${name} must be an integer between 0 and ${max}.`);
   return parsed;
 }

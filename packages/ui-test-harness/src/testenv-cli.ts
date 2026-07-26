@@ -16,8 +16,8 @@ import { TestEnvSupervisor, stopPortListeners, type ManagedServiceSpec } from ".
  * - `status`: preflight only - starts nothing, finishes in under a second.
  * - `up`: owns the credential-free loopback services (Authority Relay and the
  *   OpenChamber production service) in the foreground until Ctrl+C.
- * - `down`: stops whatever listens on the two loopback ports, from any
- *   terminal, but only when the owning process is a node/bun image.
+ * - `down`: stops the two services from any terminal, but only when both the
+ *   public endpoint contract and the owning node/bun process match.
  * CodeArts is never managed here - only probed.
  */
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
@@ -42,12 +42,19 @@ if (command === "status") {
 }
 
 async function runUp(): Promise<void> {
-  const codeArtsServerInput = upCodeArtsServerUrl(process.argv.slice(3))
-    ?? process.env.GAMEFORGE_CODEARTS_SERVER_URL?.trim();
-  if (!codeArtsServerInput) {
-    throw new Error("testenv up requires --codearts-server-url (or GAMEFORGE_CODEARTS_SERVER_URL) so OpenChamber can bind to the external CodeArts server.");
+  const commandLineAttach = upCodeArtsAttach(process.argv.slice(3));
+  const codeArtsServerInput = commandLineAttach.serverUrl ?? process.env.GAMEFORGE_CODEARTS_SERVER_URL?.trim();
+  const codeArtsSession = commandLineAttach.sessionId ?? process.env.GAMEFORGE_CODEARTS_SESSION?.trim();
+  if (!codeArtsServerInput || !codeArtsSession) {
+    throw new Error("testenv up requires the external CodeArts server and session together via --codearts-server-url/--codearts-session or GAMEFORGE_CODEARTS_SERVER_URL/GAMEFORGE_CODEARTS_SESSION.");
   }
   const codeArtsServerUrl = safeCodeArtsServerUrl(codeArtsServerInput);
+  const attachedSession = await probeHttp(
+    "codearts-session",
+    new URL(`/session/${encodeURIComponent(codeArtsSession)}`, codeArtsServerUrl).href,
+    { expectedCodeArtsSessionId: codeArtsSession },
+  );
+  if (!attachedSession.available) throw new Error(`testenv up cannot use the requested CodeArts session: ${attachedSession.detail}`);
   const relayPort = loopbackHttpPort(relayUrl, "Relay URL");
   const openChamberPort = loopbackHttpPort(openChamberUrl, "OpenChamber URL");
   const openChamberEntry = path.join(repoRoot, "vendor", "openchamber", "packages", "web", "bin", "cli.js");
@@ -105,38 +112,47 @@ async function runUp(): Promise<void> {
   await supervisor.waitUntilStopped();
 }
 
-function upCodeArtsServerUrl(args: readonly string[]): string | undefined {
-  let result: string | undefined;
+function upCodeArtsAttach(args: readonly string[]): { serverUrl?: string; sessionId?: string } {
+  const result: { serverUrl?: string; sessionId?: string } = {};
   for (let index = 0; index < args.length; index += 2) {
     const option = args[index]!;
-    if (option !== "--codearts-server-url") throw new Error(`Unknown testenv option: ${option}`);
-    if (result !== undefined) throw new Error(`${option} may only be provided once.`);
+    const key = option === "--codearts-server-url" ? "serverUrl"
+      : option === "--codearts-session" ? "sessionId"
+        : undefined;
+    if (key === undefined) throw new Error(`Unknown testenv option: ${option}`);
+    if (result[key] !== undefined) throw new Error(`${option} may only be provided once.`);
     const value = args[index + 1];
     if (value === undefined || value.startsWith("--")) throw new Error(`${option} requires a value.`);
-    result = value;
+    result[key] = value;
   }
   return result;
 }
 
 /**
- * Stateless down: no PID file to go stale. Finds listeners on the two known
- * ports (including IPv6 dual-stack binds) and stops them - refusing anything
- * that is not a node/bun image, and only reporting stopped after the PID is
- * verified gone and the port released.
+ * Stateless down: verifies the service's public endpoint contract before
+ * touching a listener, then verifies the process image and final port release.
+ * This fails closed for unrelated Node/Bun development servers.
  */
 async function runDown(): Promise<void> {
   const relayPort = loopbackHttpPort(relayUrl, "Relay URL");
   const openChamberPort = loopbackHttpPort(openChamberUrl, "OpenChamber URL");
   let failures = 0;
-  for (const { name, port } of [{ name: "authority-relay", port: relayPort }, { name: "openchamber-service", port: openChamberPort }]) {
+  const services: Array<{ name: "authority-relay" | "openchamber-service"; port: number; probeUrl: string }> = [
+    { name: "authority-relay", port: relayPort, probeUrl: new URL("tasks?limit=1", relayUrl).href },
+    { name: "openchamber-service", port: openChamberPort, probeUrl: openChamberUrl },
+  ];
+  for (const { name, port, probeUrl } of services) {
     try {
-      const outcome = await stopPortListeners(port, { allowImages: /^(node|bun)(\.exe)?$/i });
+      const outcome = await stopPortListeners(port, {
+        allowImages: /^(node|bun)(\.exe)?$/i,
+        verifyOwnership: async () => (await probeHttp(name, probeUrl)).available,
+      });
       if (outcome.stopped.length === 0 && outcome.refused.length === 0) {
         process.stdout.write(`${name}：端口 ${port} 无监听进程。\n`);
       }
       for (const entry of outcome.stopped) process.stdout.write(`${name}：已停止 ${entry.image} (PID ${entry.pid})，端口已释放。\n`);
       for (const entry of outcome.refused) {
-        process.stderr.write(`${name}：端口 ${port} 由 ${entry.image ?? "未知进程"} (PID ${entry.pid}) 占用，不是本环境管理的 node/bun 服务，拒绝停止。\n`);
+        process.stderr.write(`${name}：端口 ${port} 由 ${entry.image ?? "未知进程"} (PID ${entry.pid}) 占用，但服务契约或进程归属不匹配，拒绝停止。\n`);
         failures += 1;
       }
     } catch (error) {

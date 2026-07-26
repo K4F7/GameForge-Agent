@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -38,5 +38,22 @@ describe("prepareHarnessSession", () => {
 
     const metadata = JSON.parse(await readFile(path.join(sessionRoot, "metadata.json"), "utf8"));
     expect(metadata.tier).toBe("readiness");
+  });
+
+  it("finalizes and releases the evidence lock when initial metadata recording fails", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-bootstrap-")); roots.push(root);
+    const sessionRoot = path.join(root, "sessions", "session-metadata-failure");
+    await mkdir(path.join(sessionRoot, "metadata.json"), { recursive: true });
+
+    await expect(prepareHarnessSession({
+      sessionRoot,
+      session: { sessionId: "session-metadata-failure", startedAt: "2026-07-26T00:00:00.000Z", mode: "headless" },
+      scenario: "codearts-minimal-closure:baseline",
+      correlate: async () => "unreachable",
+    })).rejects.toThrow();
+
+    const result = JSON.parse(await readFile(path.join(sessionRoot, "result.json"), "utf8"));
+    expect(result.status).toBe("failed");
+    await expect(access(path.join(sessionRoot, ".evidence.lock"))).rejects.toThrow();
   });
 });
