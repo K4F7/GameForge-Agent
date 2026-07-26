@@ -54,6 +54,8 @@ function everyTouchedPath(file, isEligiblePath) {
  * @property {string | null} reviewedSha head SHA the reviewer agent itself last approved
  * @property {string} headSha current head SHA
  * @property {boolean} hasNewerChangesRequested reviewer requested changes after that approval
+ * @property {boolean} hasNewerManualDismissal a maintainer manually dismissed a gate approval after that approval
+ * @property {string} comparisonStatus GitHub compare status: "ahead", "behind", "identical", or "diverged"
  * @property {ChangedFile[]} changedFiles files between reviewedSha and headSha
  */
 
@@ -78,6 +80,21 @@ export function decideApprovalCarryForward(input) {
   }
   if (input.hasNewerChangesRequested) {
     return { kind: "skip", reason: "the reviewer requested changes after its last approval" };
+  }
+  if (input.hasNewerManualDismissal) {
+    return { kind: "skip", reason: "a maintainer manually dismissed a gate approval after the reviewed approval" };
+  }
+
+  // The compare must prove reviewedSha is a direct ancestor of head. On a force-push
+  // that rewrites history, GitHub returns a "diverged" comparison describing the
+  // merge-base-to-head side, which can hide production code the replacement branch
+  // dropped and show only a trivial Markdown delta. "ahead" is the only status where
+  // the file list is exactly reviewedSha..head.
+  if (input.comparisonStatus !== "ahead") {
+    return {
+      kind: "skip",
+      reason: `the reviewed SHA is not a direct ancestor of head (compare status: ${input.comparisonStatus})`,
+    };
   }
 
   const changedFiles = input.changedFiles;

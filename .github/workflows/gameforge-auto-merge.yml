@@ -128,6 +128,28 @@ jobs:
             const verdictOf = (review) =>
               review.state === "DISMISSED" ? (dismissedVerdicts.get(review.id) ?? "DISMISSED") : review.state;
 
+            // A maintainer's manual dismissal carries a message and names the review it
+            // revoked. If it revoked a gate approval (reviewer or a carried-forward one),
+            // it must block a fall-back to an older anchor -- otherwise the deliberate
+            // revocation is invisible to the selector below.
+            const reviewById = new Map(reviews.map((review) => [review.id, review]));
+            const manualGateApprovalDismissals = timeline.filter((entry) => {
+              if (
+                entry.event !== "review_dismissed" ||
+                !entry.dismissed_review ||
+                !entry.dismissed_review.dismissal_message ||
+                String(entry.dismissed_review.state ?? "").toUpperCase() !== "APPROVED"
+              ) {
+                return false;
+              }
+              const dismissed = reviewById.get(entry.dismissed_review.review_id);
+              const body = dismissed?.body ?? "";
+              return (
+                dismissed?.user?.login === "github-actions[bot]" &&
+                (body.includes(reviewerMarker) || body.includes(carryForwardMarker))
+              );
+            });
+
             let hasCurrentGameForgeApproval = reviews.some(
               (review) =>
                 review.user?.login === "github-actions[bot]" &&
@@ -150,6 +172,12 @@ jobs:
               const reviewedSha = latestApproval ? latestApproval.commit_id : null;
               const hasNewerChangesRequested =
                 latestVerdict !== undefined && verdictOf(latestVerdict) === "CHANGES_REQUESTED";
+              // Fail closed if a maintainer revoked a gate approval at or after the anchor's
+              // own submission -- the deliberate revocation must outrank the older approval.
+              const anchorSubmittedAt = latestApproval ? Date.parse(latestApproval.submitted_at ?? "") : NaN;
+              const hasNewerManualDismissal = manualGateApprovalDismissals.some(
+                (entry) => !Number.isNaN(anchorSubmittedAt) && Date.parse(entry.created_at ?? "") >= anchorSubmittedAt,
+              );
 
               if (reviewedSha) {
                 const { data: comparison } = await github.rest.repos.compareCommits({
@@ -167,6 +195,8 @@ jobs:
                   reviewedSha,
                   headSha: pr.head.sha,
                   hasNewerChangesRequested,
+                  hasNewerManualDismissal,
+                  comparisonStatus: comparison.status,
                   changedFiles: (comparison.files ?? []).map((changed) => ({
                     filename: changed.filename,
                     status: changed.status,

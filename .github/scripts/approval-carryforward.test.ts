@@ -23,6 +23,8 @@ function decide(changedFiles: ChangedFile[], overrides: Record<string, unknown> 
     reviewedSha: "a".repeat(40),
     headSha: "b".repeat(40),
     hasNewerChangesRequested: false,
+    hasNewerManualDismissal: false,
+    comparisonStatus: "ahead",
     changedFiles,
     ...overrides,
   });
@@ -112,6 +114,24 @@ describe("decideApprovalCarryForward", () => {
     expect(decide([file("docs/guide.md")], { hasNewerChangesRequested: true })).toEqual({
       kind: "skip",
       reason: "the reviewer requested changes after its last approval",
+    });
+  });
+
+  test("refuses after a maintainer manually dismissed a gate approval", () => {
+    expect(decide([file("docs/guide.md")], { hasNewerManualDismissal: true })).toEqual({
+      kind: "skip",
+      reason: "a maintainer manually dismissed a gate approval after the reviewed approval",
+    });
+  });
+
+  test("refuses when the reviewed history is not a direct ancestor of head", () => {
+    expect(decide([file("docs/guide.md")], { comparisonStatus: "diverged" })).toEqual({
+      kind: "skip",
+      reason: "the reviewed SHA is not a direct ancestor of head (compare status: diverged)",
+    });
+    expect(decide([file("docs/guide.md")], { comparisonStatus: "behind" })).toEqual({
+      kind: "skip",
+      reason: "the reviewed SHA is not a direct ancestor of head (compare status: behind)",
     });
   });
 
