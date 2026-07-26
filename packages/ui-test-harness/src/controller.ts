@@ -44,7 +44,9 @@ export class UiTestController {
   ) {}
 
   async run(scenario: HarnessScenario): Promise<HarnessResult> {
-    const startedAt = new Date().toISOString();
+    const startedAt = this.options.startedAt ?? new Date().toISOString();
+    const invocationStartedAt = Date.parse(startedAt);
+    if (!Number.isFinite(invocationStartedAt)) throw new Error("Harness startedAt must be a valid ISO timestamp.");
     const session: HarnessSession = { sessionId: this.options.sessionId ?? randomUUID(), startedAt, mode: this.options.mode,
       ...(this.options.tier === undefined ? {} : { tier: this.options.tier }),
       ...(this.options.taskId === undefined ? {} : { taskId: this.options.taskId }), ...(this.options.runId === undefined ? {} : { runId: this.options.runId }),
@@ -52,7 +54,7 @@ export class UiTestController {
     let failure: unknown;
     let tuiStarted = false;
     const phases: PhaseTiming[] = [];
-    let phaseStartedAt = Date.now();
+    let phaseStartedAt = invocationStartedAt;
     // Tracks the segment currently in flight, so a thrown step still books its
     // time under the right label instead of inflating teardown.
     let pendingPhase = "tui.start";
@@ -281,6 +283,7 @@ export class UiTestController {
           this.drivers.authority.snapshot(),
         ]);
         this.assertTuiSession(session, tui.sessionId);
+        if (tui.status !== "running") throw new Error(`CodeArts TUI is not running at capture: ${tui.status}.`);
         const observer = await this.drivers.tuiObserver.snapshot();
         this.assertTuiSession(session, observer.sessionId);
         await Promise.all([

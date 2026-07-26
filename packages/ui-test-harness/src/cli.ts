@@ -10,13 +10,13 @@ import { RelayAuthorityDriver } from "./adapters/relay-authority.js";
 import { XtermTuiObserverDriver } from "./adapters/xterm-observer.js";
 import { projectFingerprint } from "./adapters/project-fingerprint.js";
 import { safeCodeArtsServerUrl, safeEvidenceSegment, safeOpenChamberUrl, safeRelayUrl } from "./cli-safety.js";
-import type { HarnessResult } from "./contracts.js";
+import type { CodeArtsTuiDriver, HarnessResult } from "./contracts.js";
 import { UiTestController } from "./controller.js";
 import { diagnose, renderDiagnosisMarkdown, renderDiagnosisTerminal } from "./diagnosis.js";
 import { verifyOpenChamberDirectory } from "./openchamber-external.js";
 import { evaluatePreflight } from "./preflight.js";
 import { probeRunDependencies } from "./preflight-probes.js";
-import { correlateAfterCodeArtsReady } from "./codearts-readiness.js";
+import { correlateAfterCodeArtsReady, reuseStartedCodeArtsDriver } from "./codearts-readiness.js";
 import { prepareHarnessSession } from "./session-bootstrap.js";
 import { READINESS_PROJECT_PREFIX, buildScenario, tierBanner, type HarnessTier } from "./tiers.js";
 import { DEFAULT_OPENCHAMBER_URL, DEFAULT_RELAY_URL } from "./testenv-config.js";
@@ -26,9 +26,6 @@ const reportedFailures = new Set<string>();
 
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
 const options = parseArguments(process.argv.slice(2));
-if (options.codeartsServerUrl === undefined) {
-  throw new Error("The UI harness requires an external CodeArts server and session; provide --codearts-server-url/--codearts-session or GAMEFORGE_CODEARTS_SERVER_URL/GAMEFORGE_CODEARTS_SESSION.");
-}
 const relay = new RunRelayClient({
   baseUrl: options.relayUrl,
   timeoutMilliseconds: 10_000,
@@ -41,12 +38,16 @@ const sessionId = options.sessionId ?? randomUUID();
 const sessionRoot = path.join(repoRoot, ".gameforge-validation", options.experiment, "sessions", sessionId);
 const bootstrapSession = { sessionId, startedAt: new Date().toISOString(), mode: options.mode, tier: options.tier } as const;
 process.stderr.write(`${tierBanner(options.tier)}\n`);
+let preparedTui: CodeArtsTuiDriver | undefined;
 
 const prepared = await prepareHarnessSession({
   sessionRoot,
   session: bootstrapSession,
   scenario: buildScenario(options.tier, { openChamberUrl: options.openChamberUrl, instruction: "", totalTimeoutMs: options.totalTimeoutMs }).name,
   correlate: async (evidence) => {
+    if (options.codeartsServerUrl === undefined) {
+      throw new Error("Preflight failed: codearts-session (the UI harness requires an external CodeArts server and session; provide --codearts-server-url/--codearts-session or GAMEFORGE_CODEARTS_SERVER_URL/GAMEFORGE_CODEARTS_SESSION)");
+    }
     // Preflight runs after the Evidence session exists, so a missing
     // dependency is a named, on-disk failure instead of a bare stack trace.
     const preflight = evaluatePreflight(await probeRunDependencies({
@@ -65,11 +66,12 @@ const prepared = await prepareHarnessSession({
     }
     await verifyOpenChamberDirectory(options.openChamberUrl, repoRoot);
     const tui = createCodeArtsDriver();
-    return await correlateAfterCodeArtsReady({
+    const correlated = await correlateAfterCodeArtsReady({
       tui,
       evidence,
       session: bootstrapSession,
       terminal: { columns: 120, rows: 36 },
+      keepRunningOnSuccess: true,
       correlate: async () => {
         const created = options.taskId === undefined
           ? await relay.createTask({ runId, projectId, language: "zh-CN", prompt: options.taskPrompt })
@@ -82,6 +84,8 @@ const prepared = await prepareHarnessSession({
         return created.task;
       },
     });
+    preparedTui = reuseStartedCodeArtsDriver(tui);
+    return correlated;
   },
 }).catch(async (error: unknown) => {
   await reportFailure(error instanceof Error ? error.message : String(error));
@@ -105,7 +109,9 @@ process.exitCode = final.result.status === "completed" ? 0 : 1;
 async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResult }> {
   const attempt = "baseline" as const;
   const evidence = prepared.evidence;
-  const tui = createCodeArtsDriver();
+  const tui = preparedTui;
+  if (tui === undefined) throw new Error("Prepared CodeArts TUI ownership was not transferred.");
+  preparedTui = undefined;
   const authority = new RelayAuthorityDriver({
     baseUrl: options.relayUrl, taskId: task.taskId, runId, projectId,
     ...(process.env.GAMEFORGE_RUN_RELAY_TOKEN === undefined ? {} : { authToken: process.env.GAMEFORGE_RUN_RELAY_TOKEN }),
@@ -117,6 +123,7 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
     gui: new PlaywrightOpenChamberDriver({ sessionRoot, baseUrl: options.openChamberUrl, ...(options.browserChannel === undefined ? {} : { browserChannel: options.browserChannel }) }),
   }, {
     sessionId,
+    startedAt: bootstrapSession.startedAt,
     mode: options.mode,
     tier: options.tier,
     taskId: task.taskId, runId, projectId,

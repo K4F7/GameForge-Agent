@@ -71,14 +71,16 @@ describe("UI harness CLI safety", () => {
     expect(output).toContain("--codearts-server-url and --codearts-session must be provided together");
   });
 
-  test("requires an external CodeArts session for acceptance before creating Evidence", async () => {
+  test("finalizes Evidence when the external CodeArts session is missing", async () => {
     const experiment = `missing-attach-${Date.now()}`;
     const output = await runCli(["--headed", "--tier", "acceptance", "--experiment", experiment], {
       GAMEFORGE_CODEARTS_SERVER_URL: undefined,
       GAMEFORGE_CODEARTS_SESSION: undefined,
     });
     expect(output).toContain("requires an external CodeArts server and session");
-    expect(existsSync(path.resolve(process.cwd(), "../..", ".gameforge-validation", experiment))).toBe(false);
+    const experimentRoot = path.resolve(process.cwd(), "../..", ".gameforge-validation", experiment);
+    expect(existsSync(experimentRoot)).toBe(true);
+    expect(output).toContain("result.json");
   });
 
   test("rejects an unknown option instead of silently running the acceptance tier", async () => {

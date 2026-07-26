@@ -184,6 +184,8 @@ export type HarnessScenario = {
 
 export type HarnessOptions = {
   sessionId?: string;
+  /** Includes bootstrap and preflight time in the recorded run budget. */
+  startedAt?: string;
   mode: HarnessMode;
   /** Propagated into the recorded evidence session so metadata.json keeps the tier. */
   tier?: HarnessTier;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { correlateAfterCodeArtsReady } from "./codearts-readiness.js";
+import { correlateAfterCodeArtsReady, reuseStartedCodeArtsDriver } from "./codearts-readiness.js";
 import type { CodeArtsTuiDriver, EvidenceSink, HarnessSession } from "./contracts.js";
 
 describe("correlateAfterCodeArtsReady", () => {
@@ -66,5 +66,25 @@ describe("correlateAfterCodeArtsReady", () => {
 
     await expect(correlateAfterCodeArtsReady({ tui, evidence, session, terminal: { columns: 120, rows: 36 }, correlate: async () => { throw new Error("correlation failed"); } }))
       .rejects.toThrow(/correlation failed.*stop failed/i);
+  });
+
+  it("transfers a ready TUI without stopping or starting it again", async () => {
+    const calls: string[] = [];
+    const session: HarnessSession = { sessionId: "transferred", startedAt: "2026-07-27T00:00:00.000Z", mode: "headed/watch", tier: "readiness" };
+    const tui = {
+      kind: "codearts-original-tui" as const,
+      subscribeOutput() { return () => undefined; },
+      async start() { calls.push("start"); return { sessionId: session.sessionId, status: "running" as const, columns: 120, rows: 36, screen: "Ask anything", outputSequence: 4, lastChangedAt: session.startedAt }; },
+      async read() { calls.push("read"); return { sessionId: session.sessionId, status: "running" as const, columns: 120, rows: 36, screen: "Ask anything", outputSequence: 4, lastChangedAt: session.startedAt }; },
+      async sendText() {}, async sendKey() {}, async resize() {}, async stop() { calls.push("stop"); },
+    } satisfies CodeArtsTuiDriver;
+    const evidence = { async recordTuiOutput() {}, async recordTuiSnapshot() {} } as unknown as EvidenceSink;
+
+    await correlateAfterCodeArtsReady({ tui, evidence, session, terminal: { columns: 120, rows: 36 }, keepRunningOnSuccess: true, correlate: async () => "task" });
+    const transferred = reuseStartedCodeArtsDriver(tui);
+    await transferred.start({ session, columns: 120, rows: 36 });
+    await transferred.stop("completed");
+
+    expect(calls).toEqual(["start", "read", "stop"]);
   });
 });

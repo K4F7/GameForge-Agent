@@ -10,6 +10,7 @@ export async function correlateAfterCodeArtsReady<T>(options: {
   evidence: EvidenceSink;
   session: HarnessSession;
   terminal: { columns: number; rows: number };
+  keepRunningOnSuccess?: boolean;
   correlate: () => Promise<T>;
 }): Promise<T> {
   let outputQueue = Promise.resolve();
@@ -33,13 +34,27 @@ export async function correlateAfterCodeArtsReady<T>(options: {
     unsubscribe();
     await outputQueue;
     if (outputFailure !== undefined) failure = combineFailure(failure, "TUI output evidence failed", outputFailure);
-    if (started) {
+    if (started && !(failure === undefined && options.keepRunningOnSuccess === true)) {
       try { await options.tui.stop(failure === undefined ? "completed" : "failed"); }
       catch (error) { failure = combineFailure(failure, "TUI cleanup failed", error); }
     }
   }
   if (failure !== undefined) throw failure;
   return result as T;
+}
+
+/** Transfers ownership of an already-started driver to the main controller. */
+export function reuseStartedCodeArtsDriver(tui: CodeArtsTuiDriver): CodeArtsTuiDriver {
+  return {
+    kind: tui.kind,
+    subscribeOutput: (listener, options) => tui.subscribeOutput(listener, options),
+    start: async () => tui.read(),
+    read: () => tui.read(),
+    sendText: (text, options) => tui.sendText(text, options),
+    sendKey: (key) => tui.sendKey(key),
+    resize: (columns, rows) => tui.resize(columns, rows),
+    stop: (reason) => tui.stop(reason),
+  };
 }
 
 function combineFailure(primary: unknown, label: string, secondary: unknown): Error {
