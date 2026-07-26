@@ -180,6 +180,12 @@ export type HarnessOptions = {
   observationHoldMs: number;
   /** Headed only: how long failed windows stay on screen before teardown. */
   failureHoldMs?: number;
+  /**
+   * Invoked with the failure message before the failure hold and before any
+   * teardown, so guidance can reach the operator while the windows are still
+   * on screen. Failures thrown by the observer itself are swallowed.
+   */
+  onFailureObserved?: (failureMessage: string) => void | Promise<void>;
   activityPollMs: number;
   inactivityTimeoutMs: number;
   shutdownTimeoutMs?: number;

@@ -118,6 +118,9 @@ export class UiTestController {
     } catch (error) {
       failure = error;
       if (guiLaunched) { await this.captureGui(session, "failed").catch(() => undefined); failureCaptured = true; }
+      if (this.options.onFailureObserved !== undefined) {
+        try { await this.options.onFailureObserved(errorMessage(error)); } catch { /* guidance must never worsen the failure */ }
+      }
       // Only worth holding once the windows are actually on screen; a startup
       // failure has nothing for the operator to look at.
       if (guiLaunched && this.options.mode === "headed/watch" && configuredFailureHoldMs > 0) {

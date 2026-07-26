@@ -427,6 +427,25 @@ describe("UiTestController", () => {
     expect(events.indexOf("lifecycle:observing")).toBeLessThan(events.indexOf("observer:close"));
   });
 
+  it("notifies the failure observer before the hold and before teardown", async () => {
+    const sessionId = "failure-observer"; const events: string[] = [];
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() { events.push("observer:close"); } };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() { throw new Error("navigation failed"); }, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() { events.push("gui:close"); } };
+    const evidence = { async recordSession() {}, async recordLifecycle(event: { phase: string }) { events.push(`lifecycle:${event.phase}`); }, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize() {} };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headed/watch", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, failureHoldMs: 20, activityPollMs: 1, inactivityTimeoutMs: 100,
+        onFailureObserved: (message) => { events.push(`observed:${message}`); } });
+
+    await expect(controller.run({ name: "failure-observer", steps: [{ kind: "gui.navigate", url: "http://127.0.0.1/" }] })).resolves.toMatchObject({ status: "failed" });
+
+    const observedIndex = events.indexOf("observed:navigation failed");
+    expect(observedIndex).toBeGreaterThanOrEqual(0);
+    expect(observedIndex).toBeLessThan(events.indexOf("lifecycle:observing"));
+    expect(observedIndex).toBeLessThan(events.indexOf("gui:close"));
+    expect(observedIndex).toBeLessThan(events.indexOf("observer:close"));
+  });
+
   it("rejects a failure hold long enough to strand an unattended run", async () => {
     const sessionId = "failure-hold-bound";
     const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
