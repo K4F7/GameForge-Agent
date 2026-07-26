@@ -52,11 +52,15 @@ export class UiTestController {
     let tuiStarted = false;
     const phases: PhaseTiming[] = [];
     let phaseStartedAt = Date.now();
+    // Tracks the segment currently in flight, so a thrown step still books its
+    // time under the right label instead of inflating teardown.
+    let pendingPhase = "tui.start";
     const markPhase = (label: string): void => {
       const now = Date.now();
       phases.push({ label, durationMs: Math.max(0, now - phaseStartedAt) });
       phaseStartedAt = now;
     };
+    const completePhase = (label: string, next: string): void => { markPhase(label); pendingPhase = next; };
     let observerOpened = false;
     let guiLaunched = false;
     let failureCaptured = false;
@@ -103,7 +107,7 @@ export class UiTestController {
       const tui = await this.drivers.tui.start({ session, ...this.options.terminal });
       this.assertTuiSession(session, tui.sessionId);
       await this.drivers.evidence.recordTuiSnapshot(tui);
-      markPhase("tui.start");
+      completePhase("tui.start", "observer.open");
       observerOpened = true;
       const observer = await this.drivers.tuiObserver.open({
         session,
@@ -113,22 +117,26 @@ export class UiTestController {
       });
       this.assertTuiSession(session, observer.sessionId);
       await this.drivers.evidence.recordTuiObserverSnapshot(observer);
-      markPhase("observer.open");
+      completePhase("observer.open", "gui.launch");
       guiLaunched = true;
       await this.drivers.gui.launch({ session, mode: this.options.mode, viewport: this.options.viewport });
       await this.captureGui(session, "loaded");
       await this.recordLifecycle(session, "running");
-      markPhase("gui.launch");
+      completePhase("gui.launch", "steps");
 
       for (const step of scenario.steps) await this.execute(session, step, trackEvidence);
-      markPhase("steps");
+      completePhase("steps", "hold");
 
       if (this.options.mode === "headed/watch" && this.options.observationHoldMs > 0) {
         await this.recordLifecycle(session, "observing");
         await delay(this.options.observationHoldMs);
+        markPhase("hold");
       }
     } catch (error) {
       failure = error;
+      // Book the interrupted segment under its own label so its time is not
+      // misattributed to teardown on exactly the path timings exist for.
+      markPhase(pendingPhase);
       if (guiLaunched) { await this.captureGui(session, "failed").catch(() => undefined); failureCaptured = true; }
       if (this.options.onFailureObserved !== undefined) {
         try { await this.options.onFailureObserved(errorMessage(error)); } catch { /* guidance must never worsen the failure */ }
@@ -139,6 +147,7 @@ export class UiTestController {
         await this.recordLifecycle(session, "observing").catch(() => undefined);
         await delay(configuredFailureHoldMs);
       }
+      markPhase("hold");
     }
 
     try { await withTimeout(outputQueue, shutdownTimeoutMs, "TUI output drain"); }

@@ -56,6 +56,20 @@ describe("diagnose", () => {
     expect(diagnosis.likelyCause).toMatch(/授权|就绪/);
   });
 
+  it("classifies a CodeArts startup failure and names expired authorization as a candidate", () => {
+    const diagnosis = diagnose({
+      failure: "CodeArts exited before the TUI became ready.",
+      files: ["result.json", "output.vtlog", "final-screen.txt"],
+    });
+
+    expect(diagnosis.category).toBe("codearts-startup");
+    expect(diagnosis.likelyCause).toMatch(/授权|就绪/);
+    expect(diagnosis.evidence).toEqual(expect.arrayContaining(["final-screen.txt", "output.vtlog"]));
+
+    const timeout = diagnose({ failure: "CodeArts TUI readiness timed out after 30000 milliseconds.", files: ["output.vtlog"] });
+    expect(timeout.category).toBe("codearts-startup");
+  });
+
   it("only lists evidence files that actually exist in the session", () => {
     const diagnosis = diagnose({
       failure: "Authority gate timed out: Task and Run completed",

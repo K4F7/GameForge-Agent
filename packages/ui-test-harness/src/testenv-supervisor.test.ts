@@ -1,9 +1,10 @@
+import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { TestEnvSupervisor, type ManagedServiceSpec } from "./testenv-supervisor.js";
+import { TestEnvSupervisor, pidsListeningOn, stopPortListeners, type ManagedServiceSpec } from "./testenv-supervisor.js";
 
 const SUPERVISOR_TEST_TIMEOUT_MS = 30_000;
 const roots: string[] = [];
@@ -101,6 +102,26 @@ describe("TestEnvSupervisor", () => {
     await supervisor.up();
     await expect(supervisor.up()).rejects.toThrow(/already/i);
     await supervisor.down();
+  }, SUPERVISOR_TEST_TIMEOUT_MS);
+
+  it("finds and stops a dual-stack listener, verifying the port is released", async () => {
+    const port = await freePort();
+    // Node's default listen() binds "::" (dual-stack) - netstat shows [::]:port.
+    const child = spawn(process.execPath, ["-e", `require("net").createServer(()=>{}).listen(${port});setInterval(()=>{},1000)`], { stdio: "ignore", windowsHide: true });
+    cleanups.push(() => { try { child.kill(); } catch { /* already gone */ } });
+    const deadline = Date.now() + 10_000;
+    while (!(await portListening(port))) {
+      if (Date.now() > deadline) throw new Error("fixture listener never came up");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    const pids = await pidsListeningOn(port);
+    expect(pids).toContain(child.pid);
+
+    const stopped = await stopPortListeners(port, { allowImages: /^node(\.exe)?$/i });
+    expect(stopped.stopped.map((entry) => entry.pid)).toContain(child.pid);
+    expect(stopped.refused).toEqual([]);
+    expect(await portListening(port)).toBe(false);
   }, SUPERVISOR_TEST_TIMEOUT_MS);
 
   it("shares one cleanup across concurrent down calls", async () => {

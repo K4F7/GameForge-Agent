@@ -425,6 +425,9 @@ describe("UiTestController", () => {
     expect(events).toContain("lifecycle:observing");
     expect(events.indexOf("lifecycle:observing")).toBeLessThan(events.indexOf("gui:close"));
     expect(events.indexOf("lifecycle:observing")).toBeLessThan(events.indexOf("observer:close"));
+    // The interrupted phase and the hold keep their own labels; their time
+    // must not be misattributed to teardown on exactly the path timings exist for.
+    expect(result.phases?.map((phase) => phase.label)).toEqual(["tui.start", "observer.open", "gui.launch", "steps", "hold", "teardown"]);
   });
 
   it("records how long each run phase took", async () => {

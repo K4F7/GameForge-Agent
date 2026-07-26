@@ -24,4 +24,19 @@ describe("prepareHarnessSession", () => {
     expect(result.scenario).toBe("codearts-minimal-closure:baseline");
     expect(result.failure).toContain("Relay unreachable");
   });
+
+  it("persists the run tier into the evidence metadata", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-bootstrap-")); roots.push(root);
+    const sessionRoot = path.join(root, "sessions", "session-tier");
+
+    await prepareHarnessSession({
+      sessionRoot,
+      session: { sessionId: "session-tier", startedAt: "2026-07-26T00:00:00.000Z", mode: "headed/watch", tier: "readiness" },
+      scenario: "testenv-readiness:baseline",
+      correlate: async () => "ok",
+    });
+
+    const metadata = JSON.parse(await readFile(path.join(sessionRoot, "metadata.json"), "utf8"));
+    expect(metadata.tier).toBe("readiness");
+  });
 });

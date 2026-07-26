@@ -19,12 +19,16 @@ export const tuiKeys = [
 
 export type TuiKey = (typeof tuiKeys)[number];
 export type HarnessMode = "headed/watch" | "headless";
+/** ADR-0005: readiness asserts the environment is usable; only acceptance is an end-to-end verdict. */
+export type HarnessTier = "readiness" | "acceptance";
 export type HarnessPhase = "idle" | "starting" | "running" | "observing" | "stopping" | "completed" | "failed";
 
 export type HarnessSession = {
   sessionId: string;
   startedAt: string;
   mode: HarnessMode;
+  /** Persisted into metadata.json so the tier is readable from the evidence itself. */
+  tier?: HarnessTier;
   taskId?: string;
   runId?: string;
   projectId?: string;

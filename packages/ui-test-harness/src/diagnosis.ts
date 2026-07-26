@@ -11,7 +11,7 @@ export type DiagnosisInput = {
 };
 
 export type Diagnosis = {
-  category: "environment" | "gui-diagnostics" | "authority-timeout" | "tui-inactivity" | "cleanup" | "unknown";
+  category: "environment" | "codearts-startup" | "gui-diagnostics" | "authority-timeout" | "tui-inactivity" | "cleanup" | "unknown";
   likelyCause: string;
   /** Evidence files worth opening, filtered to those that actually exist. */
   evidence: string[];
@@ -41,6 +41,13 @@ const RULES: Rule[] = [
     likelyCause: "Authority Relay 未启动或不可达，运行在场景开始前就失败了。",
     candidateEvidence: ["result.json", "metadata.json"],
     nextCommand: "bun run testenv:status",
+  },
+  {
+    category: "codearts-startup",
+    matches: (failure) => /before the TUI became ready|TUI readiness timed out|ConPTY could not start CodeArts/i.test(failure),
+    likelyCause: "CodeArts 客户端未能就绪：可能未完成安装、授权已过期或启动即退出。先看最终屏幕与 VT 输出确认它停在哪一步。",
+    candidateEvidence: ["final-screen.txt", "output.vtlog", "lifecycle.ndjson"],
+    nextCommand: "bun run codearts",
   },
   {
     category: "gui-diagnostics",

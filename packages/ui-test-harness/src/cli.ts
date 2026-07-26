@@ -38,7 +38,7 @@ process.stderr.write(`${tierBanner(options.tier)}\n`);
 
 const prepared = await prepareHarnessSession({
   sessionRoot,
-  session: { sessionId, startedAt: new Date().toISOString(), mode: options.mode },
+  session: { sessionId, startedAt: new Date().toISOString(), mode: options.mode, tier: options.tier },
   scenario: buildScenario(options.tier, { openChamberUrl: options.openChamberUrl, instruction: "", totalTimeoutMs: options.totalTimeoutMs }).name,
   correlate: async () => {
     // Preflight runs after the Evidence session exists, so a missing
@@ -54,6 +54,10 @@ const prepared = await prepareHarnessSession({
       ? await relay.createTask({ runId, projectId, language: "zh-CN", prompt: options.taskPrompt })
       : { task: await relay.getTask(options.taskId) };
     if (created.task.runId !== runId || created.task.projectId !== projectId) throw new Error("Existing Task correlation does not match --run-id/--project-id.");
+    // Read the Task back independently: the write path is only proven usable
+    // once the created Task is observable through the read path too.
+    const readBack = await relay.getTask(created.task.taskId);
+    if (readBack.taskId !== created.task.taskId) throw new Error("Authority read-back returned a different Task.");
     return created.task;
   },
 }).catch(async (error: unknown) => {
@@ -120,14 +124,19 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
  * for the same failure message only print once.
  */
 async function reportFailure(failureMessage: string): Promise<void> {
-  if (reportedFailures.has(failureMessage)) return;
-  reportedFailures.add(failureMessage);
   try {
     const files = await listSessionFiles(sessionRoot);
     const diagnosis = diagnose({ failure: failureMessage, files });
-    process.stderr.write(renderDiagnosisTerminal({ failure: failureMessage, sessionRoot, diagnosis }));
+    // diagnosis.md is always rewritten against the current directory listing:
+    // the mid-run copy (printed during the headed hold) predates result.json
+    // and the final screen, and must not shadow the complete post-run one.
     const diagnosisPath = path.join(sessionRoot, "diagnosis.md");
     await writeFile(diagnosisPath, renderDiagnosisMarkdown({ failure: failureMessage, sessionRoot, diagnosis }), "utf8");
+    // Only the terminal print is deduplicated, so the operator reads the
+    // guidance once - during the hold in headed mode.
+    if (reportedFailures.has(failureMessage)) return;
+    reportedFailures.add(failureMessage);
+    process.stderr.write(renderDiagnosisTerminal({ failure: failureMessage, sessionRoot, diagnosis }));
     process.stderr.write(`诊断已写入：${diagnosisPath}\n`);
   } catch (error) {
     // Diagnosis must never mask the original failure.

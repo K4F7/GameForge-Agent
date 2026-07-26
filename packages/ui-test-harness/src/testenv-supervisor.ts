@@ -138,3 +138,63 @@ async function waitUntilPortFree(port: number, timeoutMs: number, name: string):
 }
 
 function delay(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+/**
+ * Windows netstat listeners on a loopback-reachable port. Matches IPv4 any,
+ * IPv4 loopback, IPv6 loopback AND IPv6 any ("[::]") - Node's default
+ * listen() binds dual-stack "::", which netstat reports as [::]:port.
+ */
+export async function pidsListeningOn(port: number): Promise<number[]> {
+  const stdout = await new Promise<string>((resolve, reject) => {
+    execFile("netstat.exe", ["-ano", "-p", "TCP"], { windowsHide: true, timeout: 10_000, maxBuffer: 8 * 1024 * 1024 }, (error, out) => {
+      if (error !== null) reject(error); else resolve(out);
+    });
+  });
+  const pids = new Set<number>();
+  for (const line of stdout.split(/\r?\n/)) {
+    const match = line.match(/^\s*TCP\s+(\S+?):(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/);
+    if (match !== null && Number(match[2]) === port && ["127.0.0.1", "0.0.0.0", "[::1]", "[::]"].includes(match[1]!)) {
+      pids.add(Number(match[3]));
+    }
+  }
+  return [...pids];
+}
+
+async function processImage(pid: number): Promise<string | undefined> {
+  const stdout = await new Promise<string>((resolve) => {
+    execFile("tasklist.exe", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], { windowsHide: true, timeout: 10_000 }, (_error, out) => resolve(out ?? ""));
+  });
+  return stdout.match(/^"([^"]+)"/)?.[1];
+}
+
+export type StopPortListenersResult = {
+  stopped: Array<{ pid: number; image: string }>;
+  refused: Array<{ pid: number; image: string | undefined }>;
+};
+
+/**
+ * Stateless stop for `testenv down`: kills listeners whose image matches
+ * allowImages, refuses everything else, and only reports a PID as stopped
+ * after verifying the process tree is gone and the port is released.
+ */
+export async function stopPortListeners(port: number, options: { allowImages: RegExp }): Promise<StopPortListenersResult> {
+  const result: StopPortListenersResult = { stopped: [], refused: [] };
+  for (const pid of await pidsListeningOn(port)) {
+    const image = await processImage(pid);
+    if (image === undefined || !options.allowImages.test(image)) {
+      result.refused.push({ pid, image });
+      continue;
+    }
+    await new Promise<void>((resolve) => {
+      execFile("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, timeout: STOP_TIMEOUT_MS }, () => resolve());
+    });
+    const deadline = Date.now() + STOP_TIMEOUT_MS;
+    while (processExists(pid)) {
+      if (Date.now() >= deadline) throw new Error(`process ${pid} (${image}) on port ${port} did not exit after taskkill.`);
+      await delay(100);
+    }
+    result.stopped.push({ pid, image });
+  }
+  if (result.refused.length === 0) await waitUntilPortFree(port, STOP_TIMEOUT_MS, `port-${port}`);
+  return result;
+}

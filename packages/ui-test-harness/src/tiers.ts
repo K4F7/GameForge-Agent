@@ -1,4 +1,4 @@
-import type { HarnessStep } from "./contracts.js";
+import type { HarnessStep, HarnessTier } from "./contracts.js";
 
 /**
  * The two run tiers (ADR-0005). A readiness pass asserts the environment is
@@ -6,7 +6,7 @@ import type { HarnessStep } from "./contracts.js";
  * Authority - and deliberately never submits a task or waits for authority
  * completion. Only an acceptance pass is an end-to-end verdict.
  */
-export type HarnessTier = "readiness" | "acceptance";
+export type { HarnessTier };
 
 /** Readiness Tasks stay in the relay; the prefix keeps them identifiable and cleanable. */
 export const READINESS_PROJECT_PREFIX = "testenv-readiness-";

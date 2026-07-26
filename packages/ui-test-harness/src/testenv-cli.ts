@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { evaluatePreflight, type PreflightProbe, type PreflightReport } from "./preflight.js";
 import { probeCodeArts, probeFile, probeHttp } from "./preflight-probes.js";
 import { DEFAULT_OPENCHAMBER_URL, DEFAULT_RELAY_URL } from "./testenv-config.js";
-import { TestEnvSupervisor, type ManagedServiceSpec } from "./testenv-supervisor.js";
+import { TestEnvSupervisor, stopPortListeners, type ManagedServiceSpec } from "./testenv-supervisor.js";
 
 /**
  * Resident test environment control surface (ADR-0005).
@@ -91,44 +91,29 @@ async function runUp(): Promise<void> {
 
 /**
  * Stateless down: no PID file to go stale. Finds listeners on the two known
- * loopback ports and stops them - refusing anything that is not a node/bun
- * image, so an unrelated service parked on the port is reported, not killed.
+ * ports (including IPv6 dual-stack binds) and stops them - refusing anything
+ * that is not a node/bun image, and only reporting stopped after the PID is
+ * verified gone and the port released.
  */
 async function runDown(): Promise<void> {
   let failures = 0;
   for (const { name, port } of [{ name: "authority-relay", port: relayPort }, { name: "openchamber-service", port: openChamberPort }]) {
-    const pids = await pidsListeningOn(port);
-    if (pids.length === 0) { process.stdout.write(`${name}：端口 ${port} 无监听进程。\n`); continue; }
-    for (const pid of pids) {
-      const image = await processImage(pid);
-      if (image === undefined || !/^(node|bun)(\.exe)?$/i.test(image)) {
-        process.stderr.write(`${name}：端口 ${port} 由 ${image ?? "未知进程"} (PID ${pid}) 占用，不是本环境管理的 node/bun 服务，拒绝停止。\n`);
-        failures += 1;
-        continue;
+    try {
+      const outcome = await stopPortListeners(port, { allowImages: /^(node|bun)(\.exe)?$/i });
+      if (outcome.stopped.length === 0 && outcome.refused.length === 0) {
+        process.stdout.write(`${name}：端口 ${port} 无监听进程。\n`);
       }
-      await execFileAsync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, timeout: 10_000 }).catch(() => undefined);
-      process.stdout.write(`${name}：已停止 ${image} (PID ${pid})。\n`);
+      for (const entry of outcome.stopped) process.stdout.write(`${name}：已停止 ${entry.image} (PID ${entry.pid})，端口已释放。\n`);
+      for (const entry of outcome.refused) {
+        process.stderr.write(`${name}：端口 ${port} 由 ${entry.image ?? "未知进程"} (PID ${entry.pid}) 占用，不是本环境管理的 node/bun 服务，拒绝停止。\n`);
+        failures += 1;
+      }
+    } catch (error) {
+      process.stderr.write(`${name}：${error instanceof Error ? error.message : String(error)}\n`);
+      failures += 1;
     }
   }
   process.exitCode = failures === 0 ? 0 : 1;
-}
-
-async function pidsListeningOn(port: number): Promise<number[]> {
-  const { stdout } = await execFileAsync("netstat.exe", ["-ano", "-p", "TCP"], { windowsHide: true, timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
-  const pids = new Set<number>();
-  for (const line of stdout.split(/\r?\n/)) {
-    const match = line.match(/^\s*TCP\s+(\S+):(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/);
-    if (match !== null && Number(match[2]) === port && (match[1] === "127.0.0.1" || match[1] === "0.0.0.0" || match[1] === "[::1]")) {
-      pids.add(Number(match[3]));
-    }
-  }
-  return [...pids];
-}
-
-async function processImage(pid: number): Promise<string | undefined> {
-  const { stdout } = await execFileAsync("tasklist.exe", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], { windowsHide: true, timeout: 10_000 }).catch(() => ({ stdout: "" }));
-  const image = stdout.match(/^"([^"]+)"/)?.[1];
-  return image;
 }
 
 function loopbackPort(url: string, label: string): number {
