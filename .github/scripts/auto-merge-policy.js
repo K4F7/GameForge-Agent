@@ -30,16 +30,27 @@ export function decideMergeAction(input) {
 }
 
 /**
+ * Paths that define how this repository governs itself. A change here can widen
+ * permissions or relax a gate, so it never qualifies for any reduced-scrutiny
+ * path regardless of file extension.
+ *
  * @param {string} path
  */
-export function isOrdinaryDocumentationPath(path) {
-  if (
+export function isPolicyBoundaryPath(path) {
+  return (
     path === "AGENTS.md" ||
     path.endsWith("/AGENTS.md") ||
     path.startsWith(".github/") ||
     path.startsWith(".codeartsdoer/skills/") ||
     path.startsWith(".codeartsdoer/agents/")
-  ) {
+  );
+}
+
+/**
+ * @param {string} path
+ */
+export function isOrdinaryDocumentationPath(path) {
+  if (isPolicyBoundaryPath(path)) {
     return false;
   }
 

@@ -17,6 +17,7 @@ permissions:
   actions: write
   contents: write
   checks: read
+  issues: read
   pull-requests: write
 
 jobs:
@@ -96,13 +97,112 @@ jobs:
               per_page: 100,
             });
             const reviewerMarker = "gh-aw-agentic-workflow: GameForge PR Reviewer";
-            const hasCurrentGameForgeApproval = reviews.some(
+            const carryForwardMarker = "gameforge-approval-carry-forward: v1";
+            const isReviewerReview = (review) =>
+              review.user?.login === "github-actions[bot]" && (review.body ?? "").includes(reviewerMarker);
+
+            // dismiss_stale_reviews rewrites a dismissed review's state to DISMISSED, so the
+            // original verdict only survives on the timeline event that dismissed it.
+            const timeline = await github.paginate(github.rest.issues.listEventsForTimeline, {
+              owner,
+              repo,
+              issue_number: pull_number,
+              per_page: 100,
+            });
+            const dismissedVerdicts = new Map(
+              timeline
+                .filter((entry) => entry.event === "review_dismissed" && entry.dismissed_review)
+                .map((entry) => [
+                  entry.dismissed_review.review_id,
+                  String(entry.dismissed_review.state ?? "").toUpperCase(),
+                ]),
+            );
+            const verdictOf = (review) =>
+              review.state === "DISMISSED" ? (dismissedVerdicts.get(review.id) ?? "DISMISSED") : review.state;
+
+            let hasCurrentGameForgeApproval = reviews.some(
               (review) =>
                 review.user?.login === "github-actions[bot]" &&
                 review.state === "APPROVED" &&
                 review.commit_id === pr.head.sha &&
-                (review.body ?? "").includes(reviewerMarker),
+                ((review.body ?? "").includes(reviewerMarker) || (review.body ?? "").includes(carryForwardMarker)),
             );
+
+            if (!hasCurrentGameForgeApproval) {
+              // Only a verdict the reviewer agent itself produced may anchor a carry-forward.
+              // Anchoring on a previous carry-forward would let a chain of individually-trivial
+              // pushes drift the PR away from anything a reviewer actually read.
+              const reviewerVerdicts = reviews.filter(
+                (review) => isReviewerReview(review) && ["APPROVED", "CHANGES_REQUESTED"].includes(verdictOf(review)),
+              );
+              const latestVerdict = reviewerVerdicts[reviewerVerdicts.length - 1];
+              const latestApproval = [...reviewerVerdicts]
+                .reverse()
+                .find((review) => verdictOf(review) === "APPROVED");
+              const reviewedSha = latestApproval ? latestApproval.commit_id : null;
+              const hasNewerChangesRequested =
+                latestVerdict !== undefined && verdictOf(latestVerdict) === "CHANGES_REQUESTED";
+
+              if (reviewedSha) {
+                const { data: comparison } = await github.rest.repos.compareCommits({
+                  owner,
+                  repo,
+                  base: reviewedSha,
+                  head: pr.head.sha,
+                });
+                const { pathToFileURL } = require("node:url");
+                const carryForwardUrl = pathToFileURL(
+                  `${process.env.GITHUB_WORKSPACE}/.github/scripts/approval-carryforward.js`,
+                ).href;
+                const { decideApprovalCarryForward } = await import(carryForwardUrl);
+                const carryForward = decideApprovalCarryForward({
+                  reviewedSha,
+                  headSha: pr.head.sha,
+                  hasNewerChangesRequested,
+                  changedFiles: (comparison.files ?? []).map((changed) => ({
+                    filename: changed.filename,
+                    status: changed.status,
+                    additions: changed.additions,
+                    deletions: changed.deletions,
+                  })),
+                });
+
+                if (carryForward.kind === "carry-forward") {
+                  const body = [
+                    "Approval carried forward from `" + reviewedSha + "`.",
+                    "",
+                    "The delta since that review is " +
+                      (carryForward.rule === "documentation"
+                        ? "ordinary documentation only"
+                        : "additive test changes only") +
+                      ", and `PR Gate` passes for this head SHA. No production source, workflow, or policy file changed, so the reviewed verdict still describes this commit.",
+                    "",
+                    "<!-- " + carryForwardMarker + " -->",
+                  ].join("\n");
+                  await github.rest.pulls.createReview({
+                    owner,
+                    repo,
+                    pull_number,
+                    commit_id: pr.head.sha,
+                    event: "APPROVE",
+                    body,
+                  });
+                  core.notice(
+                    "Carried the GameForge PR Reviewer approval forward to " +
+                      pr.head.sha +
+                      " for PR #" +
+                      pull_number +
+                      " (" +
+                      carryForward.rule +
+                      ").",
+                  );
+                  hasCurrentGameForgeApproval = true;
+                } else {
+                  core.notice("Approval carry-forward declined: " + carryForward.reason + ".");
+                }
+              }
+            }
+
             if (!hasCurrentGameForgeApproval) {
               const hasCurrentGameForgeChangesRequested = reviews.some(
                 (review) =>
