@@ -7,7 +7,7 @@ import { findRepoRoot, redactArguments, resolveRuntime, safeRelayUrl, writeRunti
 describe("integration runtime", () => {
   it("finds the repository from a nested integration directory", async () => {
     const root = await findRepoRoot(import.meta.dirname);
-    expect(path.basename(root)).toBe("GameForge-Agent");
+    expect(root).toBe(path.resolve(import.meta.dirname, "..", ".."));
   });
 
   it("accepts safe relay URLs and rejects credential-bearing remote HTTP", () => {
