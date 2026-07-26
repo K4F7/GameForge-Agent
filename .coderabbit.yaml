@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+# CodeRabbit is advisory-only in this repository. The GameForge PR Reviewer
+# workflow is the single approval gate for main, and branch protection requires
+# every review thread to be resolved before merge, so automatic CodeRabbit
+# reviews put non-blocking nitpicks on the merge critical path. Request a
+# review on demand by commenting `@coderabbitai review` on a pull request.
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  auto_review:
+    enabled: false
