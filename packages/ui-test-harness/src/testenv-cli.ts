@@ -1,0 +1,93 @@
+#!/usr/bin/env bun
+
+import { access } from "node:fs/promises";
+import path from "node:path";
+import { evaluatePreflight, type PreflightProbe, type PreflightReport } from "./preflight.js";
+
+/**
+ * Resident test environment control surface. `status` performs preflight only:
+ * it starts nothing, so it stays fast enough to run before every session.
+ */
+const repoRoot = path.resolve(import.meta.dirname, "../../..");
+
+export const DEFAULT_RELAY_URL = "http://127.0.0.1:8787/";
+/**
+ * OpenChamber is served from its production build on a pinned port. 43163 is
+ * the only port a full acceptance run has been validated against; the Vite dev
+ * port is deliberately not the default because acceptance forbids HMR builds.
+ */
+export const DEFAULT_OPENCHAMBER_URL = "http://127.0.0.1:43163/";
+
+const PROBE_TIMEOUT_MS = 2_000;
+
+const command = process.argv[2] ?? "status";
+if (command !== "status") {
+  process.stderr.write(`Unknown testenv command: ${command}\nUsage: testenv status\n`);
+  process.exit(2);
+}
+
+const report = evaluatePreflight(await probeAll());
+process.stdout.write(formatReport(report));
+process.exitCode = report.ready ? 0 : 1;
+
+async function probeAll(): Promise<PreflightProbe[]> {
+  const relayUrl = process.env.GAMEFORGE_RUN_RELAY_URL?.trim() || DEFAULT_RELAY_URL;
+  const openChamberUrl = process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() || DEFAULT_OPENCHAMBER_URL;
+  return await Promise.all([
+    probeHttp("authority-relay", new URL("tasks?limit=1", relayUrl).href),
+    probeHttp("openchamber-service", openChamberUrl),
+    probeFile("openchamber-build", path.join(repoRoot, "vendor", "openchamber", "packages", "web", "dist", "index.html")),
+    probeCodeArts(),
+  ]);
+}
+
+async function probeHttp(dependency: PreflightProbe["dependency"], url: string): Promise<PreflightProbe> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS), redirect: "manual" });
+    return { dependency, available: true, detail: `${url} responded ${response.status}` };
+  } catch (error) {
+    return { dependency, available: false, detail: `${url} is not reachable: ${errorMessage(error)}` };
+  }
+}
+
+async function probeFile(dependency: PreflightProbe["dependency"], target: string): Promise<PreflightProbe> {
+  try {
+    await access(target);
+    return { dependency, available: true, detail: target };
+  } catch {
+    return { dependency, available: false, detail: `${target} is missing` };
+  }
+}
+
+/**
+ * Mirrors the candidate list used by the repository CodeArts launcher. The
+ * harness only detects the client - it never manages its authorization or
+ * private data directory (ADR-0005).
+ */
+async function probeCodeArts(): Promise<PreflightProbe> {
+  const configured = process.env.CODEARTS_BIN?.trim();
+  const home = process.env.USERPROFILE?.trim() || process.env.HOME?.trim() || "";
+  const installers = path.join(home, ".codeartsdoer", "installers");
+  const candidates = configured ? [configured] : [path.join(installers, "bin", "codearts.exe"), path.join(installers, "codearts.cmd")];
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return { dependency: "codearts", available: true, detail: candidate };
+    } catch { continue; }
+  }
+  return { dependency: "codearts", available: false, detail: `No CodeArts client under ${installers}; set CODEARTS_BIN to override` };
+}
+
+function formatReport(value: PreflightReport): string {
+  const lines = value.entries.map((entry) => {
+    const mark = entry.available ? "OK  " : "DOWN";
+    const remediation = entry.remediation === undefined ? "" : `\n       fix: ${entry.remediation}`;
+    return `  ${mark} ${entry.dependency}${entry.detail === undefined ? "" : `\n       ${entry.detail}`}${remediation}`;
+  });
+  const summary = value.ready
+    ? "Test environment is ready."
+    : `Test environment is not ready: ${value.blocking.join(", ")}`;
+  return `${lines.join("\n")}\n\n${summary}\n`;
+}
+
+function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }

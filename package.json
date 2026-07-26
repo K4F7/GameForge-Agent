@@ -32,6 +32,7 @@
     "dev:mcp": "bun run --filter @gameforge/mcp-server dev",
     "dev:douyin-bridge": "bun run --filter @gameforge/mcp-server douyin:bridge-host",
     "dev:relay": "bun run --filter @gameforge/run-relay dev",
+    "testenv:status": "bun packages/ui-test-harness/src/testenv-cli.ts status",
     "integrations:check": "bun run --filter @gameforge/integrations check",
     "integrations:test": "bun run --filter @gameforge/integrations test",
     "codearts": "bun integrations/codearts/launch.ts",
