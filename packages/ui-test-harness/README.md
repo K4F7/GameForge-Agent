@@ -20,7 +20,7 @@
 
 ```powershell
 bun run testenv:status      # 预检四项依赖，逐项给出补救命令；不启动任何进程，通常一秒内完成
-bun run testenv:up          # 前台常驻 Authority Relay 与 OpenChamber 生产服务；Ctrl+C 停止
+bun run testenv:up --codearts-server-url http://127.0.0.1:4097/  # 绑定外部 CodeArts server 后常驻；Ctrl+C 停止
 bun run testenv:down        # 从任意终端停止上述两个端口上的 node/bun 监听进程；其他进程只报告不杀
 bun run testenv:readiness   # 环境就绪检查（有头）：真启动 CodeArts 等到 TUI 就绪，不提交任务
 bun run testenv:acceptance  # 真实验收（有头）：既有最小闭环，门禁不变

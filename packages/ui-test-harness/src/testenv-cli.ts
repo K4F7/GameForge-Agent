@@ -4,7 +4,8 @@ import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { loopbackHttpPort } from "./cli-safety.js";
+import { loopbackHttpPort, safeCodeArtsServerUrl } from "./cli-safety.js";
+import { openChamberExternalEnvironment, registerOpenChamberDirectory } from "./openchamber-external.js";
 import { evaluatePreflight, type PreflightProbe, type PreflightReport } from "./preflight.js";
 import { probeCodeArts, probeFile, probeHttp } from "./preflight-probes.js";
 import { DEFAULT_OPENCHAMBER_URL, DEFAULT_RELAY_URL } from "./testenv-config.js";
@@ -41,6 +42,12 @@ if (command === "status") {
 }
 
 async function runUp(): Promise<void> {
+  const codeArtsServerInput = upCodeArtsServerUrl(process.argv.slice(3))
+    ?? process.env.GAMEFORGE_CODEARTS_SERVER_URL?.trim();
+  if (!codeArtsServerInput) {
+    throw new Error("testenv up requires --codearts-server-url (or GAMEFORGE_CODEARTS_SERVER_URL) so OpenChamber can bind to the external CodeArts server.");
+  }
+  const codeArtsServerUrl = safeCodeArtsServerUrl(codeArtsServerInput);
   const relayPort = loopbackHttpPort(relayUrl, "Relay URL");
   const openChamberPort = loopbackHttpPort(openChamberUrl, "OpenChamber URL");
   const openChamberEntry = path.join(repoRoot, "vendor", "openchamber", "packages", "web", "bin", "cli.js");
@@ -69,6 +76,7 @@ async function runUp(): Promise<void> {
       args: [openChamberEntry, "serve", "--foreground", "--port", String(openChamberPort), "--plain"],
       cwd: path.join(repoRoot, "vendor", "openchamber", "packages", "web"),
       port: openChamberPort,
+      env: openChamberExternalEnvironment(codeArtsServerUrl),
     },
   ];
   const supervisor = new TestEnvSupervisor(services);
@@ -78,7 +86,13 @@ async function runUp(): Promise<void> {
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
-  await supervisor.up();
+  try {
+    await supervisor.up();
+    await registerOpenChamberDirectory(openChamberUrl, repoRoot);
+  } catch (error) {
+    await supervisor.down().catch(() => undefined);
+    throw error;
+  }
   process.stdout.write([
     "常驻测试环境已就绪：",
     `  authority-relay      ${relayUrl}`,
@@ -89,6 +103,19 @@ async function runUp(): Promise<void> {
   // Foreground residency ends on a signal, an unexpected child exit, or an
   // external `testenv down` removing either managed listener.
   await supervisor.waitUntilStopped();
+}
+
+function upCodeArtsServerUrl(args: readonly string[]): string | undefined {
+  let result: string | undefined;
+  for (let index = 0; index < args.length; index += 2) {
+    const option = args[index]!;
+    if (option !== "--codearts-server-url") throw new Error(`Unknown testenv option: ${option}`);
+    if (result !== undefined) throw new Error(`${option} may only be provided once.`);
+    const value = args[index + 1];
+    if (value === undefined || value.startsWith("--")) throw new Error(`${option} requires a value.`);
+    result = value;
+  }
+  return result;
 }
 
 /**

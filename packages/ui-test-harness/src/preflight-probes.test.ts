@@ -77,9 +77,15 @@ describe("probeCodeArts", () => {
       codeArtsAttach: { serverUrl: unavailableAttachUrl, sessionId: "ses_missing" },
     });
 
-    const codeArts = probes.find((probe) => probe.dependency === "codearts");
-    expect(codeArts?.available).toBe(false);
-    expect(codeArts?.detail).toContain("/session/ses_missing");
+    expect(probes.map((probe) => probe.dependency)).toEqual([
+      "authority-relay",
+      "openchamber-service",
+      "codearts",
+      "codearts-session",
+    ]);
+    const codeArtsSession = probes.find((probe) => probe.dependency === "codearts-session");
+    expect(codeArtsSession?.available).toBe(false);
+    expect(codeArtsSession?.detail).toContain("/session/ses_missing");
   });
 
   it("rejects a non-CodeArts service that returns 200 for an attach session", async () => {
@@ -98,6 +104,6 @@ describe("probeCodeArts", () => {
       codeArtsAttach: { serverUrl: relayUrl, sessionId: "ses_expected" },
     });
 
-    expect(probes.find((probe) => probe.dependency === "codearts")?.available).toBe(false);
+    expect(probes.find((probe) => probe.dependency === "codearts-session")?.available).toBe(false);
   });
 });
