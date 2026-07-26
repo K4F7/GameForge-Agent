@@ -12,6 +12,7 @@ import { safeCodeArtsServerUrl, safeEvidenceSegment, safeRelayUrl } from "./cli-
 import type { HarnessResult } from "./contracts.js";
 import { UiTestController } from "./controller.js";
 import { prepareHarnessSession } from "./session-bootstrap.js";
+import { DEFAULT_OPENCHAMBER_URL, DEFAULT_RELAY_URL } from "./testenv-config.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
 const options = parseArguments(process.argv.slice(2));
@@ -115,14 +116,14 @@ function parseArguments(args: string[]): {
   if ((codeartsServerUrl === undefined) !== (codeartsSession === undefined)) throw new Error("--codearts-server-url and --codearts-session must be provided together.");
   return {
     experiment: safeEvidenceSegment(value("--experiment", `ui-harness-${new Date().toISOString().replace(/[:.]/g, "-")}`), "--experiment"),
-    relayUrl: safeRelayUrl(value("--relay-url", process.env.GAMEFORGE_RUN_RELAY_URL?.trim() ?? "http://127.0.0.1:8787/")),
+    relayUrl: safeRelayUrl(value("--relay-url", process.env.GAMEFORGE_RUN_RELAY_URL?.trim() ?? DEFAULT_RELAY_URL)),
     taskPrompt: value("--task-prompt", "执行一次最小确定性 MCP 验收，不生成游戏，不调用外部 Provider，然后完成 Run。"),
     agentId: value("--agent-id", "codearts"),
     projectsRoot: value("--projects-root", process.env.GAMEFORGE_PROJECT_OUTPUT_ROOT?.trim() ?? path.join(repoRoot, ".gameforge-validation", "integrations", "projects")),
     inactivityTimeoutMs: positiveInteger(value("--inactivity-timeout-ms", "120000")),
     totalTimeoutMs: positiveInteger(value("--total-timeout-ms", "900000")),
     mode: headed ? "headed/watch" : "headless",
-    openChamberUrl: value("--openchamber-url", process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() ?? "http://127.0.0.1:5173/"),
+    openChamberUrl: value("--openchamber-url", process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() ?? DEFAULT_OPENCHAMBER_URL),
     ...(browserChannel === undefined ? {} : { browserChannel }),
     observationHoldMs: positiveInteger(value("--observation-hold-ms", "10000")),
     failureHoldMs: positiveInteger(value("--failure-hold-ms", "30000")),

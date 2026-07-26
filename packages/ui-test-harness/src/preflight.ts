@@ -15,14 +15,16 @@ export type PreflightReport = {
 };
 
 /**
- * The command an operator runs to make each dependency available. CodeArts is
- * deliberately launcher-only: the harness probes it but never takes over its
- * authorization or private data directory (ADR-0005).
+ * The command an operator runs to make each dependency available. Every entry
+ * must be runnable as written today - a remediation naming a command that does
+ * not exist is worse than no remediation at all. CodeArts is deliberately
+ * launcher-only: the harness probes it but never takes over its authorization
+ * or private data directory (ADR-0005).
  */
 const REMEDIATION: Record<PreflightDependency, string> = {
-  "authority-relay": "bun run testenv:up",
-  "openchamber-service": "bun run testenv:up",
-  "openchamber-build": "bun --cwd vendor/openchamber run build:web",
+  "authority-relay": "bun run dev:relay",
+  "openchamber-service": "bun --cwd vendor/openchamber run start:web",
+  "openchamber-build": "git submodule update --init --recursive && bun --cwd vendor/openchamber install --frozen-lockfile && bun --cwd vendor/openchamber run build:web",
   codearts: "bun run codearts",
 };
 

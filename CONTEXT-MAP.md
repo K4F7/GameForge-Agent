@@ -1,6 +1,6 @@
 # Context Map
 
-本仓库采用 multi-context 领域文档布局。本文件只索引**领域词汇已经确认**的上下文；其余目录在其术语真正得到确认前不建 `CONTEXT.md`，布局约定见 `docs/agents/domain.md`。
+本仓库采用 multi-context 领域文档布局。本文件只索引**领域词汇已经确认**的上下文；其余目录在其术语真正得到确认前不建 `CONTEXT.md`。
 
 ## 上下文
 
@@ -18,4 +18,4 @@
 
 ## 尚未建立上下文的目录
 
-`packages/mcp-server`、`packages/run-relay`、`packages/contracts`、`integrations/` 等尚未经过 domain-modeling 确认词汇，暂不建 `CONTEXT.md`。需要时按 `docs/agents/domain.md` 的布局补充，并在本文件登记。
+`packages/mcp-server`、`packages/run-relay`、`packages/contracts`、`integrations/` 等尚未经过 domain-modeling 确认词汇，暂不建 `CONTEXT.md`。需要时再补充，并在本文件登记。

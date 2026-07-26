@@ -1,5 +1,7 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { evaluatePreflight } from "./preflight.js";
+import { evaluatePreflight, type PreflightDependency } from "./preflight.js";
 
 describe("evaluatePreflight", () => {
   it("names a runnable command for each unavailable dependency", () => {
@@ -12,10 +14,25 @@ describe("evaluatePreflight", () => {
 
     expect(report.ready).toBe(false);
     expect(report.blocking).toEqual(["authority-relay", "openchamber-build"]);
-    expect(entry(report, "authority-relay").remediation).toBe("bun run testenv:up");
+    expect(entry(report, "authority-relay").remediation).toBe("bun run dev:relay");
     expect(entry(report, "authority-relay").detail).toBe("127.0.0.1:8787 is not listening");
-    expect(entry(report, "openchamber-build").remediation).toBe("bun --cwd vendor/openchamber run build:web");
+    expect(entry(report, "openchamber-build").remediation).toContain("bun --cwd vendor/openchamber run build:web");
     expect(entry(report, "openchamber-service").remediation).toBeUndefined();
+  });
+
+
+  it("only names repository scripts that actually exist", async () => {
+    const manifest = JSON.parse(await readFile(path.resolve(import.meta.dirname, "..", "..", "..", "package.json"), "utf8")) as { scripts: Record<string, string> };
+    const dependencies: PreflightDependency[] = ["authority-relay", "openchamber-service", "openchamber-build", "codearts"];
+
+    for (const dependency of dependencies) {
+      const report = evaluatePreflight([{ dependency, available: false }]);
+      const remediation = entry(report, dependency).remediation;
+      expect(remediation, `${dependency} has no remediation`).toBeDefined();
+      for (const script of [...remediation!.matchAll(/(?:^|&&\s*)bun run ([\w:-]+)/g)].map((match) => match[1]!)) {
+        expect(Object.keys(manifest.scripts), `${dependency} names missing root script ${script}`).toContain(script);
+      }
+    }
   });
 });
 

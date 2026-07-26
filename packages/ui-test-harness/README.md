@@ -24,7 +24,9 @@ bun run --filter @gameforge/ui-test-harness run:headless
 bun run --filter @gameforge/ui-test-harness run:headed
 ```
 
-默认 OpenChamber URL 为 `http://127.0.0.1:5173/`，可用 `--openchamber-url` 或 `GAMEFORGE_OPENCHAMBER_URL` 覆盖，但只接受无凭据 loopback HTTP(S)。该命令使用真实 Bun ConPTY 启动 `bun run codearts`，连接既有 Relay，并将 VT、生命周期、活动样本、Authority 快照、MCP Audit、浏览器诊断和 PNG 截图写入 `.gameforge-validation/`。默认活动超时 120 秒，总门禁 15 分钟；headed 成功后默认保留窗口 10 秒。
+默认 OpenChamber URL 为 `http://127.0.0.1:43163/`（原版生产构建的固定端口，是唯一经过完整验收的端口；Vite dev 端口不作为验收目标），可用 `--openchamber-url` 或 `GAMEFORGE_OPENCHAMBER_URL` 覆盖，但只接受无凭据 loopback HTTP(S)。该命令使用真实 Bun ConPTY 启动 `bun run codearts`，连接既有 Relay，并将 VT、生命周期、活动样本、Authority 快照、MCP Audit、浏览器诊断和 PNG 截图写入 `.gameforge-validation/`。默认活动超时 120 秒，总门禁 15 分钟；headed 成功后默认保留窗口 10 秒，失败后默认保留 30 秒（`--failure-hold-ms` 可调，上限 300 秒），便于阅读屏幕上的错误后再收窗；headless 不保留。
+
+运行前可执行 `bun run testenv:status` 做预检：它探测 Authority Relay、原版 OpenChamber 生产服务、其生产构建产物与 CodeArts 客户端，对每个不可用项给出该敲的补救命令。它不启动任何进程，通常在一秒内完成。
 
 需要把预先启动的外部 Observer 与 Harness Evidence 关联时，可显式传入 `--session-id <id>`。单次权威执行使用该 ID 关联 Evidence。
 

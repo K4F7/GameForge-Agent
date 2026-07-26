@@ -3,20 +3,13 @@
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { evaluatePreflight, type PreflightProbe, type PreflightReport } from "./preflight.js";
+import { DEFAULT_OPENCHAMBER_URL, DEFAULT_RELAY_URL } from "./testenv-config.js";
 
 /**
  * Resident test environment control surface. `status` performs preflight only:
  * it starts nothing, so it stays fast enough to run before every session.
  */
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
-
-export const DEFAULT_RELAY_URL = "http://127.0.0.1:8787/";
-/**
- * OpenChamber is served from its production build on a pinned port. 43163 is
- * the only port a full acceptance run has been validated against; the Vite dev
- * port is deliberately not the default because acceptance forbids HMR builds.
- */
-export const DEFAULT_OPENCHAMBER_URL = "http://127.0.0.1:43163/";
 
 const PROBE_TIMEOUT_MS = 2_000;
 
@@ -44,6 +37,9 @@ async function probeAll(): Promise<PreflightProbe[]> {
 async function probeHttp(dependency: PreflightProbe["dependency"], url: string): Promise<PreflightProbe> {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS), redirect: "manual" });
+    // A 5xx means the process is listening but not serving; treat it as down so
+    // the report cannot show OK for a dependency the run will fail against.
+    if (response.status >= 500) return { dependency, available: false, detail: `${url} responded ${response.status}` };
     return { dependency, available: true, detail: `${url} responded ${response.status}` };
   } catch (error) {
     return { dependency, available: false, detail: `${url} is not reachable: ${errorMessage(error)}` };
