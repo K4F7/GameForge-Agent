@@ -5,9 +5,13 @@ on:
     workflows: [CI, GameForge PR Reviewer]
     types: [completed]
 
+# Runs for one head SHA are serialized, never cancelled. Only the CI-triggered
+# run may rerun the reviewer (see the `run.name === "CI"` guard below), so
+# cancelling it when the reviewer's own completion arrives seconds later leaves
+# the pull request with no path back to an approval.
 concurrency:
   group: gameforge-auto-merge-${{ github.event.workflow_run.head_sha }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   actions: write
