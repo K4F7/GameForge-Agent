@@ -22,6 +22,10 @@ export class XtermTuiObserverDriver implements CodeArtsTuiObserverDriver {
       }
       this.#session = options.session;
       this.#terminal = new Terminal({ cols: source.columns, rows: source.rows, scrollback: 10_000, allowProposedApi: true, logLevel: "off" });
+      // replayBuffered: the observer opens after the TUI has started, and the
+      // startup output - exactly the part that answers "did it come up" - would
+      // otherwise never reach the visible window. Evidence keeps its own
+      // replay-free subscription, so nothing is duplicated into the VT log.
       this.#unsubscribe = options.source.subscribeOutput((frame) => {
         if (frame.sessionId !== options.session.sessionId) throw new Error("xterm received output from another session.");
         this.#pending = this.#pending.then(async () => {
@@ -31,7 +35,7 @@ export class XtermTuiObserverDriver implements CodeArtsTuiObserverDriver {
           });
           if (this.#windowProcess?.stdin?.writable) this.#windowProcess.stdin.write(`${JSON.stringify(frame.data)}\n`);
         });
-      });
+      }, { replayBuffered: true });
       return await this.snapshot();
     } catch (error) {
       await this.close();

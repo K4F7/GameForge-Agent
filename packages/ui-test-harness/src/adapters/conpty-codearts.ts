@@ -130,7 +130,13 @@ export class ConPtyCodeArtsDriver implements CodeArtsTuiDriver {
     };
   }
 
-  subscribeOutput(listener: (frame: TuiOutputFrame) => void): () => void {
+  subscribeOutput(listener: (frame: TuiOutputFrame) => void, options?: { replayBuffered?: boolean }): () => void {
+    if (options?.replayBuffered === true && this.#session !== undefined && this.#history.length > 0) {
+      // One synthetic frame carrying the bounded history. Delivered
+      // synchronously before registration: no data event can interleave, so
+      // live frames observed afterwards keep the sequence monotonic.
+      listener({ sessionId: this.#session.sessionId, sequence: this.#sequence, data: this.#history });
+    }
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   }

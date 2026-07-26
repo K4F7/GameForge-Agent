@@ -90,7 +90,14 @@ export interface CodeArtsTuiDriver {
   readonly kind: "codearts-original-tui";
   start(options: { session: HarnessSession; columns: number; rows: number }): Promise<TuiSnapshot>;
   read(): Promise<TuiSnapshot>;
-  subscribeOutput(listener: (frame: TuiOutputFrame) => void): () => void;
+  /**
+   * With replayBuffered, the driver first delivers its bounded VT history as
+   * one synthetic frame (original session id, current sequence) before live
+   * frames, so a late subscriber still sees startup output. Evidence
+   * subscribers must NOT request replay - they subscribe before start and a
+   * replay would duplicate frames into the VT log.
+   */
+  subscribeOutput(listener: (frame: TuiOutputFrame) => void, options?: { replayBuffered?: boolean }): () => void;
   sendText(text: string, options: { appendEnter: boolean }): Promise<void>;
   sendKey(key: TuiKey): Promise<void>;
   resize(columns: number, rows: number): Promise<void>;

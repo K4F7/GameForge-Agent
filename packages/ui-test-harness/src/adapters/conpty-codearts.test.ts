@@ -203,6 +203,49 @@ describe("ConPtyCodeArtsDriver", () => {
     expect(JSON.parse(stdout.slice(stdout.lastIndexOf("{")))).toEqual({ firstStopSettledWhenSecondResolved: true, processAliveWhenSecondResolved: false });
   }, CONPTY_TEST_TIMEOUT_MS);
 
+  it("replays buffered VT output to a replay subscriber without duplicating live frames", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-conpty-replay-")); roots.push(root);
+    const sessionRoot = path.join(root, "evidence");
+    await writeFile(path.join(root, "package.json"), JSON.stringify({ private: true, scripts: { codearts: "bun fixture.ts" } }), "utf8");
+    await writeFile(path.join(root, "fixture.ts"), `
+      process.stdout.write("early-marker\\r\\nAsk anything\\r\\n");
+      setInterval(() => process.stdout.write("late-marker\\r\\n"), 200);
+      process.stdin.resume();
+    `, "utf8");
+    const runner = path.join(root, "runner.ts");
+    const driverUrl = new URL("./conpty-codearts.ts", import.meta.url).href;
+    await writeFile(runner, `
+      import { ConPtyCodeArtsDriver } from ${JSON.stringify(driverUrl)};
+      const driver = new ConPtyCodeArtsDriver(${JSON.stringify({ repoRoot: root, sessionRoot })});
+      const session = { sessionId: "session-replay", startedAt: "2026-07-26T00:00:00.000Z", mode: "headless" };
+      await driver.start({ session, columns: 80, rows: 24 });
+      const replayFrames = [];
+      const liveFrames = [];
+      driver.subscribeOutput((frame) => replayFrames.push(frame), { replayBuffered: true });
+      driver.subscribeOutput((frame) => liveFrames.push(frame));
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      await driver.stop("completed");
+      const sequences = replayFrames.map((frame) => frame.sequence);
+      process.stdout.write("REPLAY_RESULT:" + JSON.stringify({
+        replaySeesEarly: replayFrames.map((frame) => frame.data).join("").includes("early-marker"),
+        replaySeesLate: replayFrames.map((frame) => frame.data).join("").includes("late-marker"),
+        liveSeesEarly: liveFrames.map((frame) => frame.data).join("").includes("early-marker"),
+        liveSeesLate: liveFrames.map((frame) => frame.data).join("").includes("late-marker"),
+        replaySessionIds: [...new Set(replayFrames.map((frame) => frame.sessionId))],
+        monotonic: sequences.every((value, index) => index === 0 || value >= sequences[index - 1]),
+      }));
+    `, "utf8");
+    const { stdout } = await execFileAsync(process.env.GAMEFORGE_BUN_BIN?.trim() || "bun", ["run", runner], { cwd: root, timeout: CONPTY_FIXTURE_TIMEOUT_MS });
+    expect(JSON.parse(stdout.slice(stdout.lastIndexOf("REPLAY_RESULT:") + "REPLAY_RESULT:".length))).toEqual({
+      replaySeesEarly: true,
+      replaySeesLate: true,
+      liveSeesEarly: false,
+      liveSeesLate: true,
+      replaySessionIds: ["session-replay"],
+      monotonic: true,
+    });
+  }, CONPTY_TEST_TIMEOUT_MS);
+
   it("attaches to a credential-free loopback CodeArts server and preserves isolated env", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-conpty-")); roots.push(root);
     const sessionRoot = path.join(root, "evidence");

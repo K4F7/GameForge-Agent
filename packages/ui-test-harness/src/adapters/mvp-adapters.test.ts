@@ -19,6 +19,22 @@ describe("MVP adapters", () => {
     expect(await observer.screen()).toContain("first\nsecond"); expect((await observer.snapshot()).sessionId).toBe(session.sessionId); await observer.close();
   });
 
+  it("requests buffered replay so the observer shows output from before it opened", async () => {
+    let listener: ((frame: TuiOutputFrame) => void) | undefined;
+    const source: CodeArtsTuiDriver = { kind: "codearts-original-tui", async start() { return snapshot(); }, async read() { return snapshot(); },
+      subscribeOutput(value, options) {
+        if (options?.replayBuffered === true) value({ sessionId: session.sessionId, sequence: 7, data: "buffered-before-open\r\n" });
+        listener = value; return () => { listener = undefined; };
+      }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = new XtermTuiObserverDriver();
+    await observer.open({ session, source, visible: false, viewport: { width: 800, height: 600 } });
+    listener?.({ sessionId: session.sessionId, sequence: 8, data: "after-open" });
+    const screen = await observer.screen();
+    expect(screen).toContain("buffered-before-open");
+    expect(screen).toContain("after-open");
+    await observer.close();
+  });
+
   it("settles output emitted while the xterm observer unsubscribes", async () => {
     let listener: ((frame: TuiOutputFrame) => void) | undefined;
     const source: CodeArtsTuiDriver = { kind: "codearts-original-tui", async start() { return snapshot(); }, async read() { return snapshot(); },
