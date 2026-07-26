@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { safeCodeArtsServerUrl, safeEvidenceSegment, safeRelayUrl } from "./cli-safety.js";
+import { loopbackHttpPort, safeCodeArtsServerUrl, safeEvidenceSegment, safeRelayUrl } from "./cli-safety.js";
 
 describe("UI harness CLI safety", () => {
   test.each(["../outside", "..\\outside", "nested/path", "nested\\path", ".", "..", ""])
@@ -26,6 +26,16 @@ describe("UI harness CLI safety", () => {
 
   test("accepts a credential-free loopback CodeArts attach URL", () => {
     expect(safeCodeArtsServerUrl("http://127.0.0.1:4097")).toBe("http://127.0.0.1:4097/");
+  });
+
+  test("derives a management port only from plain-HTTP loopback URLs", () => {
+    expect(loopbackHttpPort("http://127.0.0.1:8787/", "Relay URL")).toBe(8787);
+    expect(loopbackHttpPort("http://localhost:43163/", "OpenChamber URL")).toBe(43163);
+    // testenv:up only serves plain HTTP; an HTTPS management URL would report
+    // ready while every probe hits TLS handshake failures on the same listener.
+    expect(() => loopbackHttpPort("https://127.0.0.1:43163/", "OpenChamber URL")).toThrow(/plain HTTP/i);
+    expect(() => loopbackHttpPort("http://relay.example.com/", "Relay URL")).toThrow(/loopback/i);
+    expect(() => loopbackHttpPort("http://user:secret@127.0.0.1:8787/", "Relay URL")).toThrow(/credentials/i);
   });
 
   test("evaluates the default projects root before contacting Relay", async () => {

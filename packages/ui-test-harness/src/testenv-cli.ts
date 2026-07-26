@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { loopbackHttpPort } from "./cli-safety.js";
 import { evaluatePreflight, type PreflightProbe, type PreflightReport } from "./preflight.js";
 import { probeCodeArts, probeFile, probeHttp } from "./preflight-probes.js";
 import { DEFAULT_OPENCHAMBER_URL, DEFAULT_RELAY_URL } from "./testenv-config.js";
@@ -40,8 +41,8 @@ if (command === "status") {
 }
 
 async function runUp(): Promise<void> {
-  const relayPort = loopbackPort(relayUrl, "Relay URL");
-  const openChamberPort = loopbackPort(openChamberUrl, "OpenChamber URL");
+  const relayPort = loopbackHttpPort(relayUrl, "Relay URL");
+  const openChamberPort = loopbackHttpPort(openChamberUrl, "OpenChamber URL");
   const openChamberEntry = path.join(repoRoot, "vendor", "openchamber", "packages", "web", "bin", "cli.js");
   const relayEntry = path.join(repoRoot, "packages", "run-relay", "dist", "index.js");
   await access(relayEntry).catch(() => {
@@ -96,8 +97,8 @@ async function runUp(): Promise<void> {
  * verified gone and the port released.
  */
 async function runDown(): Promise<void> {
-  const relayPort = loopbackPort(relayUrl, "Relay URL");
-  const openChamberPort = loopbackPort(openChamberUrl, "OpenChamber URL");
+  const relayPort = loopbackHttpPort(relayUrl, "Relay URL");
+  const openChamberPort = loopbackHttpPort(openChamberUrl, "OpenChamber URL");
   let failures = 0;
   for (const { name, port } of [{ name: "authority-relay", port: relayPort }, { name: "openchamber-service", port: openChamberPort }]) {
     try {
@@ -118,21 +119,6 @@ async function runDown(): Promise<void> {
   process.exitCode = failures === 0 ? 0 : 1;
 }
 
-/**
- * up/down manage LOCAL listeners, so the port may only be derived from a
- * credential-free loopback URL. A remote relay URL must never cause a local
- * service to start on - or a local process to be killed on - that port.
- */
-function loopbackPort(url: string, label: string): number {
-  const parsed = new URL(url);
-  if (!["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname)) {
-    throw new Error(`${label} must be a loopback URL for testenv port management; got host ${parsed.hostname}.`);
-  }
-  if (parsed.username !== "" || parsed.password !== "") throw new Error(`${label} must not carry credentials.`);
-  const port = parsed.port === "" ? (parsed.protocol === "https:" ? 443 : 80) : Number(parsed.port);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error(`${label} has an invalid port.`);
-  return port;
-}
 
 async function probeAll(): Promise<PreflightProbe[]> {
   return await Promise.all([
