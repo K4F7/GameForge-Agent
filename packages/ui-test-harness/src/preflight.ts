@@ -1,4 +1,4 @@
-export type PreflightDependency = "authority-relay" | "openchamber-service" | "openchamber-build" | "codearts" | "codearts-session";
+export type PreflightDependency = "authority-relay" | "openchamber-service" | "openchamber-build" | "codearts" | "codearts-session" | "browser";
 
 export type PreflightProbe = {
   dependency: PreflightDependency;
@@ -27,6 +27,7 @@ const REMEDIATION: Record<PreflightDependency, string> = {
   "openchamber-build": "git submodule update --init --recursive && bun --cwd vendor/openchamber install --frozen-lockfile && bun --cwd vendor/openchamber run build:web",
   codearts: "Set CODEARTS_BIN to the installed CodeArts executable (see docs/codearts-quickstart.md)",
   "codearts-session": "Verify --codearts-server-url and --codearts-session identify a live CodeArts session",
+  browser: "Install Chrome or set GAMEFORGE_BROWSER_CHANNEL to an installed Playwright channel",
 };
 
 export function evaluatePreflight(probes: readonly PreflightProbe[]): PreflightReport {

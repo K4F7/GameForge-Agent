@@ -13,6 +13,7 @@ import { safeCodeArtsServerUrl, safeEvidenceSegment, safeOpenChamberUrl, safeRel
 import type { HarnessResult } from "./contracts.js";
 import { UiTestController } from "./controller.js";
 import { diagnose, renderDiagnosisMarkdown, renderDiagnosisTerminal } from "./diagnosis.js";
+import { verifyOpenChamberDirectory } from "./openchamber-external.js";
 import { evaluatePreflight } from "./preflight.js";
 import { probeRunDependencies } from "./preflight-probes.js";
 import { correlateAfterCodeArtsReady } from "./codearts-readiness.js";
@@ -51,6 +52,7 @@ const prepared = await prepareHarnessSession({
     const preflight = evaluatePreflight(await probeRunDependencies({
       relayUrl: options.relayUrl,
       openChamberUrl: options.openChamberUrl,
+      ...(options.browserChannel === undefined ? {} : { browserChannel: options.browserChannel }),
       ...(options.codeartsServerUrl === undefined ? {} : {
         codeArtsAttach: { serverUrl: options.codeartsServerUrl, sessionId: options.codeartsSession! },
       }),
@@ -61,6 +63,7 @@ const prepared = await prepareHarnessSession({
         .map((entry) => `${entry.dependency}${entry.remediation === undefined ? "" : ` (fix: ${entry.remediation})`}`);
       throw new Error(`Preflight failed: ${blocking.join(", ")}`);
     }
+    await verifyOpenChamberDirectory(options.openChamberUrl, repoRoot);
     const tui = createCodeArtsDriver();
     return await correlateAfterCodeArtsReady({
       tui,
@@ -194,8 +197,19 @@ function parseArguments(args: string[]): {
     "--observation-hold-ms", "--failure-hold-ms", "--soft-budget-ms", "--session-id", "--task-id", "--run-id",
     "--project-id", "--codearts-server-url", "--codearts-session",
   ]);
-  const unknownOption = args.find((argument) => argument.startsWith("--") && !knownOptions.has(argument));
-  if (unknownOption !== undefined) throw new Error(`Unknown option: ${unknownOption}`);
+  const flagOptions = new Set(["--headless", "--headed"]);
+  const seen = new Set<string>();
+  for (let index = 0; index < args.length;) {
+    const argument = args[index]!;
+    if (!argument.startsWith("--")) throw new Error(`Unexpected positional argument: ${argument}`);
+    if (!knownOptions.has(argument)) throw new Error(`Unknown option: ${argument}`);
+    if (seen.has(argument)) throw new Error(`${argument} may only be provided once.`);
+    seen.add(argument);
+    if (flagOptions.has(argument)) { index += 1; continue; }
+    const optionValue = args[index + 1];
+    if (optionValue === undefined || optionValue.startsWith("--")) throw new Error(`${argument} requires a value.`);
+    index += 2;
+  }
   const headless = args.includes("--headless"); const headed = args.includes("--headed");
   if (headless === headed) throw new Error("Choose exactly one of --headless or --headed.");
   const tierInput = optionalValue(args, "--tier") ?? "acceptance";

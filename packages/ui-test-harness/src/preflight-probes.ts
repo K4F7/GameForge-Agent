@@ -1,5 +1,7 @@
 import { access, stat } from "node:fs/promises";
 import path from "node:path";
+import { chromium } from "playwright-core";
+import { browserLaunchOptions } from "./adapters/browser-launch.js";
 import type { PreflightProbe } from "./preflight.js";
 
 /**
@@ -65,6 +67,17 @@ export async function probeFile(dependency: PreflightProbe["dependency"], target
   }
 }
 
+export async function probeBrowser(options?: { channel?: string }): Promise<PreflightProbe> {
+  const channel = options?.channel?.trim() || "chrome";
+  try {
+    const browser = await chromium.launch(browserLaunchOptions(true, channel));
+    await browser.close();
+    return { dependency: "browser", available: true, detail: `${channel} launched successfully` };
+  } catch (error) {
+    return { dependency: "browser", available: false, detail: `${channel} could not launch: ${errorMessage(error)}` };
+  }
+}
+
 /**
  * Mirrors the repository CodeArts launcher's resolution: CODEARTS_BIN, then
  * the Windows installer paths on win32, then `codearts` on PATH elsewhere -
@@ -115,12 +128,14 @@ async function executableRegularFile(target: string, requireExecuteBits: boolean
 export async function probeRunDependencies(options: {
   relayUrl: string;
   openChamberUrl: string;
+  browserChannel?: string;
   codeArtsAttach?: { serverUrl: string; sessionId: string };
 }): Promise<PreflightProbe[]> {
   const probes: Promise<PreflightProbe>[] = [
     probeHttp("authority-relay", new URL("tasks?limit=1", options.relayUrl).href),
     probeHttp("openchamber-service", options.openChamberUrl),
     probeCodeArts(),
+    probeBrowser({ ...(options.browserChannel === undefined ? {} : { channel: options.browserChannel }) }),
   ];
   if (options.codeArtsAttach !== undefined) {
     probes.push(probeHttp(

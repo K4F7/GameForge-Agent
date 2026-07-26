@@ -27,6 +27,15 @@ export async function registerOpenChamberDirectory(
     throw new Error(`OpenChamber project registration failed with HTTP ${registration.status}.`);
   }
 
+  await verifyOpenChamberDirectory(openChamberUrl, projectDirectory, { timeoutMs });
+}
+
+export async function verifyOpenChamberDirectory(
+  openChamberUrl: string,
+  projectDirectory: string,
+  options?: { timeoutMs?: number },
+): Promise<void> {
+  const timeoutMs = options?.timeoutMs ?? 5_000;
   let settingsResponse: Response;
   try {
     settingsResponse = await fetch(new URL("api/config/settings", openChamberUrl), { signal: AbortSignal.timeout(timeoutMs) });

@@ -59,7 +59,7 @@ export function safeCodeArtsServerUrl(input: string): string {
   if (url.protocol !== "http:" || !isLoopback(url) || hasCredentials(url) || url.search || url.hash) {
     throw new Error("CodeArts server URL must use HTTP on loopback without credentials, query, or fragment.");
   }
-  if (!url.pathname.endsWith("/")) url.pathname += "/";
+  if (url.pathname !== "/") throw new Error("CodeArts server URL must use the root path.");
   return url.href;
 }
 

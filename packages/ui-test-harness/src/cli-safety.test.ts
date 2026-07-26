@@ -28,6 +28,7 @@ describe("UI harness CLI safety", () => {
 
   test("accepts a credential-free loopback CodeArts attach URL", () => {
     expect(safeCodeArtsServerUrl("http://127.0.0.1:4097")).toBe("http://127.0.0.1:4097/");
+    expect(() => safeCodeArtsServerUrl("http://127.0.0.1:4097/proxy/")).toThrow(/root path/i);
   });
 
   test("derives a management port only from plain-HTTP loopback URLs", () => {
@@ -83,6 +84,11 @@ describe("UI harness CLI safety", () => {
   test("rejects an unknown option instead of silently running the acceptance tier", async () => {
     const output = await runCli(["--headless", "--tire", "readiness"]);
     expect(output).toContain("Unknown option: --tire");
+  });
+
+  test("rejects an unconsumed positional argument instead of defaulting to acceptance", async () => {
+    const output = await runCli(["--headed", "readiness"]);
+    expect(output).toContain("Unexpected positional argument: readiness");
   });
 
   test("rejects headless readiness before contacting Relay", async () => {

@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { openChamberExternalEnvironment, registerOpenChamberDirectory } from "./openchamber-external.js";
+import { openChamberExternalEnvironment, registerOpenChamberDirectory, verifyOpenChamberDirectory } from "./openchamber-external.js";
 
 let server: Server | undefined;
 afterEach(async () => {
@@ -41,6 +41,22 @@ describe("registerOpenChamberDirectory", () => {
       { method: "POST", url: "/api/opencode/directory", body: JSON.stringify({ path: "D:/work/GameForge-Agent" }) },
       { method: "GET", url: "/api/config/settings", body: "" },
     ]);
+  });
+
+  it("revalidates the active project without mutating it", async () => {
+    const requests: string[] = [];
+    server = createServer((request, response) => {
+      requests.push(`${request.method} ${request.url}`);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ lastDirectory: "D:/work/GameForge-Agent", activeProjectId: "project-1", projects: [{ id: "project-1", path: "D:/work/GameForge-Agent" }] }));
+    });
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("No port assigned.");
+
+    await verifyOpenChamberDirectory(`http://127.0.0.1:${address.port}/`, "D:/work/GameForge-Agent");
+
+    expect(requests).toEqual(["GET /api/config/settings"]);
   });
 
   it("bounds a stalled OpenChamber registration", async () => {

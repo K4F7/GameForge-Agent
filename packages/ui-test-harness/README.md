@@ -19,7 +19,7 @@
 常驻测试环境与两个运行档位由根目录 `testenv:*` 命令管理（术语见本包 `CONTEXT.md`，档位边界见 `docs/decisions/0005-testenv-readiness-tier.md`）：
 
 ```powershell
-bun run testenv:status      # 预检四项依赖，逐项给出补救命令；不启动任何进程，通常一秒内完成
+bun run testenv:status      # 预检 Relay、OpenChamber、CodeArts、浏览器等依赖；短暂启动并关闭 Chrome 验证真实 channel，通常数秒完成
 $env:GAMEFORGE_CODEARTS_SERVER_URL="http://127.0.0.1:4097/"
 $env:GAMEFORGE_CODEARTS_SESSION="ses_..."
 bun run testenv:up  # 绑定外部 CodeArts server 后常驻；Ctrl+C 停止

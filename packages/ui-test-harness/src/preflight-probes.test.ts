@@ -3,13 +3,22 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { probeCodeArts, probeHttp, probeRunDependencies } from "./preflight-probes.js";
+import { probeBrowser, probeCodeArts, probeHttp, probeRunDependencies } from "./preflight-probes.js";
 
 const servers: Server[] = [];
 const roots: string[] = [];
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+describe("probeBrowser", () => {
+  it("reports an unavailable configured browser channel before a run starts", async () => {
+    const result = await probeBrowser({ channel: "gameforge-browser-does-not-exist" });
+
+    expect(result.available).toBe(false);
+    expect(result.detail).toContain("gameforge-browser-does-not-exist");
+  });
 });
 
 async function serve(handler: Parameters<typeof createServer>[1]): Promise<string> {
@@ -98,6 +107,7 @@ describe("probeCodeArts", () => {
       "authority-relay",
       "openchamber-service",
       "codearts",
+      "browser",
       "codearts-session",
     ]);
     const codeArtsSession = probes.find((probe) => probe.dependency === "codearts-session");

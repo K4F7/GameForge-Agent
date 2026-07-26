@@ -5,6 +5,16 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 describe("testenv CLI", () => {
+  it("rejects an unsafe Relay URL before a credentialed status probe", () => {
+    const result = spawnSync("bun", [fileURLToPath(new URL("./testenv-cli.ts", import.meta.url)), "status"], {
+      encoding: "utf8", timeout: 5_000, windowsHide: true,
+      env: { ...process.env, GAMEFORGE_RUN_RELAY_URL: "http://example.com:8787/", GAMEFORGE_RUN_RELAY_TOKEN: "must-not-leak" },
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Relay URL must use HTTPS");
+  });
+
   it("rejects unknown startup options before touching resident services", () => {
     const result = spawnSync("bun", [fileURLToPath(new URL("./testenv-cli.ts", import.meta.url)), "up", "--codearts-servre-url", "http://127.0.0.1:4097/"], {
       encoding: "utf8",
@@ -45,7 +55,7 @@ describe("testenv CLI", () => {
     try {
       await promisify(execFile)("bun", [fileURLToPath(new URL("./testenv-cli.ts", import.meta.url)), "up"], {
         encoding: "utf8",
-        timeout: 5_000,
+        timeout: 15_000,
         windowsHide: true,
         env: {
           ...process.env,
@@ -73,7 +83,7 @@ describe("testenv CLI", () => {
     try {
       await promisify(execFile)("bun", [fileURLToPath(new URL("./testenv-cli.ts", import.meta.url)), "status"], {
         encoding: "utf8",
-        timeout: 5_000,
+        timeout: 15_000,
         windowsHide: true,
         env: {
           ...process.env,
@@ -86,5 +96,5 @@ describe("testenv CLI", () => {
     }
 
     expect(requests).toContain("/session/ses_status");
-  });
+  }, 20_000);
 });

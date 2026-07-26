@@ -4,10 +4,10 @@ import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { loopbackHttpPort, safeCodeArtsServerUrl } from "./cli-safety.js";
+import { loopbackHttpPort, safeCodeArtsServerUrl, safeRelayUrl } from "./cli-safety.js";
 import { openChamberExternalEnvironment, registerOpenChamberDirectory } from "./openchamber-external.js";
 import { evaluatePreflight, type PreflightProbe, type PreflightReport } from "./preflight.js";
-import { probeCodeArts, probeFile, probeHttp } from "./preflight-probes.js";
+import { probeBrowser, probeCodeArts, probeFile, probeHttp } from "./preflight-probes.js";
 import { DEFAULT_OPENCHAMBER_URL, DEFAULT_RELAY_URL } from "./testenv-config.js";
 import { TestEnvSupervisor, stopPortListeners, type ManagedServiceSpec } from "./testenv-supervisor.js";
 
@@ -24,7 +24,7 @@ const repoRoot = path.resolve(import.meta.dirname, "../../..");
 
 const execFileAsync = promisify(execFile);
 
-const relayUrl = process.env.GAMEFORGE_RUN_RELAY_URL?.trim() || DEFAULT_RELAY_URL;
+const relayUrl = safeRelayUrl(process.env.GAMEFORGE_RUN_RELAY_URL?.trim() || DEFAULT_RELAY_URL);
 const openChamberUrl = process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() || DEFAULT_OPENCHAMBER_URL;
 
 const command = process.argv[2] ?? "status";
@@ -170,6 +170,7 @@ async function probeAll(): Promise<PreflightProbe[]> {
     probeHttp("openchamber-service", openChamberUrl),
     probeFile("openchamber-build", path.join(repoRoot, "vendor", "openchamber", "packages", "web", "dist", "index.html")),
     probeCodeArts(),
+    probeBrowser({ ...(process.env.GAMEFORGE_BROWSER_CHANNEL?.trim() ? { channel: process.env.GAMEFORGE_BROWSER_CHANNEL.trim() } : {}) }),
   ];
   const configuredServer = process.env.GAMEFORGE_CODEARTS_SERVER_URL?.trim();
   const configuredSession = process.env.GAMEFORGE_CODEARTS_SESSION?.trim();

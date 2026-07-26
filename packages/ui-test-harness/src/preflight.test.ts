@@ -38,7 +38,7 @@ describe("evaluatePreflight", () => {
 
   it("only names repository scripts that actually exist", async () => {
     const manifest = JSON.parse(await readFile(path.resolve(import.meta.dirname, "..", "..", "..", "package.json"), "utf8")) as { scripts: Record<string, string> };
-    const dependencies: PreflightDependency[] = ["authority-relay", "openchamber-service", "openchamber-build", "codearts"];
+    const dependencies: PreflightDependency[] = ["authority-relay", "openchamber-service", "openchamber-build", "codearts", "browser"];
 
     for (const dependency of dependencies) {
       const report = evaluatePreflight([{ dependency, available: false }]);
