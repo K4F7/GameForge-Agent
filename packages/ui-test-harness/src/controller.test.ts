@@ -427,7 +427,7 @@ describe("UiTestController", () => {
     expect(events.indexOf("lifecycle:observing")).toBeLessThan(events.indexOf("observer:close"));
     // The interrupted phase and the hold keep their own labels; their time
     // must not be misattributed to teardown on exactly the path timings exist for.
-    expect(result.phases?.map((phase) => phase.label)).toEqual(["tui.start", "observer.open", "gui.launch", "steps", "hold", "teardown"]);
+    expect(result.phases?.map((phase) => phase.label)).toEqual(["tui.start", "observer.open", "gui.launch", "steps", "hold", "teardown", "finalize"]);
   });
 
   it("carries the run tier into the evidence session it records", async () => {
@@ -455,11 +455,28 @@ describe("UiTestController", () => {
     const result = await controller.run({ name: "phase-timings", steps: [] });
 
     expect(result.status).toBe("completed");
-    expect(result.phases?.map((phase) => phase.label)).toEqual(["tui.start", "observer.open", "gui.launch", "steps", "teardown"]);
+    expect(result.phases?.map((phase) => phase.label)).toEqual(["tui.start", "observer.open", "gui.launch", "steps", "teardown", "finalize"]);
     for (const phase of result.phases ?? []) {
       expect(Number.isSafeInteger(phase.durationMs)).toBe(true);
       expect(phase.durationMs).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  it("includes evidence finalization in the reported run phases", async () => {
+    const sessionId = "finalize-phase-timing"; let committed: HarnessResult | undefined;
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() {} };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() {} };
+    const evidence = { async recordSession() {}, async recordLifecycle() {}, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize(result: HarnessResult, beforeCommit?: () => void) { await new Promise((resolve) => setTimeout(resolve, 120)); beforeCommit?.(); committed = structuredClone(result); } };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headless", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, activityPollMs: 1, inactivityTimeoutMs: 100 });
+
+    const result = await controller.run({ name: "finalize-phase-timing", steps: [] });
+
+    expect(result.phases?.at(-1)).toMatchObject({ label: "finalize" });
+    expect(result.phases?.at(-1)?.durationMs).toBeGreaterThanOrEqual(100);
+    expect(committed?.phases?.at(-1)).toMatchObject({ label: "finalize" });
+    expect(committed?.phases?.at(-1)?.durationMs).toBeGreaterThanOrEqual(100);
   });
 
   it("notifies the failure observer before the hold and before teardown", async () => {

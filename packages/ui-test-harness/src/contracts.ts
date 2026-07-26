@@ -156,7 +156,7 @@ export interface EvidenceSink {
   recordTuiObserverSnapshot(snapshot: TuiObserverSnapshot): Promise<void>;
   recordGuiSnapshot(label: string, snapshot: GuiSnapshot): Promise<void>;
   recordAuthoritySnapshot(snapshot: AuthoritySnapshot): Promise<void>;
-  finalize(result: HarnessResult): Promise<void>;
+  finalize(result: HarnessResult, beforeCommit?: () => void): Promise<void>;
 }
 
 export type AuthorityGate = {

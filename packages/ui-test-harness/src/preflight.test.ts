@@ -20,6 +20,15 @@ describe("evaluatePreflight", () => {
     expect(entry(report, "openchamber-service").remediation).toBeUndefined();
   });
 
+  it("directs an operator to the CodeArts executable override when discovery fails", () => {
+    const report = evaluatePreflight([
+      { dependency: "codearts", available: false, detail: "No CodeArts client was found" },
+    ]);
+
+    expect(entry(report, "codearts").remediation).toContain("CODEARTS_BIN");
+    expect(entry(report, "codearts").remediation).not.toContain("bun run codearts");
+  });
+
 
   it("only names repository scripts that actually exist", async () => {
     const manifest = JSON.parse(await readFile(path.resolve(import.meta.dirname, "..", "..", "..", "package.json"), "utf8")) as { scripts: Record<string, string> };

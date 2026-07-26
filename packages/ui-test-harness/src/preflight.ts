@@ -25,7 +25,7 @@ const REMEDIATION: Record<PreflightDependency, string> = {
   "authority-relay": "bun run testenv:up",
   "openchamber-service": "bun run testenv:up",
   "openchamber-build": "git submodule update --init --recursive && bun --cwd vendor/openchamber install --frozen-lockfile && bun --cwd vendor/openchamber run build:web",
-  codearts: "bun run codearts",
+  codearts: "Set CODEARTS_BIN to the installed CodeArts executable (see docs/codearts-quickstart.md)",
 };
 
 export function evaluatePreflight(probes: readonly PreflightProbe[]): PreflightReport {

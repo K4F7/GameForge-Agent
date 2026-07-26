@@ -207,8 +207,14 @@ export class UiTestController {
     } else if (failure !== undefined && result.failure === undefined) {
       result = { ...result, failure: errorMessage(failure) };
     }
+    let finalizeMarked = false;
+    const markFinalize = (): void => {
+      if (finalizeMarked) return;
+      markPhase("finalize");
+      finalizeMarked = true;
+    };
     try {
-      await this.drivers.evidence.finalize(result);
+      await this.drivers.evidence.finalize(result, markFinalize);
     } catch (error) {
       if (result.status === "completed") {
         result = { ...result, status: "failed", finishedAt: new Date().toISOString(), failure: errorMessage(error) };
@@ -216,6 +222,7 @@ export class UiTestController {
         result = { ...result, finishedAt: new Date().toISOString(), failure: `${result.failure ?? "Scenario failed"}; Evidence finalization failed: ${errorMessage(error)}` };
       }
     }
+    markFinalize();
     return result;
   }
 

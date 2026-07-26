@@ -42,6 +42,13 @@ function matchesContract(dependency: PreflightProbe["dependency"], body: string)
     if (body.includes("OpenChamber") && body.includes('id="root"')) return { matches: true };
     return { matches: false, reason: "did not serve the OpenChamber landing page; another service may own this port" };
   }
+  if (dependency === "codearts") {
+    try {
+      const parsed: unknown = JSON.parse(body);
+      if (typeof parsed === "object" && parsed !== null && typeof (parsed as { id?: unknown }).id === "string") return { matches: true };
+    } catch { /* fall through to the mismatch below */ }
+    return { matches: false, reason: "did not return a CodeArts session; another service may own this port" };
+  }
   return { matches: true };
 }
 

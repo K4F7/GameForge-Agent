@@ -81,4 +81,23 @@ describe("probeCodeArts", () => {
     expect(codeArts?.available).toBe(false);
     expect(codeArts?.detail).toContain("/session/ses_missing");
   });
+
+  it("rejects a non-CodeArts service that returns 200 for an attach session", async () => {
+    const relayUrl = await serve((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ tasks: [] }));
+    });
+    const openChamberUrl = await serve((_request, response) => {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end('<html><title>OpenChamber</title><div id="root"></div></html>');
+    });
+
+    const probes = await probeRunDependencies({
+      relayUrl,
+      openChamberUrl,
+      codeArtsAttach: { serverUrl: relayUrl, sessionId: "ses_expected" },
+    });
+
+    expect(probes.find((probe) => probe.dependency === "codearts")?.available).toBe(false);
+  });
 });

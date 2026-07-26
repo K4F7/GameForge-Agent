@@ -32,7 +32,7 @@ bun run testenv:acceptance  # 真实验收（有头）：既有最小闭环，�
 
 默认 OpenChamber URL 为 `http://127.0.0.1:43163/`（原版生产构建的固定端口，是唯一经过完整验收的端口；Vite dev 端口不作为验收目标），可用 `--openchamber-url` 或 `GAMEFORGE_OPENCHAMBER_URL` 覆盖，但只接受无凭据 loopback HTTP(S)。该命令使用真实 Bun ConPTY 启动 `bun run codearts`，连接既有 Relay，并将 VT、生命周期、活动样本、Authority 快照、MCP Audit、浏览器诊断和 PNG 截图写入 `.gameforge-validation/`。默认活动超时 120 秒，总门禁 15 分钟；headed 成功后默认保留窗口 10 秒，失败后默认保留 30 秒（`--failure-hold-ms` 可调，上限 300 秒），便于阅读屏幕上的错误后再收窗；headless 不保留。
 
-两档都在 Evidence 会话创建之后、Task 关联之前执行运行预检：依赖缺失表现为具名失败并落盘，不是连接超时堆栈。任何失败都会在终端打印分类、最可能原因、值得打开的证据文件与建议的下一条命令（有头模式下先于收窗打印），并写入该 session 的 `diagnosis.md`——它是对既有证据的导航，不是新的事实来源。每次运行还打印分阶段耗时（`tui.start`、`observer.open`、`gui.launch`、`steps`、`teardown`，随 `result.json` 持久化），总耗时超过软预算（默认 60 秒，`--soft-budget-ms` 可调）只警告不失败。
+两档都在 Evidence 会话创建之后、Task 关联之前执行运行预检：依赖缺失表现为具名失败并落盘，不是连接超时堆栈。任何失败都会在终端打印分类、最可能原因、值得打开的证据文件与建议的下一条命令（有头模式下先于收窗打印），并写入该 session 的 `diagnosis.md`——它是对既有证据的导航，不是新的事实来源。每次运行还打印分阶段耗时（`tui.start`、`observer.open`、`gui.launch`、`steps`、`teardown`、`finalize`，随 `result.json` 持久化），总耗时超过软预算（默认 60 秒，`--soft-budget-ms` 可调）只警告不失败。
 
 观察窗接入时会先回放 ConPTY 驱动的有界 VT 历史（单条合成帧，保持原 sessionId 与单调 sequence），因此 CodeArts 启动与欢迎界面从第一帧起可见；Evidence 订阅不请求回放，VT 日志不产生重复帧。
 

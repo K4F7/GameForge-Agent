@@ -86,16 +86,17 @@ export class FileEvidenceSink implements EvidenceSink {
       await writeJson(path.join(this.sessionRoot, "run-events.json"), snapshot);
     });
   }
-  finalize(result: HarnessResult): Promise<void> {
-    this.#finalizePromise ??= this.#finalizeOnce(result);
+  finalize(result: HarnessResult, beforeCommit?: () => void): Promise<void> {
+    this.#finalizePromise ??= this.#finalizeOnce(result, beforeCommit);
     return this.#finalizePromise;
   }
 
-  async #finalizeOnce(result: HarnessResult): Promise<void> {
+  async #finalizeOnce(result: HarnessResult, beforeCommit?: () => void): Promise<void> {
     await this.#waitForRecords();
     const lock = await this.#ensureLock();
     try {
       await this.#consolidateMcpAudit();
+      beforeCommit?.();
       await writeJson(path.join(this.sessionRoot, "result.json"), result);
     } finally {
       this.#lockPromise = undefined;
