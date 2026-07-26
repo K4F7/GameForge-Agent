@@ -19,7 +19,9 @@
     "verify:dependencies": "bun scripts/verify-dependencies.ts",
     "build:runtime": "bun --cwd ../.. run build:foundation && bun --cwd ../.. run --filter @gameforge/mcp-server build && bun run build",
     "run:headless": "bun run build:runtime && bun dist/cli.js --headless",
-    "run:headed": "bun run build:runtime && bun dist/cli.js --headed"
+    "run:headed": "bun run build:runtime && bun dist/cli.js --headed",
+    "run:readiness": "bun run build:runtime && bun dist/cli.js --headed --tier readiness",
+    "run:acceptance": "bun run build:runtime && bun dist/cli.js --headed --tier acceptance"
   },
   "devDependencies": {
     "@types/node": "22.20.1",

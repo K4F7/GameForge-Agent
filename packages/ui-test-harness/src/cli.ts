@@ -13,7 +13,10 @@ import { safeCodeArtsServerUrl, safeEvidenceSegment, safeRelayUrl } from "./cli-
 import type { HarnessResult } from "./contracts.js";
 import { UiTestController } from "./controller.js";
 import { diagnose, renderDiagnosisMarkdown, renderDiagnosisTerminal } from "./diagnosis.js";
+import { evaluatePreflight } from "./preflight.js";
+import { probeRunDependencies } from "./preflight-probes.js";
 import { prepareHarnessSession } from "./session-bootstrap.js";
+import { READINESS_PROJECT_PREFIX, buildScenario, tierBanner, type HarnessTier } from "./tiers.js";
 import { DEFAULT_OPENCHAMBER_URL, DEFAULT_RELAY_URL } from "./testenv-config.js";
 import { renderPhaseTimings } from "./timing.js";
 
@@ -27,16 +30,26 @@ const relay = new RunRelayClient({
   ...(process.env.GAMEFORGE_RUN_RELAY_TOKEN === undefined ? {} : { authToken: process.env.GAMEFORGE_RUN_RELAY_TOKEN }),
 });
 const runId = options.runId ?? `ui-harness-${Date.now()}-${randomUUID().slice(0, 8)}`;
-const projectId = options.projectId ?? `ui-harness-${randomUUID().slice(0, 8)}`;
+const projectId = options.projectId
+  ?? (options.tier === "readiness" ? `${READINESS_PROJECT_PREFIX}${randomUUID().slice(0, 8)}` : `ui-harness-${randomUUID().slice(0, 8)}`);
 const sessionId = options.sessionId ?? randomUUID();
 const sessionRoot = path.join(repoRoot, ".gameforge-validation", options.experiment, "sessions", sessionId);
-const scenario = "codearts-minimal-closure:baseline";
+process.stderr.write(`${tierBanner(options.tier)}\n`);
 
 const prepared = await prepareHarnessSession({
   sessionRoot,
   session: { sessionId, startedAt: new Date().toISOString(), mode: options.mode },
-  scenario,
+  scenario: buildScenario(options.tier, { openChamberUrl: options.openChamberUrl, instruction: "", totalTimeoutMs: options.totalTimeoutMs }).name,
   correlate: async () => {
+    // Preflight runs after the Evidence session exists, so a missing
+    // dependency is a named, on-disk failure instead of a bare stack trace.
+    const preflight = evaluatePreflight(await probeRunDependencies({ relayUrl: options.relayUrl, openChamberUrl: options.openChamberUrl }));
+    if (!preflight.ready) {
+      const blocking = preflight.entries
+        .filter((entry) => !entry.available)
+        .map((entry) => `${entry.dependency}${entry.remediation === undefined ? "" : ` (fix: ${entry.remediation})`}`);
+      throw new Error(`Preflight failed: ${blocking.join(", ")}`);
+    }
     const created = options.taskId === undefined
       ? await relay.createTask({ runId, projectId, language: "zh-CN", prompt: options.taskPrompt })
       : { task: await relay.getTask(options.taskId) };
@@ -56,7 +69,8 @@ const instruction = [
 ].join("\n");
 
 const final = await runAttempt();
-process.stdout.write(`${JSON.stringify({ taskId: task.taskId, runId, projectId, attempt: final.attempt, result: final.result, evidence: sessionRoot }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ tier: options.tier, taskId: task.taskId, runId, projectId, attempt: final.attempt, result: final.result, evidence: sessionRoot }, null, 2)}\n`);
+process.stderr.write(`${tierBanner(options.tier)}\n`);
 if (final.result.phases !== undefined) process.stderr.write(renderPhaseTimings(final.result.phases, options.softBudgetMs));
 if (final.result.status === "failed" && final.result.failure !== undefined) await reportFailure(final.result.failure);
 process.exitCode = final.result.status === "completed" ? 0 : 1;
@@ -94,13 +108,7 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
     activityPollMs: 2_000,
     inactivityTimeoutMs: options.inactivityTimeoutMs,
   });
-  const result = await controller.run({ name: `codearts-minimal-closure:${attempt}`, steps: [
-    { kind: "gui.navigate", url: options.openChamberUrl },
-    { kind: "tui.text", text: instruction, appendEnter: true },
-    { kind: "authority.wait", gate: { description: "Task and Run completed", timeoutMs: options.totalTimeoutMs, accepts: (snapshot) => snapshot.taskStatus === "completed" && snapshot.runStatus === "completed" } },
-    { kind: "gui.press", selector: "body", key: "Escape" },
-    { kind: "capture", label: "completed" },
-  ] });
+  const result = await controller.run(buildScenario(options.tier, { openChamberUrl: options.openChamberUrl, instruction, totalTimeoutMs: options.totalTimeoutMs }));
   return { attempt, result };
 }
 
@@ -142,12 +150,14 @@ async function listSessionFiles(root: string): Promise<string[]> {
 function parseArguments(args: string[]): {
   experiment: string; relayUrl: string; taskPrompt: string; agentId: string; projectsRoot: string;
   inactivityTimeoutMs: number; totalTimeoutMs: number; mode: "headed/watch" | "headless";
-  openChamberUrl: string; browserChannel?: string; observationHoldMs: number; failureHoldMs: number; softBudgetMs: number;
+  openChamberUrl: string; browserChannel?: string; observationHoldMs: number; failureHoldMs: number; softBudgetMs: number; tier: HarnessTier;
   sessionId?: string; taskId?: string; runId?: string; projectId?: string;
   codeartsServerUrl?: string; codeartsSession?: string;
 } {
   const headless = args.includes("--headless"); const headed = args.includes("--headed");
   if (headless === headed) throw new Error("Choose exactly one of --headless or --headed.");
+  const tierInput = optionalValue(args, "--tier") ?? "acceptance";
+  if (tierInput !== "readiness" && tierInput !== "acceptance") throw new Error("--tier must be readiness or acceptance.");
   const value = (name: string, fallback: string): string => {
     const index = args.indexOf(name);
     return index < 0 ? fallback : args[index + 1] ?? (() => { throw new Error(`${name} requires a value.`); })();
@@ -173,6 +183,7 @@ function parseArguments(args: string[]): {
     observationHoldMs: positiveInteger(value("--observation-hold-ms", "10000")),
     failureHoldMs: positiveInteger(value("--failure-hold-ms", "30000")),
     softBudgetMs: positiveInteger(value("--soft-budget-ms", "60000")),
+    tier: tierInput,
     ...(sessionId === undefined ? {} : { sessionId: safeEvidenceSegment(sessionId, "--session-id") }),
     ...(codeartsServerUrl === undefined ? {} : {
       codeartsServerUrl: safeCodeArtsServerUrl(codeartsServerUrl),

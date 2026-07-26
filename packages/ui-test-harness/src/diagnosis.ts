@@ -37,7 +37,7 @@ type Rule = {
 const RULES: Rule[] = [
   {
     category: "environment",
-    matches: (failure) => /relay request failed|relay unreachable|fetch failed|ECONNREFUSED/i.test(failure),
+    matches: (failure) => /^Preflight failed|relay request failed|relay unreachable|fetch failed|ECONNREFUSED/i.test(failure),
     likelyCause: "Authority Relay 未启动或不可达，运行在场景开始前就失败了。",
     candidateEvidence: ["result.json", "metadata.json"],
     nextCommand: "bun run testenv:status",

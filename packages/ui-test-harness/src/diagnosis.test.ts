@@ -13,6 +13,16 @@ describe("diagnose", () => {
     expect(diagnosis.likelyCause).toContain("Relay");
   });
 
+  it("classifies a preflight failure as environment", () => {
+    const diagnosis = diagnose({
+      failure: "Preflight failed: authority-relay (fix: bun run testenv:up)",
+      files: ["result.json", "metadata.json"],
+    });
+
+    expect(diagnosis.category).toBe("environment");
+    expect(diagnosis.nextCommand).toBe("bun run testenv:status");
+  });
+
   it("attributes dirty browser diagnostics to the page under test, not the harness", () => {
     const diagnosis = diagnose({
       failure: "OpenChamber browser diagnostics are not clean: 4 issue(s)",
