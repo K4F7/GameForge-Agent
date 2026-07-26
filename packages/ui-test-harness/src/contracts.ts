@@ -194,10 +194,16 @@ export type HarnessOptions = {
   projectId?: string;
 };
 
+export type PhaseTiming = {
+  label: string;
+  durationMs: number;
+};
+
 export type HarnessResult = {
   status: "completed" | "failed";
   scenario: string;
   startedAt: string;
   finishedAt: string;
   failure?: string;
+  phases?: PhaseTiming[];
 };

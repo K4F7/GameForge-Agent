@@ -9,6 +9,7 @@ import type {
   HarnessOptions,
   HarnessPhase,
   HarnessResult,
+  PhaseTiming,
   HarnessScenario,
   HarnessSession,
   HarnessStep,
@@ -49,6 +50,13 @@ export class UiTestController {
       ...(this.options.projectId === undefined ? {} : { projectId: this.options.projectId }) };
     let failure: unknown;
     let tuiStarted = false;
+    const phases: PhaseTiming[] = [];
+    let phaseStartedAt = Date.now();
+    const markPhase = (label: string): void => {
+      const now = Date.now();
+      phases.push({ label, durationMs: Math.max(0, now - phaseStartedAt) });
+      phaseStartedAt = now;
+    };
     let observerOpened = false;
     let guiLaunched = false;
     let failureCaptured = false;
@@ -95,6 +103,7 @@ export class UiTestController {
       const tui = await this.drivers.tui.start({ session, ...this.options.terminal });
       this.assertTuiSession(session, tui.sessionId);
       await this.drivers.evidence.recordTuiSnapshot(tui);
+      markPhase("tui.start");
       observerOpened = true;
       const observer = await this.drivers.tuiObserver.open({
         session,
@@ -104,12 +113,15 @@ export class UiTestController {
       });
       this.assertTuiSession(session, observer.sessionId);
       await this.drivers.evidence.recordTuiObserverSnapshot(observer);
+      markPhase("observer.open");
       guiLaunched = true;
       await this.drivers.gui.launch({ session, mode: this.options.mode, viewport: this.options.viewport });
       await this.captureGui(session, "loaded");
       await this.recordLifecycle(session, "running");
+      markPhase("gui.launch");
 
       for (const step of scenario.steps) await this.execute(session, step, trackEvidence);
+      markPhase("steps");
 
       if (this.options.mode === "headed/watch" && this.options.observationHoldMs > 0) {
         await this.recordLifecycle(session, "observing");
@@ -165,12 +177,14 @@ export class UiTestController {
     }
     if (cleanupFailure?.status === "rejected") failure = combineFailure(failure, "Cleanup failed", cleanupFailure.reason);
     await Promise.all([...pendingEvidenceOperations]);
+    markPhase("teardown");
 
     let result: HarnessResult = {
       status: failure === undefined ? "completed" : "failed",
       scenario: scenario.name,
       startedAt,
       finishedAt: new Date().toISOString(),
+      phases,
       ...(failure === undefined ? {} : { failure: errorMessage(failure) }),
     };
     try {

@@ -15,6 +15,7 @@ import { UiTestController } from "./controller.js";
 import { diagnose, renderDiagnosisMarkdown, renderDiagnosisTerminal } from "./diagnosis.js";
 import { prepareHarnessSession } from "./session-bootstrap.js";
 import { DEFAULT_OPENCHAMBER_URL, DEFAULT_RELAY_URL } from "./testenv-config.js";
+import { renderPhaseTimings } from "./timing.js";
 
 const reportedFailures = new Set<string>();
 
@@ -56,6 +57,7 @@ const instruction = [
 
 const final = await runAttempt();
 process.stdout.write(`${JSON.stringify({ taskId: task.taskId, runId, projectId, attempt: final.attempt, result: final.result, evidence: sessionRoot }, null, 2)}\n`);
+if (final.result.phases !== undefined) process.stderr.write(renderPhaseTimings(final.result.phases, options.softBudgetMs));
 if (final.result.status === "failed" && final.result.failure !== undefined) await reportFailure(final.result.failure);
 process.exitCode = final.result.status === "completed" ? 0 : 1;
 
@@ -140,7 +142,7 @@ async function listSessionFiles(root: string): Promise<string[]> {
 function parseArguments(args: string[]): {
   experiment: string; relayUrl: string; taskPrompt: string; agentId: string; projectsRoot: string;
   inactivityTimeoutMs: number; totalTimeoutMs: number; mode: "headed/watch" | "headless";
-  openChamberUrl: string; browserChannel?: string; observationHoldMs: number; failureHoldMs: number;
+  openChamberUrl: string; browserChannel?: string; observationHoldMs: number; failureHoldMs: number; softBudgetMs: number;
   sessionId?: string; taskId?: string; runId?: string; projectId?: string;
   codeartsServerUrl?: string; codeartsSession?: string;
 } {
@@ -170,6 +172,7 @@ function parseArguments(args: string[]): {
     ...(browserChannel === undefined ? {} : { browserChannel }),
     observationHoldMs: positiveInteger(value("--observation-hold-ms", "10000")),
     failureHoldMs: positiveInteger(value("--failure-hold-ms", "30000")),
+    softBudgetMs: positiveInteger(value("--soft-budget-ms", "60000")),
     ...(sessionId === undefined ? {} : { sessionId: safeEvidenceSegment(sessionId, "--session-id") }),
     ...(codeartsServerUrl === undefined ? {} : {
       codeartsServerUrl: safeCodeArtsServerUrl(codeartsServerUrl),
