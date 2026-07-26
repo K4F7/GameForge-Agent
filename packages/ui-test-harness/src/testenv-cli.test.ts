@@ -1,5 +1,7 @@
 import { execFile, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
+import { access, rm } from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
@@ -13,6 +15,28 @@ describe("testenv CLI", () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("Relay URL must use HTTPS");
+  });
+
+  it("rejects an unsafe OpenChamber URL before a status probe", () => {
+    const result = spawnSync("bun", [fileURLToPath(new URL("./testenv-cli.ts", import.meta.url)), "status"], {
+      encoding: "utf8", timeout: 5_000, windowsHide: true,
+      env: { ...process.env, GAMEFORGE_OPENCHAMBER_URL: "https://example.com:43163/" },
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("OpenChamber URL must be credential-free loopback HTTP(S)");
+  });
+
+  it("does not leave shutdown intent behind when down validation fails", async () => {
+    const marker = path.resolve(import.meta.dirname, "../../..", ".gameforge-validation", "testenv-shutdown-requested");
+    await rm(marker, { force: true });
+    const result = spawnSync("bun", [fileURLToPath(new URL("./testenv-cli.ts", import.meta.url)), "down"], {
+      encoding: "utf8", timeout: 5_000, windowsHide: true,
+      env: { ...process.env, GAMEFORGE_OPENCHAMBER_URL: "https://example.com:43163/" },
+    });
+
+    expect(result.status).not.toBe(0);
+    await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("rejects unknown startup options before touching resident services", () => {

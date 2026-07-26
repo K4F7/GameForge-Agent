@@ -122,11 +122,12 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
     baseUrl: options.relayUrl, taskId: task.taskId, runId, projectId,
     ...(process.env.GAMEFORGE_RUN_RELAY_TOKEN === undefined ? {} : { authToken: process.env.GAMEFORGE_RUN_RELAY_TOKEN }),
   });
+  const openChamberUrl = openChamberSessionUrl(options.openChamberUrl, options.codeartsSession!, repoRoot);
   const controller = new UiTestController({
     tui, authority, evidence,
     projectFingerprint: () => projectFingerprint(path.join(options.projectsRoot, projectId)),
     tuiObserver: new XtermTuiObserverDriver(),
-    gui: new PlaywrightOpenChamberDriver({ sessionRoot, baseUrl: openChamberSessionUrl(options.openChamberUrl, options.codeartsSession!, repoRoot), ...(options.browserChannel === undefined ? {} : { browserChannel: options.browserChannel }) }),
+    gui: new PlaywrightOpenChamberDriver({ sessionRoot, baseUrl: openChamberUrl, ...(options.browserChannel === undefined ? {} : { browserChannel: options.browserChannel }) }),
   }, {
     sessionId,
     startedAt: bootstrapSession.startedAt,
@@ -145,7 +146,7 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
     activityPollMs: 2_000,
     inactivityTimeoutMs: options.inactivityTimeoutMs,
   });
-  const result = await controller.run(buildScenario(options.tier, { openChamberUrl: options.openChamberUrl, instruction, totalTimeoutMs: options.totalTimeoutMs }));
+  const result = await controller.run(buildScenario(options.tier, { openChamberUrl, instruction, totalTimeoutMs: options.totalTimeoutMs }));
   return { attempt, result };
 }
 

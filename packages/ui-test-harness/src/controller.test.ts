@@ -341,6 +341,19 @@ describe("UiTestController", () => {
     expect(finalized).toMatchObject({ status: "failed" });
   });
 
+  it("stops a transferred TUI when releasing bootstrap output fails", async () => {
+    const sessionId = "bootstrap-release-failure"; let stopped = false;
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() { stopped = true; } };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() {} };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { throw new Error("unused"); }, async close() {} };
+    const evidence = { async recordSession() {}, async recordLifecycle() {}, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize() {} };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headless", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, activityPollMs: 1, inactivityTimeoutMs: 100, releaseBootstrapTuiOutput: async () => { throw new Error("bootstrap evidence failed"); } });
+
+    await expect(controller.run({ name: "bootstrap-release-failure", steps: [] })).resolves.toMatchObject({ status: "failed", failure: expect.stringContaining("bootstrap evidence failed") });
+    expect(stopped).toBe(true);
+  });
+
   it("observes and holds a headed stopping lifecycle failure before cleanup", async () => {
     const sessionId = "stopping-evidence-failure"; let finalized: HarnessResult | undefined; const events: string[] = [];
     const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
@@ -528,6 +541,8 @@ describe("UiTestController", () => {
     expect(result.phases?.at(-1)?.durationMs).toBeGreaterThanOrEqual(100);
     expect(committed?.phases?.at(-1)).toMatchObject({ label: "finalize" });
     expect(committed?.phases?.at(-1)?.durationMs).toBeGreaterThanOrEqual(100);
+    expect(Date.parse(result.finishedAt) - Date.parse(result.startedAt)).toBeGreaterThanOrEqual(100);
+    expect(committed?.finishedAt).toBe(result.finishedAt);
   });
 
   it("notifies the failure observer before the hold and before teardown", async () => {

@@ -28,6 +28,7 @@ export async function correlateAfterCodeArtsReady<T>(options: {
     await options.evidence.recordTuiSnapshot(snapshot);
     await outputQueue;
     if (outputFailure !== undefined) { const error = outputFailure; outputFailure = undefined; throw error; }
+    if (snapshot.status !== "running") throw new Error(`CodeArts TUI is not running after readiness startup (status: ${snapshot.status}).`);
     result = await options.correlate();
   } catch (error) {
     failure = error;

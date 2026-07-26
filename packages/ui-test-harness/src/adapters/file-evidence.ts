@@ -172,7 +172,7 @@ export class FileEvidenceSink implements EvidenceSink {
     const directory = path.join(this.sessionRoot, "mcp-audit");
     const names = await readdir(directory).catch(() => []);
     const records = []; const audits: McpToolAudit[] = []; let totalBytes = 0;
-    for (const name of names.sort().slice(0, MAX_MCP_AUDIT_FILES)) {
+    for (const name of names.filter((entry) => entry.endsWith(".json")).sort().slice(0, MAX_MCP_AUDIT_FILES)) {
       const data = await readFile(path.join(directory, name)).catch(() => undefined);
       if (data === undefined) continue;
       const remaining = MAX_MCP_AUDIT_TOTAL_BYTES - totalBytes;

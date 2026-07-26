@@ -89,6 +89,22 @@ describe("FileEvidenceSink", () => {
     expect(evidence).not.toContain("authorization-sensitive-value");
   });
 
+  it("does not consolidate an uncommitted temporary MCP audit file", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
+    const sink = new FileEvidenceSink(root);
+    const session: HarnessSession = { sessionId: "temporary-audit", startedAt: "2026-07-23T00:00:00.000Z", mode: "headless" };
+    await sink.recordSession(session);
+    await mkdir(path.join(root, "mcp-audit"));
+    await writeFile(path.join(root, "mcp-audit", "committed.json"), JSON.stringify({ result: "committed" }), "utf8");
+    await writeFile(path.join(root, "mcp-audit", "committed.json.temporary.tmp"), JSON.stringify({ result: "uncommitted" }), "utf8");
+
+    await sink.finalize({ status: "completed", scenario: "evidence", startedAt: session.startedAt, finishedAt: session.startedAt });
+
+    const evidence = await readFile(path.join(root, "mcp-audit.json"), "utf8");
+    expect(evidence).toContain("committed");
+    expect(evidence).not.toContain("uncommitted");
+  });
+
   it("does not publish a completed result before MCP audit consolidation succeeds", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
     const sink = new FileEvidenceSink(root);

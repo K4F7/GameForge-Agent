@@ -38,6 +38,22 @@ describe("correlateAfterCodeArtsReady", () => {
     expect(correlated).toBe(false);
   });
 
+  it("does not correlate an Authority task after the ready TUI has already exited", async () => {
+    let correlated = false;
+    const session: HarnessSession = { sessionId: "exited-session", startedAt: "2026-07-27T00:00:00.000Z", mode: "headed/watch", tier: "readiness" };
+    const tui = {
+      kind: "codearts-original-tui" as const,
+      subscribeOutput() { return () => undefined; },
+      async start() { return { sessionId: session.sessionId, status: "exited" as const, columns: 120, rows: 36, screen: "Ask anything", outputSequence: 1, lastChangedAt: session.startedAt }; },
+      async read() { throw new Error("unused"); }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {},
+    } satisfies CodeArtsTuiDriver;
+    const evidence = { async recordTuiOutput() {}, async recordTuiSnapshot() {} } as unknown as EvidenceSink;
+
+    await expect(correlateAfterCodeArtsReady({ tui, evidence, session, terminal: { columns: 120, rows: 36 }, correlate: async () => { correlated = true; return "task"; } }))
+      .rejects.toThrow(/not running/i);
+    expect(correlated).toBe(false);
+  });
+
   it("records startup output frames serially in delivery order", async () => {
     const session: HarnessSession = { sessionId: "ordered-output", startedAt: "2026-07-27T00:00:00.000Z", mode: "headed/watch", tier: "readiness" };
     let listener: ((frame: { sessionId: string; sequence: number; data: string }) => void) | undefined;

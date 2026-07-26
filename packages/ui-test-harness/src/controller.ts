@@ -119,8 +119,8 @@ export class UiTestController {
           }
         });
       });
-      await this.options.releaseBootstrapTuiOutput?.();
       tuiStarted = true;
+      await this.options.releaseBootstrapTuiOutput?.();
       const tui = await this.drivers.tui.start({ session, ...this.options.terminal });
       this.assertTuiSession(session, tui.sessionId);
       await this.drivers.evidence.recordTuiSnapshot(tui);
@@ -220,6 +220,7 @@ export class UiTestController {
     const markFinalize = (): void => {
       if (finalizeMarked) return;
       markPhase("finalize");
+      result.finishedAt = new Date().toISOString();
       finalizeMarked = true;
     };
     try {

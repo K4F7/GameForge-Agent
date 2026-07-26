@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { loopbackHttpPort, safeCodeArtsServerUrl, safeRelayUrl } from "./cli-safety.js";
+import { loopbackHttpPort, safeCodeArtsServerUrl, safeOpenChamberUrl, safeRelayUrl } from "./cli-safety.js";
 import { openChamberExternalEnvironment, registerOpenChamberDirectory } from "./openchamber-external.js";
 import { evaluatePreflight, type PreflightProbe, type PreflightReport } from "./preflight.js";
 import { probeBrowser, probeCodeArts, probeFile, probeHttp } from "./preflight-probes.js";
@@ -27,7 +27,7 @@ const shutdownMarker = path.join(repoRoot, ".gameforge-validation", "testenv-shu
 const execFileAsync = promisify(execFile);
 
 const relayUrl = safeRelayUrl(process.env.GAMEFORGE_RUN_RELAY_URL?.trim() || DEFAULT_RELAY_URL);
-const openChamberUrl = process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() || DEFAULT_OPENCHAMBER_URL;
+const openChamberUrl = safeOpenChamberUrl(process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() || DEFAULT_OPENCHAMBER_URL);
 
 const command = process.argv[2] ?? "status";
 if (command === "status") {
@@ -164,6 +164,7 @@ async function runDown(): Promise<void> {
       failures += 1;
     }
   }
+  if (failures > 0) await rm(shutdownMarker, { force: true });
   process.exitCode = failures === 0 ? 0 : 1;
 }
 
