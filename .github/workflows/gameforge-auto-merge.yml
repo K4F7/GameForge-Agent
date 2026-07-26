@@ -164,6 +164,7 @@ jobs:
                     status: changed.status,
                     additions: changed.additions,
                     deletions: changed.deletions,
+                    previousFilename: changed.previous_filename,
                   })),
                 });
 

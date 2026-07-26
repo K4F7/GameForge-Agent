@@ -1,16 +1,21 @@
 import { describe, expect, test } from "bun:test";
 
-import { decideApprovalCarryForward, isTestPath } from "./approval-carryforward.js";
+import { COMPARE_FILE_LIMIT, decideApprovalCarryForward, isTestPath } from "./approval-carryforward.js";
 
 type ChangedFile = {
   filename: string;
   status: string;
   additions: number;
   deletions: number;
+  previousFilename?: string;
 };
 
 function file(filename: string, additions = 10, deletions = 0, status = "modified"): ChangedFile {
   return { filename, status, additions, deletions };
+}
+
+function renamed(previousFilename: string, filename: string, additions = 2, deletions = 2): ChangedFile {
+  return { filename, previousFilename, status: "renamed", additions, deletions };
 }
 
 function decide(changedFiles: ChangedFile[], overrides: Record<string, unknown> = {}) {
@@ -114,6 +119,47 @@ describe("decideApprovalCarryForward", () => {
     expect(decide([])).toEqual({
       kind: "skip",
       reason: "no file-level delta was reported, so the change cannot be classified",
+    });
+  });
+
+  test("refuses when the comparison is at the API file cap and may be truncated", () => {
+    const many = Array.from({ length: COMPARE_FILE_LIMIT }, (_unused, index) => file(`docs/page-${index}.md`));
+    expect(decide(many)).toEqual({
+      kind: "skip",
+      reason: `the comparison reports ${COMPARE_FILE_LIMIT} files, at the API cap of ${COMPARE_FILE_LIMIT}, so the delta may be truncated`,
+    });
+  });
+
+  test("carries a large-but-sub-cap documentation follow-up", () => {
+    const many = Array.from({ length: COMPARE_FILE_LIMIT - 1 }, (_unused, index) => file(`docs/page-${index}.md`));
+    expect(decide(many)).toEqual({ kind: "carry-forward", rule: "documentation" });
+  });
+
+  test("carries a rename that stays within documentation on both sides", () => {
+    expect(decide([renamed("docs/old-guide.md", "docs/new-guide.md")])).toEqual({
+      kind: "carry-forward",
+      rule: "documentation",
+    });
+  });
+
+  test("refuses a rename that moves production source onto a docs path", () => {
+    expect(decide([renamed("packages/run-relay/src/store.ts", "docs/store.md")])).toEqual({
+      kind: "skip",
+      reason: "docs/store.md is neither ordinary documentation nor a test",
+    });
+  });
+
+  test("refuses a rename that moves production source onto a test path", () => {
+    expect(decide([renamed("packages/run-relay/src/store.ts", "packages/run-relay/src/store.test.ts")])).toEqual({
+      kind: "skip",
+      reason: "packages/run-relay/src/store.test.ts is neither ordinary documentation nor a test",
+    });
+  });
+
+  test("refuses a rename that lacks its origin path", () => {
+    expect(decide([{ filename: "docs/new-guide.md", status: "renamed", additions: 1, deletions: 1 }])).toEqual({
+      kind: "skip",
+      reason: "docs/new-guide.md is neither ordinary documentation nor a test",
     });
   });
 

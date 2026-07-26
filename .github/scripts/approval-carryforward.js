@@ -16,12 +16,38 @@ export function isTestPath(path) {
 }
 
 /**
+ * The GitHub compare API returns at most this many files; larger comparisons are
+ * silently truncated, so a delta at or above the cap cannot be classified safely.
+ */
+export const COMPARE_FILE_LIMIT = 300;
+
+/**
  * @typedef {object} ChangedFile
  * @property {string} filename
  * @property {string} status GitHub compare status, e.g. "added", "modified", "removed", "renamed"
  * @property {number} additions
  * @property {number} deletions
+ * @property {string} [previousFilename] present when status is "renamed"
  */
+
+/**
+ * Every path a change touches: the current path, plus the origin path of a
+ * rename. A rename must satisfy the rule on both sides — otherwise moving
+ * `store.ts` to `store.test.ts` would classify production code as a test.
+ *
+ * @param {ChangedFile} file
+ * @param {(path: string) => boolean} isEligiblePath
+ */
+function everyTouchedPath(file, isEligiblePath) {
+  if (file.status === "renamed" && !file.previousFilename) {
+    return false;
+  }
+
+  return (
+    isEligiblePath(file.filename) &&
+    (file.previousFilename === undefined || isEligiblePath(file.previousFilename))
+  );
+}
 
 /**
  * @typedef {object} CarryForwardInput
@@ -58,15 +84,22 @@ export function decideApprovalCarryForward(input) {
   if (changedFiles.length === 0) {
     return { kind: "skip", reason: "no file-level delta was reported, so the change cannot be classified" };
   }
+  if (changedFiles.length >= COMPARE_FILE_LIMIT) {
+    return {
+      kind: "skip",
+      reason: `the comparison reports ${changedFiles.length} files, at the API cap of ${COMPARE_FILE_LIMIT}, so the delta may be truncated`,
+    };
+  }
 
   const ineligible = changedFiles.find(
-    (file) => !isOrdinaryDocumentationPath(file.filename) && !isTestPath(file.filename),
+    (file) =>
+      !everyTouchedPath(file, isOrdinaryDocumentationPath) && !everyTouchedPath(file, isTestPath),
   );
   if (ineligible !== undefined) {
     return { kind: "skip", reason: `${ineligible.filename} is neither ordinary documentation nor a test` };
   }
 
-  if (changedFiles.every((file) => isOrdinaryDocumentationPath(file.filename))) {
+  if (changedFiles.every((file) => everyTouchedPath(file, isOrdinaryDocumentationPath))) {
     return { kind: "carry-forward", rule: "documentation" };
   }
 
