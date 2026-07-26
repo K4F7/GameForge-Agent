@@ -341,17 +341,22 @@ describe("UiTestController", () => {
     expect(finalized).toMatchObject({ status: "failed" });
   });
 
-  it("converts a stopping lifecycle write failure into a finalized failed result", async () => {
-    const sessionId = "stopping-evidence-failure"; let finalized: HarnessResult | undefined;
+  it("observes and holds a headed stopping lifecycle failure before cleanup", async () => {
+    const sessionId = "stopping-evidence-failure"; let finalized: HarnessResult | undefined; const events: string[] = [];
     const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
-    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() {} };
-    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() {} };
-    const evidence = { async recordSession() {}, async recordLifecycle(event: { phase: string }) { if (event.phase === "stopping") throw new Error("stopping evidence unavailable"); }, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize(result: HarnessResult) { finalized = result; } };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() { events.push("observer:close"); } };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() { events.push("gui:close"); } };
+    let stoppingFailed = false;
+    const evidence = { async recordSession() {}, async recordLifecycle(event: { phase: string }) { events.push(`lifecycle:${event.phase}`); if (event.phase === "stopping" && !stoppingFailed) { stoppingFailed = true; throw new Error("stopping evidence unavailable"); } }, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize(result: HarnessResult) { finalized = result; } };
     const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, runStatus: "completed", capturedAt: new Date().toISOString() }; } }, evidence },
-      { sessionId, mode: "headless", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, activityPollMs: 1, inactivityTimeoutMs: 100 });
+      { sessionId, mode: "headed/watch", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, failureHoldMs: 10, activityPollMs: 1, inactivityTimeoutMs: 100, onFailureObserved(message) { events.push(`observed:${message}`); } });
 
     await expect(controller.run({ name: "stopping-evidence-failure", steps: [] })).resolves.toMatchObject({ status: "failed", failure: "stopping evidence unavailable" });
     expect(finalized).toMatchObject({ status: "failed", failure: "stopping evidence unavailable" });
+    expect(events).toContain("observed:stopping evidence unavailable");
+    expect(events).toContain("lifecycle:observing");
+    expect(events.indexOf("observed:stopping evidence unavailable")).toBeLessThan(events.indexOf("gui:close"));
+    expect(events.indexOf("lifecycle:observing")).toBeLessThan(events.indexOf("observer:close"));
   });
 
   it("reports evidence finalization failure alongside an existing scenario failure", async () => {

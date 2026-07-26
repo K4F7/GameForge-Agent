@@ -179,6 +179,7 @@ export class UiTestController {
     } catch (error) {
       failure ??= error;
     }
+    if (failure !== undefined) await observeFailure(failure);
     const cleanup = await Promise.allSettled([
       guiLaunched ? withTimeout(this.drivers.gui.close(), shutdownTimeoutMs, "GUI cleanup") : Promise.resolve(),
       observerOpened ? withTimeout(this.drivers.tuiObserver.close(), shutdownTimeoutMs, "TUI observer cleanup") : Promise.resolve(),

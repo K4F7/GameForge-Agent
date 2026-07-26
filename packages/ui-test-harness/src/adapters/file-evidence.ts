@@ -3,6 +3,7 @@ import { appendFile, lstat, mkdir, open, readdir, readFile, unlink, writeFile } 
 import type { FileHandle } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
+import { mcpToolAuditSchema, type McpToolAudit } from "@gameforge/contracts";
 import type {
   ActivitySample, AuthoritySnapshot, EvidenceSink, GuiSnapshot, HarnessPhase, HarnessResult,
   HarnessSession, TuiObserverSnapshot, TuiOutputFrame, TuiSnapshot,
@@ -16,6 +17,15 @@ const MAX_MCP_AUDIT_TOTAL_BYTES = 8 * 1024 * 1024;
 const LOCK_STALE_AFTER_MS = 10 * 60 * 1000;
 const LOCK_METADATA_MAX_BYTES = 4 * 1024;
 const appendQueues = new Map<string, Promise<void>>();
+const ACCEPTANCE_READ_ONLY_TOOLS = new Set([
+  "get_gameforge_capabilities",
+  "get_douyin_devtool_runtime_status",
+  "get_douyin_mini_game_cli_status",
+  "get_mcp_audit_summary",
+  "replay_game_run",
+  "list_game_tasks",
+  "get_game_task",
+]);
 
 type EvidenceLockMetadata = {
   version: 1;
@@ -32,6 +42,7 @@ export class FileEvidenceSink implements EvidenceSink {
   #lockPromise: Promise<OwnedEvidenceLock> | undefined;
   #finalizePromise: Promise<void> | undefined;
   #activeRecords = 0;
+  #session: HarnessSession | undefined;
   readonly #recordDrainWaiters = new Set<() => void>();
   constructor(readonly sessionRoot: string) {}
 
@@ -40,6 +51,7 @@ export class FileEvidenceSink implements EvidenceSink {
       await this.#ensureLock();
       await mkdir(path.join(this.sessionRoot, "gui"), { recursive: true });
       await writeJson(path.join(this.sessionRoot, "metadata.json"), { ...session, evidenceVersion: 1 });
+      this.#session = session;
     });
   }
   async recordLifecycle(event: { sessionId: string; phase: HarnessPhase; at: string; detail?: string }): Promise<void> {
@@ -95,7 +107,8 @@ export class FileEvidenceSink implements EvidenceSink {
     await this.#waitForRecords();
     const lock = await this.#ensureLock();
     try {
-      await this.#consolidateMcpAudit();
+      const audits = await this.#consolidateMcpAudit();
+      if (result.status === "completed" && this.#session?.tier === "acceptance") this.#validateAcceptanceAudit(audits, this.#session);
       beforeCommit?.();
       await writeJson(path.join(this.sessionRoot, "result.json"), result);
     } finally {
@@ -151,10 +164,10 @@ export class FileEvidenceSink implements EvidenceSink {
     await appendFile(path.join(this.sessionRoot, "lifecycle.ndjson"), `${JSON.stringify({ phase: "running", at: new Date().toISOString(), detail: `evidence-truncated:${file}:${limitBytes}` })}\n`, "utf8");
   }
 
-  async #consolidateMcpAudit(): Promise<void> {
+  async #consolidateMcpAudit(): Promise<McpToolAudit[]> {
     const directory = path.join(this.sessionRoot, "mcp-audit");
     const names = await readdir(directory).catch(() => []);
-    const records = []; let totalBytes = 0;
+    const records = []; const audits: McpToolAudit[] = []; let totalBytes = 0;
     for (const name of names.sort().slice(0, MAX_MCP_AUDIT_FILES)) {
       const data = await readFile(path.join(directory, name)).catch(() => undefined);
       if (data === undefined) continue;
@@ -164,10 +177,26 @@ export class FileEvidenceSink implements EvidenceSink {
       const truncated = data.byteLength > limit;
       const content = data.subarray(0, limit).toString("utf8"); totalBytes += Buffer.byteLength(content);
       records.push({ file: name, content: redact(content), ...(truncated ? { truncated: true } : {}) });
+      if (!truncated) {
+        try {
+          const parsed = mcpToolAuditSchema.safeParse(JSON.parse(content) as unknown);
+          if (parsed.success) audits.push(parsed.data);
+        } catch { /* Invalid external records remain visible in consolidated evidence but cannot satisfy the gate. */ }
+      }
       if (truncated) await this.#recordTruncation(`mcp-audit/${name}`, limit);
     }
     if (names.length > MAX_MCP_AUDIT_FILES) await this.#recordTruncation("mcp-audit.json:file-count", MAX_MCP_AUDIT_FILES);
     await writeJson(path.join(this.sessionRoot, "mcp-audit.json"), records);
+    return audits;
+  }
+
+  #validateAcceptanceAudit(audits: readonly McpToolAudit[], session: HarnessSession): void {
+    if (session.taskId === undefined || session.runId === undefined) throw new Error("Completed acceptance Evidence is missing its Task/Run identity.");
+    const bound = audits.filter((audit) => audit.context?.taskId === session.taskId && audit.context?.runId === session.runId);
+    if (bound.length === 0) throw new Error("Completed acceptance requires a bound MCP audit for its Task and Run.");
+    if (bound.some((audit) => audit.truncated)) throw new Error("A truncated MCP audit cannot prove acceptance.");
+    const hasReadOnlyCall = bound.some((audit) => audit.calls.some((call) => call.outcome === "success" && ACCEPTANCE_READ_ONLY_TOOLS.has(call.tool)));
+    if (!hasReadOnlyCall) throw new Error("Completed acceptance requires a successful deterministic read-only MCP call.");
   }
 }
 

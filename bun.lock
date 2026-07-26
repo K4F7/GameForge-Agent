@@ -214,6 +214,7 @@
       "name": "@gameforge/ui-test-harness",
       "version": "0.1.0",
       "dependencies": {
+        "@gameforge/contracts": "workspace:*",
         "@gameforge/run-relay": "workspace:*",
         "@opencode-ai/sdk": "1.18.3",
         "@xterm/headless": "6.0.0",
