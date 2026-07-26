@@ -13,8 +13,9 @@ Git commit、GitHub PR、required checks、review 和 GitHub 原生 auto-merge �
 5. `GameForge PR Reviewer` 审查当前 Head SHA。只有 `PR Gate` 成功且没有阻断项时才提交 `APPROVE`。
 6. Reviewer 提交 `REQUEST_CHANGES` 后，`GameForge PR Comment Fixer` 自动修复、验证并 push。最多自动修复两轮；之后仍有阻断项则停止并保留未解决线程。
 7. 每次 push 都使旧批准失效，并重新执行 CI 和 Reviewer。
-8. `GameForge Auto Merge Gate` 核对当前 SHA 的 `PR Gate`、Reviewer approval、零未解决线程、同仓库分支和受保护目标分支，然后通过 GraphQL 启用 GitHub 原生 squash auto-merge。
-9. GitHub 仅在保护规则持续满足时完成 squash merge。Gate 不直接 merge，也不绕过保护规则。
+8. 批准结转（approval carry-forward）是第 7 条的唯一例外：当前 head 无批准时，Auto Merge Gate 比较 Reviewer 最近一次真实批准的 SHA 与当前 head，若其间增量可被确定性证明为平凡——每个路径（含重命名前后两侧）要么是普通文档、要么是测试文件，无测试文件删除、测试行删除不超过新增、比较结果未被 API 截断——则以独立标记对当前 head 重新签发该批准。结转锚点永远取自 Reviewer 亲自产出的批准而非上一次结转，Reviewer 更新的 `REQUEST_CHANGES` 或维护者手动撤销的批准都会阻止结转；`PR Gate` 仍须对当前 head 通过。任何不满足条件的增量按第 7 条重新执行完整 Reviewer。
+9. `GameForge Auto Merge Gate` 核对当前 SHA 的 `PR Gate`、Reviewer approval、零未解决线程、同仓库分支和受保护目标分支，然后通过 GraphQL 启用 GitHub 原生 squash auto-merge。
+10. GitHub 仅在保护规则持续满足时完成 squash merge。Gate 不直接 merge，也不绕过保护规则。
 
 PR 转为 Ready 即表示授权进入自动合并流程，不需要 `auto-merge` 或 `auto-fix-review` 标签，也不需要手工运行 `gh pr merge`。
 
