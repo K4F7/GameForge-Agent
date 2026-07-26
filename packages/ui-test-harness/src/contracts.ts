@@ -178,6 +178,8 @@ export type HarnessOptions = {
   tuiObserverViewport: { width: number; height: number };
   viewport: { width: number; height: number };
   observationHoldMs: number;
+  /** Headed only: how long failed windows stay on screen before teardown. */
+  failureHoldMs?: number;
   activityPollMs: number;
   inactivityTimeoutMs: number;
   shutdownTimeoutMs?: number;

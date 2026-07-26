@@ -79,6 +79,7 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
     tuiObserverViewport: { width: 1280, height: 800 },
     viewport: { width: 1440, height: 900 },
     observationHoldMs: options.mode === "headed/watch" ? options.observationHoldMs : 0,
+    failureHoldMs: options.mode === "headed/watch" ? options.failureHoldMs : 0,
     activityPollMs: 2_000,
     inactivityTimeoutMs: options.inactivityTimeoutMs,
   });
@@ -95,7 +96,7 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
 function parseArguments(args: string[]): {
   experiment: string; relayUrl: string; taskPrompt: string; agentId: string; projectsRoot: string;
   inactivityTimeoutMs: number; totalTimeoutMs: number; mode: "headed/watch" | "headless";
-  openChamberUrl: string; browserChannel?: string; observationHoldMs: number;
+  openChamberUrl: string; browserChannel?: string; observationHoldMs: number; failureHoldMs: number;
   sessionId?: string; taskId?: string; runId?: string; projectId?: string;
   codeartsServerUrl?: string; codeartsSession?: string;
 } {
@@ -124,6 +125,7 @@ function parseArguments(args: string[]): {
     openChamberUrl: value("--openchamber-url", process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() ?? "http://127.0.0.1:5173/"),
     ...(browserChannel === undefined ? {} : { browserChannel }),
     observationHoldMs: positiveInteger(value("--observation-hold-ms", "10000")),
+    failureHoldMs: positiveInteger(value("--failure-hold-ms", "30000")),
     ...(sessionId === undefined ? {} : { sessionId: safeEvidenceSegment(sessionId, "--session-id") }),
     ...(codeartsServerUrl === undefined ? {} : {
       codeartsServerUrl: safeCodeArtsServerUrl(codeartsServerUrl),

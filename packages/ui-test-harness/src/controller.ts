@@ -18,6 +18,11 @@ import { compareActivity, inactiveForMs } from "./watchdog.js";
 
 const MAX_GUI_WAIT_TIMEOUT_MS = 900_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+/**
+ * Headed failures stay on screen longer than headed successes: a success only
+ * needs a glance to confirm, a failure has to be read.
+ */
+const DEFAULT_FAILURE_HOLD_MS = 30_000;
 const MAX_PENDING_TUI_OUTPUT_FRAMES = 1_024;
 
 export type HarnessDrivers = {
@@ -107,6 +112,13 @@ export class UiTestController {
     } catch (error) {
       failure = error;
       if (guiLaunched) { await this.captureGui(session, "failed").catch(() => undefined); failureCaptured = true; }
+      const failureHoldMs = this.options.failureHoldMs ?? DEFAULT_FAILURE_HOLD_MS;
+      // Only worth holding once the windows are actually on screen; a startup
+      // failure has nothing for the operator to look at.
+      if (guiLaunched && this.options.mode === "headed/watch" && failureHoldMs > 0) {
+        await this.recordLifecycle(session, "observing").catch(() => undefined);
+        await delay(failureHoldMs);
+      }
     }
 
     try { await withTimeout(outputQueue, shutdownTimeoutMs, "TUI output drain"); }
