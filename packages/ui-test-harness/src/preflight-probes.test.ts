@@ -3,7 +3,7 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { probeBrowser, probeCodeArts, probeHttp, probeRunDependencies } from "./preflight-probes.js";
+import { browserProbeLaunchOptions, probeBrowser, probeCodeArts, probeHttp, probeRunDependencies } from "./preflight-probes.js";
 
 const servers: Server[] = [];
 const roots: string[] = [];
@@ -13,6 +13,9 @@ afterEach(async () => {
 });
 
 describe("probeBrowser", () => {
+  it("uses a visible browser probe for headed harness tiers", () => {
+    expect(browserProbeLaunchOptions({ headed: true, channel: "chrome" })).toMatchObject({ headless: false, channel: "chrome" });
+  });
   it("reports an unavailable configured browser channel before a run starts", async () => {
     const result = await probeBrowser({ channel: "gameforge-browser-does-not-exist" });
 
@@ -100,6 +103,7 @@ describe("probeCodeArts", () => {
     const probes = await probeRunDependencies({
       relayUrl,
       openChamberUrl,
+      browserChannel: "gameforge-browser-does-not-exist",
       codeArtsAttach: { serverUrl: unavailableAttachUrl, sessionId: "ses_missing" },
     });
 
@@ -128,6 +132,7 @@ describe("probeCodeArts", () => {
     const probes = await probeRunDependencies({
       relayUrl,
       openChamberUrl,
+      browserChannel: "gameforge-browser-does-not-exist",
       codeArtsAttach: { serverUrl: relayUrl, sessionId: "ses_expected" },
     });
 

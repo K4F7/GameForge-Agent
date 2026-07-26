@@ -16,6 +16,7 @@ const MAX_MCP_AUDIT_FILE_BYTES = 256 * 1024;
 const MAX_MCP_AUDIT_TOTAL_BYTES = 8 * 1024 * 1024;
 const LOCK_STALE_AFTER_MS = 10 * 60 * 1000;
 const LOCK_METADATA_MAX_BYTES = 4 * 1024;
+const MCP_AUDIT_SETTLE_TIMEOUT_MS = 2_000;
 const appendQueues = new Map<string, Promise<void>>();
 const ACCEPTANCE_READ_ONLY_TOOLS = new Set([
   "get_gameforge_capabilities",
@@ -107,8 +108,11 @@ export class FileEvidenceSink implements EvidenceSink {
     await this.#waitForRecords();
     const lock = await this.#ensureLock();
     try {
-      const audits = await this.#consolidateMcpAudit();
-      if (result.status === "completed" && this.#session?.tier === "acceptance") this.#validateAcceptanceAudit(audits, this.#session);
+      if (result.status === "completed" && this.#session?.tier === "acceptance") {
+        await this.#waitForAcceptanceAudit(this.#session);
+      } else {
+        await this.#consolidateMcpAudit();
+      }
       beforeCommit?.();
       await writeJson(path.join(this.sessionRoot, "result.json"), result);
     } finally {
@@ -192,18 +196,32 @@ export class FileEvidenceSink implements EvidenceSink {
 
   #validateAcceptanceAudit(audits: readonly McpToolAudit[], session: HarnessSession): void {
     if (session.taskId === undefined || session.runId === undefined) throw new Error("Completed acceptance Evidence is missing its Task/Run identity.");
-    const bound = audits.filter((audit) => audit.context?.taskId === session.taskId && audit.context?.runId === session.runId);
+    const invocationStartedAt = Date.parse(session.startedAt);
+    const bound = audits.filter((audit) => audit.context?.taskId === session.taskId && audit.context?.runId === session.runId
+      && Date.parse(audit.context?.boundAt ?? "") >= invocationStartedAt);
     if (bound.length === 0) throw new Error("Completed acceptance requires a bound MCP audit for its Task and Run.");
     if (bound.some((audit) => audit.truncated)) throw new Error("A truncated MCP audit cannot prove acceptance.");
     const hasReadOnly = bound.some((audit) => audit.calls.some((call) => call.outcome === "success" && ACCEPTANCE_READ_ONLY_TOOLS.has(call.tool)));
     if (!hasReadOnly) throw new Error("Completed acceptance requires a successful deterministic read-only MCP call.");
     const hasRequiredSequence = bound.some((audit) => {
       const successful = audit.calls.filter((call) => call.outcome === "success");
-      return successful.some((readOnly) => ACCEPTANCE_READ_ONLY_TOOLS.has(readOnly.tool)
+      return successful.some((readOnly) => Date.parse(readOnly.startedAt) >= invocationStartedAt && ACCEPTANCE_READ_ONLY_TOOLS.has(readOnly.tool)
         && successful.some((call) => call.tool === "bind_mcp_audit_context" && call.sequence < readOnly.sequence)
-        && successful.some((call) => call.tool === "complete_game_run" && call.sequence > readOnly.sequence));
+        && successful.some((call) => call.tool === "complete_game_run" && call.sequence > readOnly.sequence && Date.parse(call.startedAt) >= invocationStartedAt));
     });
     if (!hasRequiredSequence) throw new Error("Completed acceptance requires the successful MCP call sequence bind, read-only, complete.");
+  }
+
+  async #waitForAcceptanceAudit(session: HarnessSession): Promise<void> {
+    const deadline = Date.now() + MCP_AUDIT_SETTLE_TIMEOUT_MS;
+    let lastError: unknown;
+    do {
+      const audits = await this.#consolidateMcpAudit();
+      try { this.#validateAcceptanceAudit(audits, session); return; }
+      catch (error) { lastError = error; }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    } while (Date.now() < deadline);
+    throw lastError;
   }
 }
 

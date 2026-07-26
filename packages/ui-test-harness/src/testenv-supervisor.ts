@@ -1,5 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
+import { combineStartupAndRollbackFailure } from "./startup-rollback.js";
 
 /**
  * Owns the resident test environment: credential-free loopback services that
@@ -39,7 +40,7 @@ export class TestEnvSupervisor {
   #stopRequested = false;
   #downPromise: Promise<void> | undefined;
 
-  constructor(private readonly specs: readonly ManagedServiceSpec[]) {}
+  constructor(private readonly specs: readonly ManagedServiceSpec[], private readonly options?: { externalShutdownRequested?: () => Promise<boolean> }) {}
 
   managedPids(): number[] {
     return this.#services
@@ -74,7 +75,8 @@ export class TestEnvSupervisor {
         await this.#waitUntilReady(spec, child);
       }
     } catch (error) {
-      await this.#stopAll();
+      try { await this.#stopAll(); }
+      catch (cleanupError) { throw combineStartupAndRollbackFailure(error, cleanupError); }
       throw error;
     }
   }
@@ -115,8 +117,9 @@ export class TestEnvSupervisor {
     if (services.length > 1) await delay(500);
     const exited = services.filter(({ child }) => child.exitCode !== null || child.signalCode !== null);
     const survivors = services.filter(({ child }) => child.exitCode === null && child.signalCode === null);
+    const shutdownWasRequested = this.#stopRequested || await this.options?.externalShutdownRequested?.() === true;
     await this.down();
-    if (exited.length > 0 && survivors.length > 0) {
+    if (exited.length > 0 && !shutdownWasRequested) {
       throw new Error(`${exited.map(({ spec }) => spec.name).join(", ")} exited unexpectedly; the remaining resident services were stopped.`);
     }
   }

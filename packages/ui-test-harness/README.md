@@ -25,8 +25,10 @@ $env:GAMEFORGE_CODEARTS_SESSION="ses_..."
 bun run testenv:up  # 绑定外部 CodeArts server 后常驻；Ctrl+C 停止
 bun run testenv:down        # 从任意终端停止上述两个端口上的 node/bun 监听进程；其他进程只报告不杀
 bun run testenv:readiness   # 环境就绪检查（有头）：真启动 CodeArts 等到 TUI 就绪，不提交任务
-$sessionId="acceptance-20260727-01" # 必须在启动 CodeArts server 前确定，并用于 GAMEFORGE_MCP_AUDIT_DIR
-bun run testenv:acceptance -- --session-id $sessionId  # 真实验收（有头）：复用上述外部 CodeArts server/session
+$experiment="acceptance-20260727-01"; $sessionId="acceptance-20260727-01" # 两者都必须在启动 CodeArts server 前确定
+$env:GAMEFORGE_MCP_AUDIT_DIR=(Join-Path (Resolve-Path .) ".gameforge-validation/$experiment/sessions/$sessionId/mcp-audit")
+# 使用上述环境启动 CodeArts server 后，再执行 testenv:up
+bun run testenv:acceptance -- --experiment $experiment --session-id $sessionId  # 真实验收（有头）：复用上述外部 CodeArts server/session
 ```
 
 环境就绪检查的通过只表示验收环境可用，**不构成**对产品行为的验收结论；两档在终端输出与 Evidence 中都标注档位。就绪检查创建的 Task 使用 `testenv-readiness-` projectId 前缀留在 Relay 中，可识别可清理。`testenv:up` 不代为构建 OpenChamber 生产产物（约 72 秒的一次性成本），缺失时给出确切构建命令。CodeArts 只被探测，不被接管：其 OAuth 与私有数据目录始终归用户所有。

@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { openChamberExternalEnvironment, registerOpenChamberDirectory, verifyOpenChamberDirectory } from "./openchamber-external.js";
+import { openChamberExternalEnvironment, openChamberSessionUrl, registerOpenChamberDirectory, verifyOpenChamberDirectory } from "./openchamber-external.js";
 
 let server: Server | undefined;
 afterEach(async () => {
@@ -15,6 +15,11 @@ describe("registerOpenChamberDirectory", () => {
       OPENCODE_HOST: "http://127.0.0.1:4097",
       OPENCODE_SKIP_START: "true",
     });
+  });
+
+  it("selects the expected CodeArts session through OpenChamber's embedded-session URL", () => {
+    expect(openChamberSessionUrl("http://127.0.0.1:43163/", "ses_expected", "D:/work/GameForge-Agent"))
+      .toBe("http://127.0.0.1:43163/?ocPanel=session-chat&surface=desktop&sessionId=ses_expected&directory=D%3A%2Fwork%2FGameForge-Agent");
   });
 
   it("registers and verifies the project through OpenChamber's public API", async () => {

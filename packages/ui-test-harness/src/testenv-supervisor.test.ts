@@ -223,15 +223,29 @@ describe("TestEnvSupervisor", () => {
 
   it("settles foreground residency after an external stop removes a managed listener", async () => {
     const port = await freePort();
-    const supervisor = new TestEnvSupervisor([await fixtureService("external-down-fixture", port)]);
+    let externalShutdownRequested = false;
+    const supervisor = new TestEnvSupervisor([await fixtureService("external-down-fixture", port)], { externalShutdownRequested: async () => externalShutdownRequested });
     cleanups.push(() => supervisor.down().catch(() => undefined));
 
     await supervisor.up();
     const residency = (supervisor as TestEnvSupervisor & { waitUntilStopped(): Promise<void> }).waitUntilStopped();
+    externalShutdownRequested = true;
     await stopPortListeners(port, { allowImages: /^(node|bun)(\.exe)?$/i });
 
     await expect(residency).resolves.toBeUndefined();
     expect(supervisor.managedPids()).toEqual([]);
+  }, SUPERVISOR_TEST_TIMEOUT_MS);
+
+  it.skipIf(process.platform !== "win32")("reports simultaneous unrequested resident exits as a failure", async () => {
+    const firstPort = await freePort(); const secondPort = await freePort();
+    const supervisor = new TestEnvSupervisor([await fixtureService("first-crashed", firstPort), await fixtureService("second-crashed", secondPort)]);
+    cleanups.push(() => supervisor.down().catch(() => undefined));
+    await supervisor.up();
+    const pids = supervisor.managedPids();
+    const residency = supervisor.waitUntilStopped();
+    await Promise.all(pids.map((pid) => new Promise<void>((resolve) => execFile("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { windowsHide: true }, () => resolve()))));
+
+    await expect(residency).rejects.toThrow(/exited unexpectedly/);
   }, SUPERVISOR_TEST_TIMEOUT_MS);
 
   it.skipIf(process.platform !== "win32")("reports a single resident-service crash instead of a clean shutdown", async () => {

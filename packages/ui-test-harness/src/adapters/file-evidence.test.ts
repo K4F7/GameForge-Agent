@@ -33,6 +33,7 @@ describe("FileEvidenceSink", () => {
     { name: "wrong context", audit: { truncated: false, taskId: "task-11111111-1111-1111-1111-111111111111", runId: "run-evidence", tool: "get_game_task" }, message: "bound MCP audit" },
     { name: "no read-only call", audit: { truncated: false, taskId: "task-00000000-0000-0000-0000-000000000000", runId: "run-evidence", tool: "complete_game_run" }, message: "read-only MCP call" },
     { name: "wrong call order", audit: { truncated: false, taskId: "task-00000000-0000-0000-0000-000000000000", runId: "run-evidence", tool: "get_game_task", wrongOrder: true }, message: "call sequence" },
+    { name: "stale", audit: { truncated: false, taskId: "task-00000000-0000-0000-0000-000000000000", runId: "run-evidence", tool: "get_game_task", stale: true }, message: "bound MCP audit" },
   ])("rejects $name audit evidence for a completed acceptance", async ({ audit, message }) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
     const sink = new FileEvidenceSink(root);
@@ -40,8 +41,8 @@ describe("FileEvidenceSink", () => {
     await sink.recordSession(session);
     await mkdir(path.join(root, "mcp-audit"));
     if (audit !== undefined) await writeFile(path.join(root, "mcp-audit", "session.json"), JSON.stringify({
-      schemaVersion: 1, sessionId: "00000000-0000-4000-8000-000000000000", startedAt: session.startedAt, truncated: audit.truncated,
-      context: { taskId: audit.taskId, runId: audit.runId, boundAt: session.startedAt },
+      schemaVersion: 1, sessionId: "00000000-0000-4000-8000-000000000000", startedAt: audit.stale === true ? "2026-07-22T00:00:00.000Z" : session.startedAt, truncated: audit.truncated,
+      context: { taskId: audit.taskId, runId: audit.runId, boundAt: audit.stale === true ? "2026-07-22T00:00:00.000Z" : session.startedAt },
       calls: (audit.wrongOrder === true
         ? ["complete_game_run", audit.tool, "bind_mcp_audit_context"]
         : ["bind_mcp_audit_context", audit.tool, "complete_game_run"])
@@ -51,6 +52,19 @@ describe("FileEvidenceSink", () => {
 
     await expect(sink.finalize(result)).rejects.toThrow(message);
     await expect(readFile(path.join(root, "result.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("waits for the external producer to persist complete_game_run", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
+    const sink = new FileEvidenceSink(root);
+    const session: HarnessSession = { sessionId: "audit-settle", taskId: "task-00000000-0000-0000-0000-000000000000", runId: "run-evidence", startedAt: new Date().toISOString(), mode: "headed/watch", tier: "acceptance" };
+    await sink.recordSession(session); await mkdir(path.join(root, "mcp-audit"));
+    const auditPath = path.join(root, "mcp-audit", "session.json");
+    const writeAudit = (tools: string[]) => writeFile(auditPath, JSON.stringify({ schemaVersion: 1, sessionId: "00000000-0000-4000-8000-000000000000", startedAt: session.startedAt, truncated: false, context: { taskId: session.taskId, runId: session.runId, boundAt: session.startedAt }, calls: tools.map((tool, index) => ({ sequence: index + 1, tool, startedAt: session.startedAt, durationMs: 1, outcome: "success" })) }), "utf8");
+    await writeAudit(["bind_mcp_audit_context", "get_game_task"]);
+    setTimeout(() => { void writeAudit(["bind_mcp_audit_context", "get_game_task", "complete_game_run"]); }, 100);
+
+    await expect(sink.finalize({ status: "completed", scenario: "acceptance", startedAt: session.startedAt, finishedAt: session.startedAt })).resolves.toBeUndefined();
   });
 
   it("redacts credentials from consolidated MCP audit evidence", async () => {

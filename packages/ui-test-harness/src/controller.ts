@@ -119,6 +119,7 @@ export class UiTestController {
           }
         });
       });
+      await this.options.releaseBootstrapTuiOutput?.();
       tuiStarted = true;
       const tui = await this.drivers.tui.start({ session, ...this.options.terminal });
       this.assertTuiSession(session, tui.sessionId);

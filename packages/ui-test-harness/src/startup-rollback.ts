@@ -2,9 +2,13 @@ export async function rollbackStartupFailure(primary: unknown, cleanup: () => Pr
   try {
     await cleanup();
   } catch (secondary) {
-    const primaryMessage = primary instanceof Error ? primary.message : String(primary);
-    const secondaryMessage = secondary instanceof Error ? secondary.message : String(secondary);
-    throw new Error(`${primaryMessage}; Test environment rollback failed: ${secondaryMessage}`, { cause: primary });
+    throw combineStartupAndRollbackFailure(primary, secondary);
   }
   throw primary;
+}
+
+export function combineStartupAndRollbackFailure(primary: unknown, secondary: unknown): Error {
+  const primaryMessage = primary instanceof Error ? primary.message : String(primary);
+  const secondaryMessage = secondary instanceof Error ? secondary.message : String(secondary);
+  return new Error(`${primaryMessage}; Test environment rollback failed: ${secondaryMessage}`, { cause: primary });
 }

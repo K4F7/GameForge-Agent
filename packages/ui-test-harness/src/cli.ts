@@ -13,7 +13,7 @@ import { safeCodeArtsServerUrl, safeEvidenceSegment, safeOpenChamberUrl, safeRel
 import type { CodeArtsTuiDriver, HarnessResult } from "./contracts.js";
 import { UiTestController } from "./controller.js";
 import { diagnose, renderDiagnosisMarkdown, renderDiagnosisTerminal } from "./diagnosis.js";
-import { verifyOpenChamberDirectory } from "./openchamber-external.js";
+import { openChamberSessionUrl, verifyOpenChamberDirectory } from "./openchamber-external.js";
 import { evaluatePreflight } from "./preflight.js";
 import { probeRunDependencies } from "./preflight-probes.js";
 import { correlateAfterCodeArtsReady, reuseStartedCodeArtsDriver } from "./codearts-readiness.js";
@@ -39,6 +39,7 @@ const sessionRoot = path.join(repoRoot, ".gameforge-validation", options.experim
 const bootstrapSession = { sessionId, startedAt: new Date().toISOString(), mode: options.mode, tier: options.tier } as const;
 process.stderr.write(`${tierBanner(options.tier)}\n`);
 let preparedTui: CodeArtsTuiDriver | undefined;
+let releaseBootstrapTuiOutput: (() => Promise<void>) | undefined;
 
 const prepared = await prepareHarnessSession({
   sessionRoot,
@@ -57,6 +58,7 @@ const prepared = await prepareHarnessSession({
       relayUrl: options.relayUrl,
       openChamberUrl: options.openChamberUrl,
       ...(options.browserChannel === undefined ? {} : { browserChannel: options.browserChannel }),
+      headed: options.mode === "headed/watch",
       ...(options.codeartsServerUrl === undefined ? {} : {
         codeArtsAttach: { serverUrl: options.codeartsServerUrl, sessionId: options.codeartsSession! },
       }),
@@ -75,6 +77,7 @@ const prepared = await prepareHarnessSession({
       session: bootstrapSession,
       terminal: { columns: 120, rows: 36 },
       keepRunningOnSuccess: true,
+      transferOutputSubscription: (release) => { releaseBootstrapTuiOutput = release; },
       correlate: async () => {
         const created = options.taskId === undefined
           ? await relay.createTask({ runId, projectId, language: "zh-CN", prompt: options.taskPrompt })
@@ -123,10 +126,11 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
     tui, authority, evidence,
     projectFingerprint: () => projectFingerprint(path.join(options.projectsRoot, projectId)),
     tuiObserver: new XtermTuiObserverDriver(),
-    gui: new PlaywrightOpenChamberDriver({ sessionRoot, baseUrl: options.openChamberUrl, ...(options.browserChannel === undefined ? {} : { browserChannel: options.browserChannel }) }),
+    gui: new PlaywrightOpenChamberDriver({ sessionRoot, baseUrl: openChamberSessionUrl(options.openChamberUrl, options.codeartsSession!, repoRoot), ...(options.browserChannel === undefined ? {} : { browserChannel: options.browserChannel }) }),
   }, {
     sessionId,
     startedAt: bootstrapSession.startedAt,
+    ...(releaseBootstrapTuiOutput === undefined ? {} : { releaseBootstrapTuiOutput }),
     mode: options.mode,
     tier: options.tier,
     taskId: task.taskId, runId, projectId,

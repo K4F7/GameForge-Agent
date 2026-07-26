@@ -11,6 +11,7 @@ export async function correlateAfterCodeArtsReady<T>(options: {
   session: HarnessSession;
   terminal: { columns: number; rows: number };
   keepRunningOnSuccess?: boolean;
+  transferOutputSubscription?: (release: () => Promise<void>) => void;
   correlate: () => Promise<T>;
 }): Promise<T> {
   let outputQueue = Promise.resolve();
@@ -31,9 +32,18 @@ export async function correlateAfterCodeArtsReady<T>(options: {
   } catch (error) {
     failure = error;
   } finally {
-    unsubscribe();
     await outputQueue;
     if (outputFailure !== undefined) failure = combineFailure(failure, "TUI output evidence failed", outputFailure);
+    const transferOutput = failure === undefined && options.keepRunningOnSuccess === true && options.transferOutputSubscription !== undefined;
+    if (transferOutput) {
+      options.transferOutputSubscription!(async () => {
+        unsubscribe();
+        await outputQueue;
+        if (outputFailure !== undefined) throw combineFailure(undefined, "TUI output evidence failed", outputFailure);
+      });
+    } else {
+      unsubscribe();
+    }
     if (started && !(failure === undefined && options.keepRunningOnSuccess === true)) {
       try { await options.tui.stop(failure === undefined ? "completed" : "failed"); }
       catch (error) { failure = combineFailure(failure, "TUI cleanup failed", error); }

@@ -5,6 +5,16 @@ export function openChamberExternalEnvironment(codeArtsServerUrl: string): Reado
   };
 }
 
+/** Uses OpenChamber's fixed-version embedded-session public URL contract. */
+export function openChamberSessionUrl(openChamberUrl: string, codeArtsSessionId: string, projectDirectory: string): string {
+  const url = new URL(openChamberUrl);
+  url.searchParams.set("ocPanel", "session-chat");
+  url.searchParams.set("surface", "desktop");
+  url.searchParams.set("sessionId", codeArtsSessionId);
+  url.searchParams.set("directory", projectDirectory);
+  return url.href;
+}
+
 export async function registerOpenChamberDirectory(
   openChamberUrl: string,
   projectDirectory: string,

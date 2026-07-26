@@ -67,15 +67,19 @@ export async function probeFile(dependency: PreflightProbe["dependency"], target
   }
 }
 
-export async function probeBrowser(options?: { channel?: string }): Promise<PreflightProbe> {
+export async function probeBrowser(options?: { channel?: string; headed?: boolean }): Promise<PreflightProbe> {
   const channel = options?.channel?.trim() || "chrome";
   try {
-    const browser = await chromium.launch(browserLaunchOptions(true, channel));
+    const browser = await chromium.launch(browserProbeLaunchOptions(options));
     await browser.close();
     return { dependency: "browser", available: true, detail: `${channel} launched successfully` };
   } catch (error) {
     return { dependency: "browser", available: false, detail: `${channel} could not launch: ${errorMessage(error)}` };
   }
+}
+
+export function browserProbeLaunchOptions(options?: { channel?: string; headed?: boolean }): ReturnType<typeof browserLaunchOptions> {
+  return browserLaunchOptions(options?.headed !== true, options?.channel?.trim() || "chrome");
 }
 
 /**
@@ -129,13 +133,14 @@ export async function probeRunDependencies(options: {
   relayUrl: string;
   openChamberUrl: string;
   browserChannel?: string;
+  headed?: boolean;
   codeArtsAttach?: { serverUrl: string; sessionId: string };
 }): Promise<PreflightProbe[]> {
   const probes: Promise<PreflightProbe>[] = [
     probeHttp("authority-relay", new URL("tasks?limit=1", options.relayUrl).href),
     probeHttp("openchamber-service", options.openChamberUrl),
     probeCodeArts(),
-    probeBrowser({ ...(options.browserChannel === undefined ? {} : { channel: options.browserChannel }) }),
+    probeBrowser({ ...(options.browserChannel === undefined ? {} : { channel: options.browserChannel }), ...(options.headed === undefined ? {} : { headed: options.headed }) }),
   ];
   if (options.codeArtsAttach !== undefined) {
     probes.push(probeHttp(

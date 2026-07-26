@@ -186,6 +186,8 @@ export type HarnessOptions = {
   sessionId?: string;
   /** Includes bootstrap and preflight time in the recorded run budget. */
   startedAt?: string;
+  /** Atomically hands the bootstrap Evidence subscription to the controller. */
+  releaseBootstrapTuiOutput?: () => Promise<void>;
   mode: HarnessMode;
   /** Propagated into the recorded evidence session so metadata.json keeps the tier. */
   tier?: HarnessTier;

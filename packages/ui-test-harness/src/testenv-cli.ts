@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { execFile } from "node:child_process";
-import { access } from "node:fs/promises";
+import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { loopbackHttpPort, safeCodeArtsServerUrl, safeRelayUrl } from "./cli-safety.js";
@@ -22,6 +22,7 @@ import { rollbackStartupFailure } from "./startup-rollback.js";
  * CodeArts is never managed here - only probed.
  */
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
+const shutdownMarker = path.join(repoRoot, ".gameforge-validation", "testenv-shutdown-requested");
 
 const execFileAsync = promisify(execFile);
 
@@ -87,7 +88,8 @@ async function runUp(): Promise<void> {
       env: openChamberExternalEnvironment(codeArtsServerUrl),
     },
   ];
-  const supervisor = new TestEnvSupervisor(services);
+  await rm(shutdownMarker, { force: true });
+  const supervisor = new TestEnvSupervisor(services, { externalShutdownRequested: () => access(shutdownMarker).then(() => true, () => false) });
   const shutdown = (): void => {
     process.stdout.write("\n正在停止常驻测试环境……\n");
     supervisor.down().then(() => process.exit(0), (error) => { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exit(1); });
@@ -134,6 +136,8 @@ function upCodeArtsAttach(args: readonly string[]): { serverUrl?: string; sessio
  * This fails closed for unrelated Node/Bun development servers.
  */
 async function runDown(): Promise<void> {
+  await mkdir(path.dirname(shutdownMarker), { recursive: true });
+  await writeFile(shutdownMarker, `${new Date().toISOString()}\n`, "utf8");
   const relayPort = loopbackHttpPort(relayUrl, "Relay URL");
   const openChamberPort = loopbackHttpPort(openChamberUrl, "OpenChamber URL");
   let failures = 0;
