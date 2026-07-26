@@ -16,17 +16,25 @@
 
 ## 当前可运行边界
 
-先启动 Relay 与固定版本的原版 OpenChamber。本机验证版本为 OpenChamber `1.16.3`（MIT）。浏览器验收应使用 `bun run build:web` 后的生产服务；HMR 只用于开发，不作为长期诊断门禁依据。随后运行：
+常驻测试环境与两个运行档位由根目录 `testenv:*` 命令管理（术语见本包 `CONTEXT.md`，档位边界见 `docs/decisions/0005-testenv-readiness-tier.md`）：
 
 ```powershell
-bun run --filter @gameforge/ui-test-harness run:headless
-# 或显式可见的两个独立窗口
-bun run --filter @gameforge/ui-test-harness run:headed
+bun run testenv:status      # 预检四项依赖，逐项给出补救命令；不启动任何进程，通常一秒内完成
+bun run testenv:up          # 前台常驻 Authority Relay 与 OpenChamber 生产服务；Ctrl+C 停止
+bun run testenv:down        # 从任意终端停止上述两个端口上的 node/bun 监听进程；其他进程只报告不杀
+bun run testenv:readiness   # 环境就绪检查（有头）：真启动 CodeArts 等到 TUI 就绪，不提交任务
+bun run testenv:acceptance  # 真实验收（有头）：既有最小闭环，门禁不变
 ```
+
+环境就绪检查的通过只表示验收环境可用，**不构成**对产品行为的验收结论；两档在终端输出与 Evidence 中都标注档位。就绪检查创建的 Task 使用 `testenv-readiness-` projectId 前缀留在 Relay 中，可识别可清理。`testenv:up` 不代为构建 OpenChamber 生产产物（约 72 秒的一次性成本），缺失时给出确切构建命令。CodeArts 只被探测，不被接管：其 OAuth 与私有数据目录始终归用户所有。
+
+本机验证版本为 OpenChamber `1.16.3`（MIT）。浏览器验收应使用 `bun run build:web` 后的生产服务；HMR 只用于开发，不作为长期诊断门禁依据。`run:headless` / `run:headed` 仍等价于 headless / headed 的真实验收档。
 
 默认 OpenChamber URL 为 `http://127.0.0.1:43163/`（原版生产构建的固定端口，是唯一经过完整验收的端口；Vite dev 端口不作为验收目标），可用 `--openchamber-url` 或 `GAMEFORGE_OPENCHAMBER_URL` 覆盖，但只接受无凭据 loopback HTTP(S)。该命令使用真实 Bun ConPTY 启动 `bun run codearts`，连接既有 Relay，并将 VT、生命周期、活动样本、Authority 快照、MCP Audit、浏览器诊断和 PNG 截图写入 `.gameforge-validation/`。默认活动超时 120 秒，总门禁 15 分钟；headed 成功后默认保留窗口 10 秒，失败后默认保留 30 秒（`--failure-hold-ms` 可调，上限 300 秒），便于阅读屏幕上的错误后再收窗；headless 不保留。
 
-运行前可执行 `bun run testenv:status` 做预检：它探测 Authority Relay、原版 OpenChamber 生产服务、其生产构建产物与 CodeArts 客户端，对每个不可用项给出该敲的补救命令。它不启动任何进程，通常在一秒内完成。
+两档都在 Evidence 会话创建之后、Task 关联之前执行运行预检：依赖缺失表现为具名失败并落盘，不是连接超时堆栈。任何失败都会在终端打印分类、最可能原因、值得打开的证据文件与建议的下一条命令（有头模式下先于收窗打印），并写入该 session 的 `diagnosis.md`——它是对既有证据的导航，不是新的事实来源。每次运行还打印分阶段耗时（`tui.start`、`observer.open`、`gui.launch`、`steps`、`teardown`，随 `result.json` 持久化），总耗时超过软预算（默认 60 秒，`--soft-budget-ms` 可调）只警告不失败。
+
+观察窗接入时会先回放 ConPTY 驱动的有界 VT 历史（单条合成帧，保持原 sessionId 与单调 sequence），因此 CodeArts 启动与欢迎界面从第一帧起可见；Evidence 订阅不请求回放，VT 日志不产生重复帧。
 
 需要把预先启动的外部 Observer 与 Harness Evidence 关联时，可显式传入 `--session-id <id>`。单次权威执行使用该 ID 关联 Evidence。
 
