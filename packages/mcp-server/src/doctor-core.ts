@@ -70,7 +70,7 @@ export function sanitizeDoctorDiagnostic(
 
 export function expectedConditionalTools(snapshot: {
   providers: { spec: { ready: boolean }; image: { ready: boolean }; tts: { ready: boolean }; sound: { ready: boolean }; music: { ready: boolean } };
-  engineering: { assetStore: boolean; generator: boolean; douyinBuild: boolean; douyinCliProbe: boolean; wechatBuild: boolean; gameplayVerifier: boolean; verifier: boolean; preview: boolean; runRelay: boolean; taskInbox: boolean };
+  engineering: { assetStore: boolean; generator: boolean; verifier: boolean; preview: boolean; runRelay: boolean; taskInbox: boolean };
 }): ReadonlyArray<string> {
   return [
     ...(snapshot.providers.spec.ready ? ["draft_game_spec"] : []),

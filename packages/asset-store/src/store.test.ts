@@ -33,31 +33,6 @@ async function fixture(lockRuntime?: AssetLockRuntime): Promise<{ root: string; 
   return { root, store: new ProjectAssetStore({ projectsRoot: root, ...(lockRuntime === undefined ? {} : { lockRuntime }) }) };
 }
 
-async function retiredMiniGameFixture(target: "douyin-mini-game" | "wechat-mini-game"): Promise<{ root: string; store: ProjectAssetStore }> {
-  const temporary = await mkdtemp(path.join(tmpdir(), "gameforge-douyin-assets-test-"));
-  roots.push(temporary);
-  const root = path.join(temporary, "projects");
-  const project = path.join(root, "safety-sprint");
-  await mkdir(path.join(project, ".gameforge"), { recursive: true });
-  await mkdir(path.join(project, "assets", "resources", "assets"), { recursive: true });
-  await writeFile(path.join(project, ".gameforge", "manifest.json"), `${JSON.stringify({
-    schemaVersion: "1.0",
-    generatorVersion: "0.13.0",
-    projectId: "safety-sprint",
-    target,
-    specSha256: "a".repeat(64),
-    planSha256: "b".repeat(64),
-    files: [{ path: "game-spec.json", bytes: 1, sha256: "c".repeat(64) }],
-  }, null, 2)}\n`);
-  await writeFile(path.join(project, "assets", "resources", "assets", "manifest.json"), `${JSON.stringify({
-    schemaVersion: "1.0",
-    projectId: "safety-sprint",
-    revision: 0,
-    assets: [],
-  }, null, 2)}\n`);
-  return { root, store: new ProjectAssetStore({ projectsRoot: root }) };
-}
-
 const imageRequest = () => ({
   projectId: "safety-sprint",
   bytes: jpeg,
@@ -188,13 +163,6 @@ afterEach(async () => {
 });
 
 describe("ProjectAssetStore", () => {
-  it("rejects asset imports for retired mini-game resource layouts", async () => {
-    for (const target of ["douyin-mini-game", "wechat-mini-game"] as const) {
-      const { store } = await retiredMiniGameFixture(target);
-      await expect(store.store(imageRequest())).rejects.toThrow("only supports Web projects");
-    }
-  });
-
   it("stores verified media and atomically advances the runtime manifest", async () => {
     const { root, store } = await fixture();
     const hash = createHash("sha256").update(jpeg).digest("hex");

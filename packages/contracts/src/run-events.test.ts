@@ -260,37 +260,10 @@ describe("run event contracts", () => {
     }).success).toBe(false);
   });
 
-  it("accepts a secret-free Douyin build summary and rejects host paths or oversized packages", () => {
-    const event = {
-      type: "build.ready",
-      runId: "run-1",
-      sequence: 4,
-      emittedAt,
-      projectId: "safety-sprint",
-      target: "douyin-mini-game",
-      cliVersion: "3.4.0",
-      passed: true,
-      fileCount: 16,
-      totalBytes: 1_108_438,
-      mainPackageBytes: 1_108_438,
-      subpackages: [],
-      deviceOrientation: "portrait",
-      capabilities: { network: false, login: false, share: false, ads: false, payments: false },
-      allowedNetworkHosts: [],
-      assetManifestRevision: 2,
-      assetCount: 2,
-      artifactSha256: "d".repeat(64),
-      remoteOperations: "forbidden",
-      devToolVerification: "not-run",
-      stdoutTruncated: false,
-      stderrTruncated: false,
-    } as const;
-    expect(runEventSchema.safeParse(event).success).toBe(true);
-    expect(runEventSchema.safeParse({ ...event, target: "wechat-mini-game" }).success).toBe(true);
-    expect(runEventSchema.safeParse({ ...event, outputPath: "D:/generated/safety-sprint/release" }).success).toBe(false);
-    expect(runEventSchema.safeParse({ ...event, remoteOperations: "allowed" }).success).toBe(false);
-    expect(runEventSchema.safeParse({ ...event, devToolVerification: "passed" }).success).toBe(false);
-    expect(runEventSchema.safeParse({ ...event, mainPackageBytes: 4 * 1024 * 1024 + 1 }).success).toBe(false);
+  it("does not expose retired platform-only event variants", () => {
+    const eventTypes = runEventSchema.options.map((schema) => schema.shape.type.value);
+    expect(eventTypes).not.toContain("build.ready");
+    expect(eventTypes).not.toContain("gameplay.verified");
   });
 
   it("accepts a secret-free MCP capability snapshot event", () => {
@@ -307,30 +280,9 @@ describe("run event contracts", () => {
           sound: { provider: "freesound", ready: false },
           music: { provider: "minimax", ready: false },
         },
-        engineering: { assetStore: true, generator: true, douyinBuild: true, wechatBuild: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+        engineering: { assetStore: true, generator: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
       },
     }).success).toBe(true);
   });
 
-  it("keeps Laya logic proof distinct from browser and platform evidence", () => {
-    const event = {
-      type: "gameplay.verified",
-      runId: "run-1",
-      sequence: 5,
-      emittedAt,
-      projectId: "wechat-arcade",
-      target: "wechat-mini-game",
-      genre: "arcade",
-      passed: true,
-      scenarios: [
-        { name: "genre-win", outcome: "won", actions: 2 },
-        { name: "timeout-loss", outcome: "lost", actions: 1 },
-      ],
-      durationMs: 50,
-      templateSha256: "a".repeat(64),
-    } as const;
-    expect(runEventSchema.safeParse(event).success).toBe(true);
-    expect(runEventSchema.safeParse({ ...event, evidencePath: ".gameforge/verification/fake.png" }).success).toBe(false);
-    expect(runEventSchema.safeParse({ ...event, target: "web" }).success).toBe(false);
-  });
 });

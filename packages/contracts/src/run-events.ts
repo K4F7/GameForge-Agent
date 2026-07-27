@@ -9,13 +9,6 @@ import { runtimeAssetEntrySchema } from "./runtime-assets.js";
 import { assetIdSchema } from "./assets.js";
 import { signedJobHandleSchema } from "./providers.js";
 import { gameforgeCapabilitySnapshotSchema } from "./capabilities.js";
-import { douyinPlatformPolicySchema } from "./douyin-platform.js";
-import { wechatPlatformPolicySchema } from "./wechat-platform.js";
-import {
-  miniGameArtifactSha256Schema,
-  miniGameDevToolVerificationSchema,
-  miniGameRemoteOperationsSchema,
-} from "./minigame-handoff.js";
 
 export const runIdSchema = z
   .string()
@@ -70,22 +63,6 @@ const verificationDiagnosticCountsSchema = z.strictObject({
   consoleErrors: z.number().int().min(0).max(100),
   pageErrors: z.number().int().min(0).max(100),
   failedRequests: z.number().int().min(0).max(100),
-});
-
-const miniGameBuildSubpackageSchema = z.strictObject({
-  root: z.string().trim().min(1).max(200).regex(/^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/),
-  bytes: z.number().int().nonnegative().max(20 * 1024 * 1024),
-});
-
-const miniGameBuildCapabilitiesSchema = z.union([
-  douyinPlatformPolicySchema.shape.capabilities,
-  wechatPlatformPolicySchema.shape.capabilities,
-]);
-
-const gameplayScenarioSchema = z.strictObject({
-  name: z.enum(["genre-win", "timeout-loss"]),
-  outcome: z.enum(["won", "lost"]),
-  actions: z.number().int().positive().max(100),
 });
 
 const mcpAuditCallSummarySchema = z.strictObject({
@@ -149,28 +126,6 @@ export const runEventSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({
     ...eventBaseShape,
-    type: z.literal("build.ready"),
-    projectId: projectIdSchema,
-    target: z.enum(["douyin-mini-game", "wechat-mini-game"]),
-    cliVersion: z.literal("3.4.0"),
-    passed: z.literal(true),
-    fileCount: z.number().int().positive().max(100_000),
-    totalBytes: z.number().int().nonnegative().max(20 * 1024 * 1024),
-    mainPackageBytes: z.number().int().nonnegative().max(4 * 1024 * 1024),
-    subpackages: z.array(miniGameBuildSubpackageSchema).max(100),
-    deviceOrientation: z.enum(["portrait", "landscape"]),
-    capabilities: miniGameBuildCapabilitiesSchema,
-    allowedNetworkHosts: douyinPlatformPolicySchema.shape.allowedNetworkHosts,
-    assetManifestRevision: z.number().int().nonnegative(),
-    assetCount: z.number().int().nonnegative().max(1_000),
-    artifactSha256: miniGameArtifactSha256Schema.optional(),
-    remoteOperations: miniGameRemoteOperationsSchema.optional(),
-    devToolVerification: miniGameDevToolVerificationSchema.optional(),
-    stdoutTruncated: z.boolean(),
-    stderrTruncated: z.boolean(),
-  }),
-  z.strictObject({
-    ...eventBaseShape,
     type: z.literal("verification.ready"),
     projectId: projectIdSchema,
     passed: z.boolean(),
@@ -186,20 +141,6 @@ export const runEventSchema = z.discriminatedUnion("type", [
     diagnostics: verificationDiagnosticCountsSchema,
     actionsExecuted: z.number().int().min(0).max(100),
     durationMs: z.number().int().nonnegative().max(300_000),
-  }),
-  z.strictObject({
-    ...eventBaseShape,
-    type: z.literal("gameplay.verified"),
-    projectId: projectIdSchema,
-    target: z.enum(["douyin-mini-game", "wechat-mini-game"]),
-    genre: gameSpecSchema.shape.genre,
-    passed: z.literal(true),
-    scenarios: z.tuple([
-      gameplayScenarioSchema.extend({ name: z.literal("genre-win"), outcome: z.literal("won") }),
-      gameplayScenarioSchema.extend({ name: z.literal("timeout-loss"), outcome: z.literal("lost") }),
-    ]),
-    durationMs: z.number().int().nonnegative().max(30_000),
-    templateSha256: z.string().regex(/^[a-f0-9]{64}$/),
   }),
   z.strictObject({
     ...eventBaseShape,

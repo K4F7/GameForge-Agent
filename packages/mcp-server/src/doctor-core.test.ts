@@ -66,7 +66,7 @@ describe("GameForge doctor core", () => {
         sound: { ready: true },
         music: { ready: true },
       },
-      engineering: { assetStore: true, generator: true, douyinBuild: true, douyinCliProbe: true, wechatBuild: true, gameplayVerifier: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+      engineering: { assetStore: true, generator: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
     })).toEqual([
       "claim_game_task",
       "complete_game_run",

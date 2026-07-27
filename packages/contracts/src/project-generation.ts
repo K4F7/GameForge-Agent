@@ -10,7 +10,7 @@ export const projectIdSchema = z
 
 export const projectGenerationModeSchema = z.enum(["dry-run", "apply"]);
 export const projectGenerationOperationSchema = z.enum(["create", "update"]);
-export const gamePlatformTargetSchema = z.enum(["web", "douyin-mini-game", "wechat-mini-game"]);
+export const gamePlatformTargetSchema = z.enum(["web"]);
 
 export const projectGenerationRequestSchema = z.strictObject({
   projectId: projectIdSchema,

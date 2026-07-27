@@ -61,9 +61,9 @@ describe("local CodeArts workflow boundary", () => {
     try {
       const request = {
         runId: "run-codearts-headless-create",
-        prompt: "制作一个可由 CodeArts CLI 无界面启动的抖音小游戏。",
+        prompt: "制作一个可由 CodeArts CLI 无界面启动的 Web 游戏。",
         language: "zh-CN" as const,
-        projectId: "headless-douyin-game",
+        projectId: "headless-web-game",
       };
       const created = createGameTaskResponseSchema.parse(await callJson(client, "create_game_task", request));
       const retried = createGameTaskResponseSchema.parse(await callJson(client, "create_game_task", request));

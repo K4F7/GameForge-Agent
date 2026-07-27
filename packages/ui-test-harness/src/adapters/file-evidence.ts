@@ -20,8 +20,6 @@ const MCP_AUDIT_SETTLE_TIMEOUT_MS = 2_000;
 const appendQueues = new Map<string, Promise<void>>();
 const ACCEPTANCE_READ_ONLY_TOOLS = new Set([
   "get_gameforge_capabilities",
-  "get_douyin_devtool_runtime_status",
-  "get_douyin_mini_game_cli_status",
   "get_mcp_audit_summary",
   "replay_game_run",
   "list_game_tasks",

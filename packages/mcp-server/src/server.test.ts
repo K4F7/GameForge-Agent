@@ -11,36 +11,6 @@ import path from "node:path";
 import { loadModelRoutingPolicy } from "./model-routing.js";
 
 describe("GameForge MCP server", () => {
-  it("does not advertise retired mini-game capabilities", async () => {
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const server = createServer();
-    const client = new Client({ name: "gameforge-minigame-capability-test", version: "1.0.0" });
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
-    try {
-      const capabilities = await client.callTool({ name: "get_gameforge_capabilities", arguments: {} });
-      if (!Array.isArray(capabilities.content) || capabilities.content[0]?.type !== "text") {
-        throw new Error("Expected capability snapshot text.");
-      }
-      expect(JSON.parse(capabilities.content[0].text)).toMatchObject({
-        engineering: {
-          douyinBuild: false,
-          douyinCliProbe: false,
-          wechatBuild: false,
-          gameplayVerifier: false,
-        },
-      });
-      expect((await client.listTools()).tools.map((tool) => tool.name)).not.toEqual(expect.arrayContaining([
-        "build_douyin_mini_game",
-        "build_wechat_mini_game",
-        "verify_minigame_gameplay",
-      ]));
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
   it("resolves a CodeArts-owned model route without invoking a model", async () => {
     const policy = await loadModelRoutingPolicy(
       path.resolve(import.meta.dirname, "../../../config/model-routing.example.json"),
@@ -294,9 +264,6 @@ describe("GameForge MCP server", () => {
       const tools = (await client.listTools()).tools;
       expect(tools.map((tool) => tool.name)).toContain("generate_game_project");
       const generationTool = tools.find((tool) => tool.name === "generate_game_project");
-      expect(generationTool?.description).not.toMatch(
-        /douyin|wechat|mini[-_]?game/i,
-      );
       expect(generationTool?.inputSchema).toMatchObject({
         properties: { target: { default: "web", const: "web" } },
       });

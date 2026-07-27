@@ -20,8 +20,24 @@ const retiredPublicEntrypoints = [
   "build_wechat_mini_game",
   "get_douyin_mini_game_cli_status",
 ];
+const activeSourceRoots = ["packages", "integrations", ".codeartsdoer/skills"];
+const policyFile = "packages/mcp-server/src/public-entrypoints.test.ts";
 
 describe("GameForge public discovery", () => {
+  it("keeps retired platform targets out of active code, tests, manifests, and skills", async () => {
+    const sourceFiles = (await Promise.all(activeSourceRoots.map((root) => listFiles(root)))).flat();
+    const candidates = ["package.json", "bun.lock", ...sourceFiles]
+      .filter((relativePath) => relativePath !== policyFile)
+      .filter((relativePath) => relativePath.endsWith(".ts") || relativePath.endsWith(".json") ||
+        relativePath.endsWith(".lock") || relativePath.endsWith("/SKILL.md"));
+    const violations: string[] = [];
+    for (const relativePath of candidates) {
+      const content = await readFile(path.join(repositoryRoot, relativePath), "utf8");
+      if (retiredTargetPattern.test(content)) violations.push(relativePath);
+    }
+    expect(violations).toEqual([]);
+  });
+
   it("presents a Web-only workflow through root commands and active CodeArts instructions", async () => {
     const manifest = JSON.parse(await readFile(path.join(repositoryRoot, "package.json"), "utf8")) as {
       scripts: Record<string, string>;
@@ -44,6 +60,7 @@ describe("GameForge public discovery", () => {
     expect(instructions).toMatch(/Phaser/);
     expect(instructions).toMatch(/Vite/);
     expect(instructions).not.toMatch(retiredTargetPattern);
+    expect(instructions).not.toContain("build.ready");
   });
 
   it("does not advertise withdrawn mini-game entry points in current user documentation", async () => {
@@ -94,3 +111,13 @@ describe("GameForge public discovery", () => {
     expect(lockfile).not.toMatch(/@gameforge\/minigame-validator|gameforge-douyin-devtool-extension|gameforge-douyin-cli-doctor|@types\/vscode/);
   });
 });
+
+async function listFiles(relativeRoot: string): Promise<string[]> {
+  const entries = await readdir(path.join(repositoryRoot, relativeRoot), { withFileTypes: true });
+  const files = await Promise.all(entries.map(async (entry) => {
+    const relativePath = path.posix.join(relativeRoot, entry.name);
+    if (entry.isDirectory() && ["dist", "node_modules", ".vite"].includes(entry.name)) return [];
+    return entry.isDirectory() ? await listFiles(relativePath) : [relativePath];
+  }));
+  return files.flat();
+}
