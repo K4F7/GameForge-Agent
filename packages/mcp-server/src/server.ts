@@ -312,7 +312,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       {
         title: "Generate a deterministic managed game project",
         description:
-          "Create or safely update a fixed, versioned Web Phaser, Douyin LayaAir, or WeChat LayaAir source project from a validated GameSpec. Defaults to create dry-run. Update apply requires the current plan hash returned by update dry-run and refuses modified managed files or target changes.",
+          "Create or safely update a fixed, versioned Web Phaser source project from a validated GameSpec. Defaults to create dry-run. Update apply requires the current plan hash returned by update dry-run and refuses modified managed files or target changes.",
         inputSchema: projectGenerationRequestSchema.shape,
       },
       async (request) => generateGameProjectTool(projectGenerator, request),

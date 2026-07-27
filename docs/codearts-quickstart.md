@@ -69,14 +69,11 @@ CodeArts项目级Skill位于：
 bun install --frozen-lockfile
 bun run build
 bun run doctor
-bun run doctor:douyin
 bun run doctor:browser
 bun run dev:local
 ```
 
-`doctor` 使用真实 MCP SDK stdio Client 启动构建后的 Node 服务，输出 JSON：`ok`、Node/Bun 版本、锁文件状态、已注册工具、无密钥 capability snapshot 和稳定问题码。它校验每个 ready 能力的条件工具；Task Inbox ready 时还调用一次有界、只读 `list_game_tasks({limit: 1})`，验证 Relay URL 可达。配置抖音小游戏 CLI probe 时，它只调用一次 `get_douyin_mini_game_cli_status`，后者以当前 Node 固定执行 `bin/tmg.js --version`。它只确认 `create_game_task` 已注册，不调用这个写入工具。基础无密钥环境下 Provider/engineering 的 `ready: false` 是预期结果；在 CodeArts 同一环境变量下重跑时，应与准备启用的工具一致。该命令不执行任何模型或媒体请求，也不登录、预览、上传、提审或发布。
-
-`doctor:douyin` 是独立的平台 CLI 策略诊断。未配置 `GAMEFORGE_DOUYIN_MINIGAME_CLI` 时会如实报告 optional probe 未启用且本地 Laya/validator 流程不受影响；配置后只接受绝对普通文件并要求 `tt-minigame-ide-cli` 2.1.1。小程序 `tt-ide-cli`/`tma` 0.1.33 会因版本与产品边界不符而拒绝。
+`doctor` 使用真实 MCP SDK stdio Client 启动构建后的 Node 服务，输出 JSON：`ok`、Node/Bun 版本、锁文件状态、已注册工具、无密钥 capability snapshot 和稳定问题码。它校验每个 ready 能力的条件工具；Task Inbox ready 时还调用一次有界、只读 `list_game_tasks({limit: 1})`，验证 Relay URL 可达。它只确认 `create_game_task` 已注册，不调用这个写入工具。基础无密钥环境下 Provider/engineering 的 `ready: false` 是预期结果；在 CodeArts 同一环境变量下重跑时，应与准备启用的工具一致。该命令不执行任何模型或媒体请求。
 
 `doctor:browser` 是独立的 Node/Chrome 启动探针，不打开项目页面，也不读取用户浏览器 profile。默认使用 Playwright `channel: chrome`；设置 `GAMEFORGE_CHROME_EXECUTABLE` 时先验证绝对路径可访问，再使用该可执行文件。成功后会关闭 browser，仅输出运行时、模式、耗时和脱敏错误。
 
@@ -87,7 +84,7 @@ $env:GAMEFORGE_RUN_RELAY_STATE_FILE="D:\GameForgeState\relay-state.json"
 bun run dev:local
 ```
 
-`dev:local` 使用 Bun 并行启动示例游戏、Run Relay 和持久 Douyin Bridge Host，不启动 GUI 或 stdio MCP。然后在 CodeArts IDE 中依次进入“设置 → MCP工具 → 配置MCP”，打开官方 `mcp_settings.json`。根据官方 `mcpServers` 通用模板添加以下配置；把两个示例绝对路径替换为本机路径，Windows JSON 路径中的反斜杠必须写成 `\\`：
+`dev:local` 使用 Bun 并行启动示例游戏和 Run Relay，不启动 GUI 或 stdio MCP。然后在 CodeArts IDE 中依次进入“设置 → MCP工具 → 配置MCP”，打开官方 `mcp_settings.json`。根据官方 `mcpServers` 通用模板添加以下配置；把两个示例绝对路径替换为本机路径，Windows JSON 路径中的反斜杠必须写成 `\\`：
 
 ```json
 {
@@ -99,9 +96,7 @@ bun run dev:local
       ],
       "env": {
         "GAMEFORGE_PROJECT_OUTPUT_ROOT": "D:\\GameForgeGenerated",
-        "GAMEFORGE_LAYAIR_CLI": "C:\\Users\\you\\.layaair\\layaair.cmd",
         "GAMEFORGE_RUN_RELAY_URL": "http://127.0.0.1:8787/",
-        "GAMEFORGE_DOUYIN_BRIDGE_MODE": "host",
         "GAMEFORGE_MCP_AUDIT_DIR": "D:\\GameForgeAudit"
       }
     }
@@ -109,23 +104,9 @@ bun run dev:local
 }
 ```
 
-`host` 模式让 CodeArts 的 stdio MCP 通过 `%TEMP%/gameforge-douyin-bridge-host.json` 中的本地随机端口和 token 访问持久 Bridge Host。该文件只用于本机进程认证，不纳入仓库；MCP 会话退出不会关闭 DevTool 连接。Bridge Host 在 controller、HTTP 监听或 rendezvous 写入任一启动阶段失败时，必须停止已分配资源并释放仍由当前进程持有的 host lock，不能让失败启动阻塞后续实例。未设置该变量时继续使用兼容的 `embedded` 模式，controller 生命周期仍跟随单个 MCP 进程。
-
-`GAMEFORGE_LAYAIR_CLI` 必须是固定 LayaAir 3.4.0 CLI 的绝对普通文件路径。官方 `dispatcher.js`、`layaair.cmd`、`layaair` 或 `Resources/cli-main.js` 入口只用于定位安装：Builder 核验 `versions.json`、`Resources/package.json` 与固定的 `Resources/cli-main.js` 后，以当前 Node、`shell: false` 和受限环境直接运行主入口，不执行 `.cmd` wrapper，也不继承用户 PATH 或凭据。与项目输出根同时配置后，MCP 同时注册 `build_douyin_mini_game` 与 `build_wechat_mini_game`，只对 target 匹配的托管 Manifest 分别执行一次固定 `bytedancegame` 或 `wxgame` 构建并离线校验；不接受任意命令/参数，不登录、预览、上传、提审或发布。CLI 缺失、版本不符、并发锁、超时、非零退出、路径/符号链接异常或包体校验失败都返回稳定错误。
-
-需要让 CodeArts 只读确认抖音小游戏平台 CLI 前置时，可另外设置：
-
-```text
-GAMEFORGE_DOUYIN_MINIGAME_CLI=<tt-minigame-ide-cli 2.1.1 包内 bin/tmg.js 的绝对路径>
-```
-
-启动器会核验该入口是绝对、已存在、非符号链接的普通文件；probe 还会核验相邻 `package.json` 的 name、version 与 bin 映射。MCP 只注册允许自动执行的 `get_douyin_mini_game_cli_status`，且内部固定参数为 `--version`。项目 `version` 子命令、登录、打开、`set-config`、`build-npm`、`preview` 和 `upload` 都不在工具面中；当前项目策略同时禁止提审和发布。未安装 `tmg` 不影响 GameForge 的 LayaAir 本地构建与静态校验。
-
 这里使用 Node 承载正式 MCP 和 Playwright Core；依赖安装、workspace 命令、检查和构建仍统一由 Bun 完成。官方配置要求 `command` 必填，`args` 和 `env` 可选，且所有环境变量值必须是字符串。保存后在“已安装”页签重启 `gameforge` MCP；官方文档明确指出修改环境变量后需要重启才能立即生效。
 
 OpenCode-compatible 启动器把客户端工作目录固定为仓库根，并只生成本地 MCP 官方字段 `type`、`command`、`environment`、`enabled`、`timeout`；CodeArts 26.6.2 会拒绝非标准 `cwd`。客户端 MCP timeout 固定为 180 秒，使有 120 秒内部硬界限的浏览器验收能够返回，同时工具自身仍负责更短的确定性超时。变量未设置时动态配置不注入 token 引用；显式设置为空白会在写配置前 fail-closed，非空 token 继续执行 32–512 字符校验。
-
-通过 `bun run codearts` 使用动态配置时，可在新终端显式设置 `GAMEFORGE_LAYAIR_CLI`。启动器只接受绝对、已存在、非符号链接的普通文件并将路径写入被忽略的临时配置；未设置时不猜测用户目录或 PATH，显式空白会直接拒绝。MCP 启动后仍会独立核验 CLI 版本精确为 3.4.0，并把官方 wrapper 解析到已核验的固定 `Resources/cli-main.js`，不经 shell 执行 wrapper。
 
 `GAMEFORGE_MCP_AUDIT_DIR` 默认关闭；配置绝对目录后，每次 MCP 启动会创建一个唯一 JSON 会话文件。文件只含工具名、顺序、时间、耗时和结果状态，不含调用参数或返回值。`bun run codearts`/`bun run opencode` 启动器会自动使用仓库忽略目录；手工配置时不要指向同步盘或公开目录。单次隔离实验也可改用未存在的绝对 `GAMEFORGE_MCP_AUDIT_FILE`，两者不能同时配置。
 

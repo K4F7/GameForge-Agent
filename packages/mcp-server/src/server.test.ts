@@ -430,7 +430,11 @@ describe("GameForge MCP server", () => {
     await client.connect(clientTransport);
 
     try {
-      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("generate_game_project");
+      const tools = (await client.listTools()).tools;
+      expect(tools.map((tool) => tool.name)).toContain("generate_game_project");
+      expect(tools.find((tool) => tool.name === "generate_game_project")?.description).not.toMatch(
+        /douyin|wechat|mini[-_]?game/i,
+      );
       const result = await client.callTool({
         name: "generate_game_project",
         arguments: {
