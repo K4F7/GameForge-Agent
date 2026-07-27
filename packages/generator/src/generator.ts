@@ -6,8 +6,6 @@ import {
   projectGenerationRequestSchema,
   projectGenerationResultSchema,
   projectIdSchema,
-  douyinPlatformPolicySchema,
-  wechatPlatformPolicySchema,
   type GameSpec,
   type GamePlatformTarget,
   type GeneratedProjectPlan,
@@ -22,7 +20,6 @@ import { hostname as systemHostname } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
-import { douyinRuntimeSource } from "./douyin-template.js";
 
 export const GAMEFORGE_GENERATOR_VERSION = "0.13.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
@@ -37,7 +34,6 @@ type UpdateInspection = {
 
 const PRESERVED_UPDATE_PATHS = new Set([
   "public/assets/manifest.json",
-  "assets/resources/assets/manifest.json",
 ]);
 const UPDATE_LOCK_STALE_AFTER_MS = 10 * 60 * 1000;
 const UPDATE_TRANSACTION_MAX_BYTES = 128 * 1024;
@@ -85,6 +81,9 @@ export class GameProjectGenerator {
 
   async execute(request: ProjectGenerationRequest): Promise<ProjectGenerationResult> {
     const input = projectGenerationRequestSchema.parse(request);
+    if (input.target !== "web") {
+      throw new Error("Game project generation only supports Web Phaser/Vite projects.");
+    }
     const generated = createGeneratedFiles(input.projectId, input.spec, input.target);
     const plan = generatedProjectPlanSchema.parse({
       generatorVersion: GAMEFORGE_GENERATOR_VERSION,
@@ -389,7 +388,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePla
   planSha256: string;
 } {
   const specContent = `${JSON.stringify(spec, null, 2)}\n`;
-  const baseFiles = (target === "web" ? [
+  const baseFiles = [
     file(".npmrc", "registry=https://registry.npmjs.org/\n"),
     file("game-spec.json", specContent),
     file("index.html", createIndexHtml(spec.locale)),
@@ -428,7 +427,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePla
       include: ["src", "vite.config.ts", "game-spec.json"],
     }, null, 2)}\n`),
     file("vite.config.ts", 'import { defineConfig } from "vite";\n\nexport default defineConfig({ base: "./", build: { manifest: true } });\n'),
-  ] : createLayaSourceFiles(projectId, specContent, target)).sort((left, right) => left.path.localeCompare(right.path));
+  ].sort((left, right) => left.path.localeCompare(right.path));
 
   const specSha256 = sha256(specContent);
   const planSha256 = sha256(JSON.stringify({
@@ -458,75 +457,6 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePla
     throw new Error("Generated project exceeds the maximum template size.");
   }
   return { files, specSha256, planSha256 };
-}
-
-function createLayaSourceFiles(
-  projectId: string,
-  specContent: string,
-  target: Exclude<GamePlatformTarget, "web">,
-): GeneratedFile[] {
-  const sceneUuid = "11111111-1111-4111-8111-111111111111";
-  const runtimeUuid = "22222222-2222-4222-8222-222222222222";
-  const platformPolicyInput = {
-    schemaVersion: "1.0",
-    target,
-    adapter: { engine: "layaair", version: "3.4.0" },
-    capabilities: { network: false, login: false, share: false, ads: false, payments: false },
-    allowedNetworkHosts: [],
-    remoteScripts: false,
-  };
-  const platformPolicy = target === "douyin-mini-game"
-    ? douyinPlatformPolicySchema.parse(platformPolicyInput)
-    : wechatPlatformPolicySchema.parse(platformPolicyInput);
-  return [
-    file(`${projectId}.laya`, '{\n  "version": "3.4.0"\n}\n'),
-    file("game-spec.json", specContent),
-    file("assets/resources/game-spec.json", specContent),
-    file("assets/resources/gameforge-platform.json", `${JSON.stringify(platformPolicy, null, 2)}\n`),
-    file("assets/resources/assets/manifest.json", `${JSON.stringify({
-      schemaVersion: "1.0",
-      projectId,
-      revision: 0,
-      assets: [],
-    }, null, 2)}\n`),
-    file("assets/Scene.ls", `${JSON.stringify({
-      "_$ver": 1,
-      "_$id": "gameforge-scene",
-      "_$type": "Scene",
-      "_$runtime": `res://${runtimeUuid}`,
-      left: 0,
-      right: 0,
-      top: 0,
-      bottom: 0,
-      name: "GameForgeScene",
-    }, null, 2)}\n`),
-    file("assets/Scene.ls.meta", `${JSON.stringify({ uuid: sceneUuid }, null, 2)}\n`),
-    file("settings/BuildSettings.json", `${JSON.stringify({
-      name: `GameForge-${projectId}`,
-      startupScene: `res://${sceneUuid}`,
-    }, null, 2)}\n`),
-    file("settings/PlayerSettings.json", `${JSON.stringify({
-      modules: { "laya.ui": false, "laya.d3": false },
-      addons: {},
-    }, null, 2)}\n`),
-    file("src/Main.ts", douyinRuntimeSource),
-    file("src/Main.ts.meta", `${JSON.stringify({ uuid: runtimeUuid }, null, 2)}\n`),
-    file("tsconfig.json", `${JSON.stringify({
-      compilerOptions: {
-        module: "es6",
-        target: "es6",
-        strict: true,
-        strictNullChecks: false,
-        noEmitHelpers: true,
-        sourceMap: false,
-        experimentalDecorators: true,
-        skipLibCheck: true,
-        moduleResolution: "node",
-        allowSyntheticDefaultImports: true,
-      },
-      include: ["./assets", "./src"],
-    }, null, 2)}\n`),
-  ];
 }
 
 function file(filePath: string, content: string): GeneratedFile {

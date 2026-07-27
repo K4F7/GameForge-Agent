@@ -81,9 +81,6 @@ import {
   type TaskRelayToolClient,
   type ProjectVerifier,
   type ProjectPreviewManager,
-  type DouyinProjectBuilder,
-  type WechatProjectBuilder,
-  type LayaGameplayVerifier,
 } from "./tools.js";
 import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditSummaryProvider } from "./tool-audit.js";
 
@@ -97,9 +94,6 @@ export type CreateServerOptions = {
   projectVerifier?: ProjectVerifier;
   projectPreviewManager?: ProjectPreviewManager;
   projectGenerator?: ProjectGenerator;
-  douyinProjectBuilder?: DouyinProjectBuilder;
-  wechatProjectBuilder?: WechatProjectBuilder;
-  layaGameplayVerifier?: LayaGameplayVerifier;
   runRelayClient?: RunRelayToolClient;
   taskRelayClient?: TaskRelayToolClient;
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
@@ -309,7 +303,10 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         title: "Generate a deterministic managed game project",
         description:
           "Create or safely update a fixed, versioned Web Phaser source project from a validated GameSpec. Defaults to create dry-run. Update apply requires the current plan hash returned by update dry-run and refuses modified managed files or target changes.",
-        inputSchema: projectGenerationRequestSchema.shape,
+        inputSchema: {
+          ...projectGenerationRequestSchema.shape,
+          target: z.literal("web").default("web"),
+        },
       },
       async (request) => generateGameProjectTool(projectGenerator, request),
     );
