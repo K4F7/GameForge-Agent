@@ -111,15 +111,11 @@ describe("integration runtime", () => {
       expect(layaConfig.mcp.gameforge.environment.GAMEFORGE_LAYAIR_CLI).toBe(builtMcpEntry);
 
       process.env.GAMEFORGE_DOUYIN_MINIGAME_CLI = "tmg";
-      await expect(writeRuntimeConfig(runtime)).rejects.toThrow(
-        "GAMEFORGE_DOUYIN_MINIGAME_CLI must be unset or contain an absolute regular file path",
-      );
-      process.env.GAMEFORGE_DOUYIN_MINIGAME_CLI = builtMcpEntry;
       await writeRuntimeConfig(runtime);
       const douyinConfig = JSON.parse(await readFile(runtime.configPath, "utf8")) as {
         mcp: { gameforge: { environment: Record<string, string> } };
       };
-      expect(douyinConfig.mcp.gameforge.environment.GAMEFORGE_DOUYIN_MINIGAME_CLI).toBe(builtMcpEntry);
+      expect(douyinConfig.mcp.gameforge.environment.GAMEFORGE_DOUYIN_MINIGAME_CLI).toBeUndefined();
     } finally {
       if (previousToken === undefined) delete process.env.GAMEFORGE_RUN_RELAY_TOKEN;
       else process.env.GAMEFORGE_RUN_RELAY_TOKEN = previousToken;

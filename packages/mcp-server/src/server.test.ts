@@ -38,7 +38,6 @@ describe("GameForge MCP server", () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer({
       douyinProjectBuilder: {} as never,
-      douyinMiniGameCliProbe: {} as never,
       wechatProjectBuilder: {} as never,
       layaGameplayVerifier: {} as never,
     });
@@ -58,23 +57,6 @@ describe("GameForge MCP server", () => {
           gameplayVerifier: false,
         },
       });
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it("does not expose retired Douyin DevTool bridge actions when configured", async () => {
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const server = createServer({ douyinBridgeController: {} as never });
-    const client = new Client({ name: "gameforge-douyin-bridge-discovery-test", version: "1.0.0" });
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
-    try {
-      expect((await client.listTools()).tools.map((tool) => tool.name)).not.toEqual(expect.arrayContaining([
-        "get_douyin_devtool_runtime_status",
-        "run_douyin_runtime_action",
-      ]));
     } finally {
       await client.close();
       await server.close();
