@@ -86,8 +86,11 @@ describe("GameForge public discovery", () => {
         }),
     );
 
-    expect(workspaceNames).not.toContain("gameforge-douyin-devtool-extension");
+    expect(workspaceNames).not.toEqual(expect.arrayContaining([
+      "@gameforge/minigame-validator",
+      "gameforge-douyin-devtool-extension",
+    ]));
     const lockfile = await readFile(path.join(repositoryRoot, "bun.lock"), "utf8");
-    expect(lockfile).not.toMatch(/gameforge-douyin-devtool-extension|gameforge-douyin-cli-doctor|@types\/vscode/);
+    expect(lockfile).not.toMatch(/@gameforge\/minigame-validator|gameforge-douyin-devtool-extension|gameforge-douyin-cli-doctor|@types\/vscode/);
   });
 });

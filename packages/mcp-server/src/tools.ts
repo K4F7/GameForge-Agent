@@ -44,11 +44,6 @@ import type {
   RunEvent,
 } from "@gameforge/contracts";
 import type { ZodType } from "zod";
-import type {
-  DouyinMiniGameBuildResult,
-  WechatMiniGameBuildResult,
-} from "@gameforge/minigame-validator";
-import type { LayaGameplayVerificationReport } from "@gameforge/generator";
 
 function validationResult(
   schema: ZodType,
@@ -101,117 +96,6 @@ export function validateAssetManifestTool(manifest: unknown): CallToolResult {
 
 export function getGameforgeCapabilitiesTool(snapshot: GameforgeCapabilitySnapshot): CallToolResult {
   return { content: [{ type: "text", text: JSON.stringify(snapshot, null, 2) }] };
-}
-
-export type DouyinProjectBuilder = {
-  build(projectId: string): Promise<DouyinMiniGameBuildResult>;
-};
-
-export type WechatProjectBuilder = {
-  build(projectId: string): Promise<WechatMiniGameBuildResult>;
-};
-
-export type LayaGameplayVerifier = {
-  verify(projectId: string): Promise<LayaGameplayVerificationReport>;
-};
-
-export async function verifyMiniGameGameplayTool(
-  verifier: LayaGameplayVerifier,
-  projectId: string,
-): Promise<CallToolResult> {
-  try {
-    const report = await verifier.verify(projectId);
-    const gameplayEvent: Omit<Extract<RunEvent, { type: "gameplay.verified" }>, "runId" | "sequence" | "emittedAt"> = {
-      type: "gameplay.verified",
-      projectId: report.projectId,
-      target: report.target,
-      genre: report.genre,
-      passed: true,
-      scenarios: [report.scenarios[0], report.scenarios[1]],
-      durationMs: report.durationMs,
-      templateSha256: report.templateSha256,
-    };
-    return { content: [{ type: "text", text: JSON.stringify({ report, gameplayEvent }, null, 2) }] };
-  } catch {
-    return {
-      isError: true,
-      content: [{ type: "text", text: JSON.stringify({ code: "minigame_gameplay_verification_failed", message: "Mini-game gameplay logic verification failed." }) }],
-    };
-  }
-}
-
-export async function buildDouyinMiniGameTool(
-  builder: DouyinProjectBuilder,
-  projectId: string,
-): Promise<CallToolResult> {
-  try {
-    const result = await builder.build(projectId);
-    const buildEvent: Omit<Extract<RunEvent, { type: "build.ready" }>, "runId" | "sequence" | "emittedAt"> = {
-      type: "build.ready",
-      projectId: result.projectId,
-      target: "douyin-mini-game",
-      cliVersion: result.cliVersion,
-      passed: true,
-      fileCount: result.validation.fileCount,
-      totalBytes: result.validation.totalBytes,
-      mainPackageBytes: result.validation.mainPackageBytes,
-      subpackages: [...result.validation.subpackages],
-      deviceOrientation: result.validation.deviceOrientation,
-      capabilities: result.validation.capabilities,
-      allowedNetworkHosts: [...result.validation.allowedNetworkHosts],
-      assetManifestRevision: result.validation.assetManifestRevision,
-      assetCount: result.validation.assetCount,
-      artifactSha256: result.handoff.aggregateSha256,
-      remoteOperations: result.handoff.remoteOperations,
-      devToolVerification: result.handoff.devToolVerification,
-      stdoutTruncated: result.stdoutTruncated,
-      stderrTruncated: result.stderrTruncated,
-    };
-    const { outputPath: _outputPath, ...safeResult } = result;
-    return { content: [{ type: "text", text: JSON.stringify({ ...safeResult, buildEvent }, null, 2) }] };
-  } catch {
-    return {
-      isError: true,
-      content: [{ type: "text", text: JSON.stringify({ code: "douyin_build_failed", message: "Douyin mini-game build failed." }) }],
-    };
-  }
-}
-
-export async function buildWechatMiniGameTool(
-  builder: WechatProjectBuilder,
-  projectId: string,
-): Promise<CallToolResult> {
-  try {
-    const result = await builder.build(projectId);
-    const buildEvent: Omit<Extract<RunEvent, { type: "build.ready" }>, "runId" | "sequence" | "emittedAt"> = {
-      type: "build.ready",
-      projectId: result.projectId,
-      target: "wechat-mini-game",
-      cliVersion: result.cliVersion,
-      passed: true,
-      fileCount: result.validation.fileCount,
-      totalBytes: result.validation.totalBytes,
-      mainPackageBytes: result.validation.mainPackageBytes,
-      subpackages: [...result.validation.subpackages],
-      deviceOrientation: result.validation.deviceOrientation,
-      capabilities: result.validation.capabilities,
-      allowedNetworkHosts: [...result.validation.allowedNetworkHosts],
-      assetManifestRevision: result.validation.assetManifestRevision,
-      assetCount: result.validation.assetCount,
-      artifactSha256: result.handoff.aggregateSha256,
-      remoteOperations: result.handoff.remoteOperations,
-      devToolVerification: result.handoff.devToolVerification,
-      stdoutTruncated: result.stdoutTruncated,
-      stderrTruncated: result.stderrTruncated,
-    };
-    const { outputPath: _outputPath, ...safeResult } = result;
-    return { content: [{ type: "text", text: JSON.stringify({ ...safeResult, buildEvent }, null, 2) }] };
-  } catch {
-    return {
-      isError: true,
-      content: [{ type: "text", text: JSON.stringify({ code: "wechat_build_failed", message: "WeChat mini-game build failed." }) }],
-    };
-  }
 }
 
 export async function searchSoundAssetTool(

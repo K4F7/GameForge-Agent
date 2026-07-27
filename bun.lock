@@ -124,7 +124,6 @@
         "@gameforge/contracts": "*",
         "@gameforge/game-verifier": "0.1.0",
         "@gameforge/generator": "0.1.0",
-        "@gameforge/minigame-validator": "0.1.0",
         "@gameforge/providers": "0.1.0",
         "@gameforge/run-relay": "0.1.0",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -133,23 +132,6 @@
       "devDependencies": {
         "@types/node": "22.20.1",
         "tsx": "4.20.6",
-        "typescript": "7.0.2",
-        "vitest": "4.1.10",
-      },
-    },
-    "packages/minigame-validator": {
-      "name": "@gameforge/minigame-validator",
-      "version": "0.1.0",
-      "bin": {
-        "gameforge-minigame-validate": "dist/cli.js",
-        "gameforge-minigame-handoff": "dist/handoff-cli.js",
-      },
-      "dependencies": {
-        "@gameforge/contracts": "0.1.0",
-        "zod": "4.4.3",
-      },
-      "devDependencies": {
-        "@types/node": "22.20.1",
         "typescript": "7.0.2",
         "vitest": "4.1.10",
       },
@@ -301,8 +283,6 @@
     "@gameforge/integrations": ["@gameforge/integrations@workspace:integrations"],
 
     "@gameforge/mcp-server": ["@gameforge/mcp-server@workspace:packages/mcp-server"],
-
-    "@gameforge/minigame-validator": ["@gameforge/minigame-validator@workspace:packages/minigame-validator"],
 
     "@gameforge/opencode-plugin": ["@gameforge/opencode-plugin@workspace:packages/opencode-plugin"],
 

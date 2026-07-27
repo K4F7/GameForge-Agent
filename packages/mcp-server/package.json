@@ -21,7 +21,6 @@
     "@gameforge/contracts": "*",
     "@gameforge/generator": "0.1.0",
     "@gameforge/game-verifier": "0.1.0",
-    "@gameforge/minigame-validator": "0.1.0",
     "@gameforge/providers": "0.1.0",
     "@gameforge/run-relay": "0.1.0",
     "@modelcontextprotocol/sdk": "1.29.0",

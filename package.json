@@ -12,7 +12,7 @@
     "integrations"
   ],
   "scripts": {
-    "build:foundation": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/generator build && bun run --filter @gameforge/providers build && bun run --filter @gameforge/asset-store build && bun run --filter @gameforge/run-relay build && bun run --filter @gameforge/game-verifier build && bun run --filter @gameforge/minigame-validator build",
+    "build:foundation": "bun run --filter @gameforge/contracts build && bun run --filter @gameforge/generator build && bun run --filter @gameforge/providers build && bun run --filter @gameforge/asset-store build && bun run --filter @gameforge/run-relay build && bun run --filter @gameforge/game-verifier build",
     "build": "bun run build:foundation && bun run --filter @gameforge/game build && bun run --filter @gameforge/benchmark build && bun run --filter @gameforge/bundle-budget build && bun run --filter @gameforge/opencode-plugin build && bun run --filter @gameforge/integrations build && bun run --filter @gameforge/mcp-server build && bun run --filter @gameforge/ui-test-harness build",
     "check": "bun run build:foundation && bun run --filter '*' check && bun run --filter @gameforge/ui-test-harness verify:dependencies",
     "test": "bun run build:foundation && bun run --filter @gameforge/mcp-server build && bun run --filter '*' test",

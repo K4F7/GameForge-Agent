@@ -68,96 +68,13 @@ describe("GameProjectGenerator", () => {
     expect(manifest.files).toHaveLength(result.plan.files.length - 1);
   });
 
-  it("creates a deterministic minimal LayaAir source project for the Douyin arcade target", async () => {
-    const { generator, root } = await createGenerator();
-    const first = await generator.execute({ projectId: "douyin-spike", spec, target: "douyin-mini-game" });
-    const second = await generator.execute({ projectId: "douyin-spike", spec, target: "douyin-mini-game" });
-    expect(first).toEqual(second);
-    expect(first.plan.target).toBe("douyin-mini-game");
-    expect(first.plan.files.map((entry) => entry.path)).toEqual(expect.arrayContaining([
-      "douyin-spike.laya", "assets/Scene.ls", "assets/resources/game-spec.json",
-      "assets/resources/gameforge-platform.json", "assets/resources/assets/manifest.json", "src/Main.ts",
-    ]));
-    expect(first.plan.files.map((entry) => entry.path)).not.toContain("index.html");
-    const applied = await generator.execute({ projectId: "douyin-spike", spec, target: "douyin-mini-game", mode: "apply" });
-    expect(applied.outputPath).toBe(await realpath(path.join(root, "douyin-spike")));
-    expect(JSON.parse(await readFile(path.join(root, "douyin-spike", "assets", "resources", "game-spec.json"), "utf8")))
-      .toEqual(spec);
-    expect(JSON.parse(await readFile(path.join(root, "douyin-spike", "assets", "resources", "gameforge-platform.json"), "utf8")))
-      .toMatchObject({
-        target: "douyin-mini-game",
-        capabilities: { network: false, login: false, share: false, ads: false, payments: false },
-        allowedNetworkHosts: [],
-        remoteScripts: false,
-      });
-    expect(JSON.parse(await readFile(path.join(root, "douyin-spike", "assets", "resources", "assets", "manifest.json"), "utf8")))
-      .toEqual({ schemaVersion: "1.0", projectId: "douyin-spike", revision: 0, assets: [] });
-    expect(await readFile(path.join(root, "douyin-spike", "src", "Main.ts"), "utf8"))
-      .toContain('Laya.loader.load("resources/game-spec.json"');
-    const runtime = await readFile(path.join(root, "douyin-spike", "src", "Main.ts"), "utf8");
-    expect(runtime).toContain("this.invulnerableUntilMs = now + 1000");
-    expect(runtime).toContain("const targetDurationSeconds = Number(spec.targetDurationSeconds)");
-    expect(runtime).toContain("Number.isFinite(targetDurationSeconds) && targetDurationSeconds > 0");
-    expect(runtime).toContain('Laya.loader.load("resources/assets/manifest.json"');
-    expect(runtime).toContain('return "resources/" + assetPath');
-    expect(runtime).toContain('this.drawRole(this.player, "player", 32, 32');
-    expect(runtime).toContain('this.drawRole(item, "collectible", 24, 24');
-    expect(runtime).toContain('Laya.SoundManager.playMusic(this.resourceUrl(bgm.path), 0)');
-    expect(runtime).toContain("Audio is optional; gameplay remains functional");
-  });
-
-  it("generates explicit playable Laya mechanisms for every supported Douyin genre", async () => {
-    const { generator, root } = await createGenerator();
-    const genres = ["arcade", "platformer", "puzzle", "shooter", "strategy"] as const;
-    for (const genre of genres) {
-      const projectId = `douyin-${genre}`;
-      await expect(generator.execute({
-        projectId, target: "douyin-mini-game", spec: { ...spec, genre }, mode: "apply",
-      })).resolves.toMatchObject({ plan: { target: "douyin-mini-game" } });
-      const stored = JSON.parse(await readFile(path.join(root, projectId, "assets", "resources", "game-spec.json"), "utf8")) as { genre: string };
-      expect(stored.genre).toBe(genre);
-    }
-    const runtime = await readFile(path.join(root, "douyin-platformer", "src", "Main.ts"), "utf8");
-    expect(runtime).toContain('this.genre === "platformer"');
-    expect(runtime).toContain("this.playerVelocityY = Math.min(720, this.playerVelocityY + 900 * deltaSeconds)");
-    expect(runtime).toContain('this.genre === "puzzle"');
-    expect(runtime).toContain("Math.round(this.player.x / step) * step");
-    expect(runtime).toContain('this.genre === "shooter"');
-    expect(runtime).toContain("private fireBullet(): void");
-    expect(runtime).toContain('this.genre === "strategy"');
-    expect(runtime).toContain("this.strategyAggressive ? 2 : 1");
-    expect(runtime).toContain('typeof GameGlobal !== "undefined"');
-    expect(runtime).toContain("telemetryHost.__GAMEFORGE_TEST__ = {");
-    expect(runtime).toContain('status: "running" | "won" | "lost"');
-  });
-
-  it("creates the same playable Laya source with an explicit WeChat platform policy", async () => {
-    const { generator, root } = await createGenerator();
-    const genres = ["arcade", "platformer", "puzzle", "shooter", "strategy"] as const;
-    for (const genre of genres) {
-      const projectId = `wechat-${genre}`;
-      await expect(generator.execute({
-        projectId, target: "wechat-mini-game", spec: { ...spec, genre }, mode: "apply",
-      })).resolves.toMatchObject({ plan: { target: "wechat-mini-game" } });
-      expect(JSON.parse(await readFile(
-        path.join(root, projectId, "assets", "resources", "gameforge-platform.json"),
-        "utf8",
-      ))).toMatchObject({
-        target: "wechat-mini-game",
-        adapter: { engine: "layaair", version: "3.4.0" },
-        capabilities: { network: false, login: false, share: false, ads: false, payments: false },
-      });
-      expect(await readFile(path.join(root, projectId, "src", "Main.ts"), "utf8"))
-        .toContain("telemetryHost.__GAMEFORGE_TEST__");
-    }
-  });
-
-  it("rejects changing a managed project's platform target during update", async () => {
+  it("rejects retired mini-game targets", async () => {
     const { generator } = await createGenerator();
-    await generator.execute({ projectId: "target-locked", spec, mode: "apply" });
-    await expect(generator.execute({
-      projectId: "target-locked", spec, target: "douyin-mini-game", operation: "update",
-    })).rejects.toThrow("target cannot change");
+
+    for (const target of ["douyin-mini-game", "wechat-mini-game"] as const) {
+      await expect(generator.execute({ projectId: `retired-${target}`, spec, target }))
+        .rejects.toThrow("only supports Web Phaser/Vite projects");
+    }
   });
 
   it("never overwrites an existing project", async () => {
@@ -204,36 +121,6 @@ describe("GameProjectGenerator", () => {
     expect(JSON.parse(await readFile(path.join(project, "game-spec.json"), "utf8"))).toEqual(revised);
     expect(JSON.parse(await readFile(assetManifestPath, "utf8"))).toEqual(assetManifest);
     expect(await readFile(path.join(project, "NOTES.md"), "utf8")).toBe("user notes\n");
-  });
-
-  it("preserves the Laya runtime asset manifest during a managed Douyin update", async () => {
-    const { generator, root } = await createGenerator();
-    const created = await generator.execute({
-      projectId: "douyin-update", spec, target: "douyin-mini-game", mode: "apply",
-    });
-    const manifestPath = path.join(root, "douyin-update", "assets", "resources", "assets", "manifest.json");
-    const runtimeManifest = { schemaVersion: "1.0", projectId: "douyin-update", revision: 2, assets: [] };
-    await writeFile(manifestPath, `${JSON.stringify(runtimeManifest, null, 2)}\n`);
-    const revised = { ...spec, title: "Douyin Assets Revised" };
-    const preview = await generator.execute({
-      projectId: "douyin-update", spec: revised, target: "douyin-mini-game", operation: "update",
-    });
-    expect(preview.update).toMatchObject({
-      currentPlanSha256: created.plan.planSha256,
-      preservedPaths: ["assets/resources/assets/manifest.json"],
-      conflicts: [],
-    });
-    const currentPlanSha256 = preview.update?.currentPlanSha256;
-    if (currentPlanSha256 === undefined) throw new Error("Update preview did not return a current plan hash.");
-    await generator.execute({
-      projectId: "douyin-update",
-      spec: revised,
-      target: "douyin-mini-game",
-      operation: "update",
-      mode: "apply",
-      expectedPlanSha256: currentPlanSha256,
-    });
-    expect(JSON.parse(await readFile(manifestPath, "utf8"))).toEqual(runtimeManifest);
   });
 
   it("refuses update when a managed file was modified or the plan CAS is stale", async () => {

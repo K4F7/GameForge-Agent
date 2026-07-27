@@ -33,16 +33,28 @@ async function fixture(lockRuntime?: AssetLockRuntime): Promise<{ root: string; 
   return { root, store: new ProjectAssetStore({ projectsRoot: root, ...(lockRuntime === undefined ? {} : { lockRuntime }) }) };
 }
 
-async function layaFixture(target: "douyin-mini-game" | "wechat-mini-game" = "douyin-mini-game"): Promise<{ root: string; store: ProjectAssetStore }> {
+async function retiredMiniGameFixture(target: "douyin-mini-game" | "wechat-mini-game"): Promise<{ root: string; store: ProjectAssetStore }> {
   const temporary = await mkdtemp(path.join(tmpdir(), "gameforge-douyin-assets-test-"));
   roots.push(temporary);
   const root = path.join(temporary, "projects");
-  await new GameProjectGenerator({ outputRoot: root }).execute({
+  const project = path.join(root, "safety-sprint");
+  await mkdir(path.join(project, ".gameforge"), { recursive: true });
+  await mkdir(path.join(project, "assets", "resources", "assets"), { recursive: true });
+  await writeFile(path.join(project, ".gameforge", "manifest.json"), `${JSON.stringify({
+    schemaVersion: "1.0",
+    generatorVersion: "0.13.0",
     projectId: "safety-sprint",
-    spec,
     target,
-    mode: "apply",
-  });
+    specSha256: "a".repeat(64),
+    planSha256: "b".repeat(64),
+    files: [{ path: "game-spec.json", bytes: 1, sha256: "c".repeat(64) }],
+  }, null, 2)}\n`);
+  await writeFile(path.join(project, "assets", "resources", "assets", "manifest.json"), `${JSON.stringify({
+    schemaVersion: "1.0",
+    projectId: "safety-sprint",
+    revision: 0,
+    assets: [],
+  }, null, 2)}\n`);
   return { root, store: new ProjectAssetStore({ projectsRoot: root }) };
 }
 
@@ -176,74 +188,11 @@ afterEach(async () => {
 });
 
 describe("ProjectAssetStore", () => {
-  it("stores generated MiniMax music as the unique Laya BGM asset", async () => {
-    const { root, store } = await layaFixture();
-    const hash = createHash("sha256").update(mp3).digest("hex");
-    const stored = await store.store({
-      projectId: "safety-sprint",
-      bytes: mp3,
-      mimeType: "audio/mpeg",
-      role: "bgm",
-      provenance: {
-        assetId: "music/main-theme",
-        kind: "music",
-        origin: "generated",
-        provider: "minimax",
-        model: "music-2.6",
-        prompt: "Instrumental casual game loop",
-        license: "account-confirmed-output-terms",
-        sha256: hash,
-      },
-    });
-    expect(stored).toMatchObject({
-      manifestRevision: 1,
-      entry: { kind: "music", role: "bgm", path: "assets/music/main-theme.mp3", mimeType: "audio/mpeg" },
-    });
-    expect(await readFile(path.join(root, "safety-sprint", "assets", "resources", "assets", "music", "main-theme.mp3")))
-      .toEqual(Buffer.from(mp3));
-    await expect(store.read("safety-sprint")).resolves.toMatchObject({
-      revision: 1,
-      assets: [{ role: "bgm", provenance: { provider: "minimax", model: "music-2.6" } }],
-    });
-  });
-
-  it("stores the same logical asset paths in the Laya resources tree for Douyin projects", async () => {
-    const { root, store } = await layaFixture();
-    await expect(store.store(imageRequest())).resolves.toMatchObject({
-      manifestRevision: 1,
-      entry: { path: "assets/images/hero.jpg", role: "player" },
-    });
-    const physical = path.join(root, "safety-sprint", "assets", "resources", "assets");
-    expect(await readFile(path.join(physical, "images", "hero.jpg"))).toEqual(Buffer.from(jpeg));
-    const replacementHash = createHash("sha256").update(revisedJpeg).digest("hex");
-    await expect(store.store({
-      ...imageRequest(),
-      bytes: revisedJpeg,
-      mode: "replace",
-      expectedRevision: 1,
-      provenance: { ...imageRequest().provenance, sha256: replacementHash, model: "seedream-revised" },
-    })).resolves.toMatchObject({ manifestRevision: 2 });
-    expect(await readFile(path.join(physical, "images", "hero.jpg"))).toEqual(Buffer.from(revisedJpeg));
-    await expect(store.read("safety-sprint")).resolves.toMatchObject({
-      revision: 2,
-      assets: [{ path: "assets/images/hero.jpg", role: "player" }],
-    });
-    expect(JSON.parse(await readFile(path.join(physical, "manifest.json"), "utf8"))).toMatchObject({
-      projectId: "safety-sprint",
-      revision: 2,
-    });
-    await expect(readFile(path.join(root, "safety-sprint", "public", "assets", "manifest.json")))
-      .rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("uses the explicit Laya resources layout for WeChat projects", async () => {
-    const { root, store } = await layaFixture("wechat-mini-game");
-    await expect(store.store(imageRequest())).resolves.toMatchObject({
-      entry: { path: "assets/images/hero.jpg", role: "player" },
-    });
-    expect(await readFile(path.join(
-      root, "safety-sprint", "assets", "resources", "assets", "images", "hero.jpg",
-    ))).toEqual(Buffer.from(jpeg));
+  it("rejects asset imports for retired mini-game resource layouts", async () => {
+    for (const target of ["douyin-mini-game", "wechat-mini-game"] as const) {
+      const { store } = await retiredMiniGameFixture(target);
+      await expect(store.store(imageRequest())).rejects.toThrow("only supports Web projects");
+    }
   });
 
   it("stores verified media and atomically advances the runtime manifest", async () => {
