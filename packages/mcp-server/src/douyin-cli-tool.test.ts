@@ -31,7 +31,7 @@ describe("Douyin mini-game CLI MCP surface", () => {
     expect(JSON.stringify(result)).not.toMatch(/private|secret|tmg\.cmd/i);
   });
 
-  it("registers the read-only tool and capability only when explicitly configured", async () => {
+  it("does not expose the retired CLI probe when explicitly configured", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer({ douyinMiniGameCliProbe: { async probe() { return report; } } });
     const client = new Client({ name: "gameforge-douyin-cli-test", version: "1.0.0" });
@@ -39,22 +39,7 @@ describe("Douyin mini-game CLI MCP surface", () => {
     await client.connect(clientTransport);
     try {
       const tools = (await client.listTools()).tools;
-      const tool = tools.find(({ name }) => name === "get_douyin_mini_game_cli_status");
-      expect(tool?.annotations).toEqual({
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false,
-      });
-      const capabilities = await client.callTool({ name: "get_gameforge_capabilities", arguments: {} });
-      if (!Array.isArray(capabilities.content) || capabilities.content[0]?.type !== "text") {
-        throw new Error("Expected text capability snapshot.");
-      }
-      expect(JSON.parse(capabilities.content[0].text)).toMatchObject({
-        engineering: { douyinCliProbe: true },
-      });
-      const status = await client.callTool({ name: "get_douyin_mini_game_cli_status", arguments: {} });
-      expect(status.isError).not.toBe(true);
+      expect(tools.map(({ name }) => name)).not.toContain("get_douyin_mini_game_cli_status");
     } finally {
       await client.close();
       await server.close();

@@ -68,15 +68,12 @@ describe("GameForge doctor core", () => {
       },
       engineering: { assetStore: true, generator: true, douyinBuild: true, douyinCliProbe: true, wechatBuild: true, gameplayVerifier: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
     })).toEqual([
-      "build_douyin_mini_game",
-      "build_wechat_mini_game",
       "claim_game_task",
       "complete_game_run",
       "create_game_run",
       "create_game_task",
       "generate_game_project",
       "generate_music_asset",
-      "get_douyin_mini_game_cli_status",
       "get_game_task",
       "get_project_assets",
       "import_sound_asset",
@@ -91,7 +88,6 @@ describe("GameForge doctor core", () => {
       "stop_game_preview",
       "stop_game_run",
       "verify_game_project",
-      "verify_minigame_gameplay",
     ]);
   });
 });

@@ -43,7 +43,7 @@ bun run bundle:check
 bun run dev:local
 ```
 
-`dev:local` 只启动 Relay、示例游戏和持久 Douyin Bridge Host，不启动任何 GUI。CodeArts 与独立 OpenCode 使用不同数据目录：
+`dev:local` 只启动 Relay 和示例游戏，不启动 GUI 或 stdio MCP。CodeArts 与独立 OpenCode 使用不同数据目录：
 
 ```powershell
 bun run codearts

@@ -1,11 +1,11 @@
 ---
 name: gameforge-build
-description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能体完成小游戏的规格化、生成、素材接入、验证与实验记录。
+description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能体完成 Web 游戏的规格化、生成、素材接入、验证与实验记录。
 ---
 
 # GameForge Build
 
-当用户要求制作、修改或验证抖音、微信或浏览器小游戏时使用本技能。CodeArts 始终负责理解、规划、代码修改和修复判断；MCP 工具只执行一次确定性操作。
+当用户要求制作、修改或验证 Web 游戏时使用本技能。Web 游戏固定使用 Phaser 与 Vite。CodeArts 始终负责理解、规划、代码修改和修复判断；MCP 工具只执行一次确定性操作。
 
 ## 前置检查
 
@@ -21,17 +21,15 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
 
 ## 工作流
 
-平台规则：V1 未指定平台时仍默认 `douyin-mini-game`；用户明确要求微信小游戏时必须使用 `wechat-mini-game`，明确要求浏览器参考版时才使用 `web`。抖音与微信均复用五种 LayaAir 玩法源工程；完成媒体落盘后按 target 分别调用一次 `build_douyin_mini_game`（`bytedancegame`）或 `build_wechat_mini_game`（`wxgame`），并发布工具原样返回的无路径 `buildEvent`。两种工具都只做本地构建、静态校验和前后双哈希快照；MCP 响应的 `handoff` 是完整逐文件相对路径清单，`buildEvent` 只带聚合 SHA-256，并固定标记远程操作禁止、DevTool 未运行。它们不登录、打开 IDE、预览、上传或发布。若 `get_douyin_mini_game_cli_status` 已注册，只在需要确认安装前置时调用一次；它只以当前 Node 执行官方 `bin/tmg.js --version`，不会开放登录、打开、配置、项目 `version`、`build-npm`、`preview` 或 `upload`。`tmg open <project> --mode=lite` 虽可从 CLI 启动 Lite IDE，但不是 headless 编译/模拟器接口，当前工具面不暴露；`tmg version` 会查询线上项目版本，也禁止用于本地诊断。`tt-ide-cli`/`tma` 只面向小程序，禁止冒充小游戏工具。当前项目策略禁止平台 preview、上传、提审和发布；DevTool/真机保持未完成。
-
-小游戏逻辑验收：若 `verify_minigame_gameplay` 已注册，在当前 target 源工程生成且受管文件无修改后调用一次，将返回的 `gameplayEvent` 补齐 Run envelope 并发布为连续 `gameplay.verified`。该工具只执行与 Manifest 哈希一致的固定 Laya 模板，在可控时钟/输入中分别证明 genre 胜利和超时失败；模板或 GameSpec 哈希不一致必须停止并由 CodeArts审阅，不能绕过。该事件不含 Canvas、截图或证据路径，任何客户端都必须将其视为“无渲染逻辑证据”，不得替代平台 build、DevTool 或真机验收。
+平台规则：唯一主动产品 target 是 `web`，运行时固定为 Phaser 与 Vite。生成、构建、预览和浏览器验收都围绕同一个 Web 项目完成；不从历史事件、旧目录或未注册工具推断其他 target。
 
 资产事务恢复同时覆盖首次创建与替换；不得把 create 中断留下的哈希匹配孤儿当作可忽略文件，也不得绕过 `recover_project_assets` 手工删除。
 
 1. 使用已认领 Task 的 `prompt` 和 `language`（或当前直接用户需求与明确语言）。若 `draft_game_spec` 已注册，优先把两者原样传入，转换为一次结构化 GameSpec 草案；Task 为 `zh-CN` 时 GameSpec `locale` 必须是 `zh-CN`，Task 为 `en-US` 时必须是 `en-US`。随后始终调用 `validate_game_spec`，其 `spec` 参数必须直接传原生 JSON object，禁止 JSON.stringify、代码块或其他字符串封装。若工具未注册，CodeArts 自行整理 GameSpec 并显式设置同一 `locale`；校验失败时由 CodeArts 修改输入后再次调用。验证成功后，将返回的规格原样发布为下一条连续的 `spec.ready` RunEvent，供已授权客户端展示；`draft_game_spec` 只发起一次百炼 Qwen 请求，不负责规划、重试或修复。
-2. 以认领返回的 Task 为项目选择权威来源，不从 Prompt、目录或旧 Run 事件猜测。V1 新小游戏任务显式传 `target: "douyin-mini-game"`；只有用户明确要求浏览器参考版时才用 `web`。抖音 target 支持 `arcade`、`platformer`、`puzzle`、`shooter`、`strategy` 五种已通过官方 LayaAir 编译的基线，必须保持 GameSpec 原 genre，不能静默换模板。Task 含 `projectId` 时必须对该 ID 调用 `generate_game_project` 的 `operation: "update"` dry-run，审阅 `updatedPaths`、`preservedPaths`、`deletedPaths` 和 `conflicts`；只有 conflicts 为空并经用户/客户端 `ask` 确认后，才以相同 spec、target、`mode: "apply"` 和 dry-run 返回的 `currentPlanSha256` 作为 `expectedPlanSha256` 执行。托管项目不能跨 target update。Task 不含 `projectId` 时才走默认 create `dry-run`，审阅文件计划并确认目标为空后 apply；create apply 不接受 `expectedPlanSha256`，dry-run 的 plan hash 只用于审阅，不能误套 update CAS。update 只覆盖旧 Manifest 拥有且哈希未变的文件，保留运行时资产 Manifest、`bun.lock` 和未知用户文件；不存在 force 模式。冲突时由 CodeArts 亲自审阅/合并用户代码，不绕过保护。
+2. 以认领返回的 Task 为项目选择权威来源，不从 Prompt、目录或旧 Run 事件猜测。新任务显式传 `target: "web"`。Task 含 `projectId` 时必须对该 ID 调用 `generate_game_project` 的 `operation: "update"` dry-run，审阅 `updatedPaths`、`preservedPaths`、`deletedPaths` 和 `conflicts`；只有 conflicts 为空并经用户/客户端 `ask` 确认后，才以相同 spec、target、`mode: "apply"` 和 dry-run 返回的 `currentPlanSha256` 作为 `expectedPlanSha256` 执行。托管项目不能跨 target update。Task 不含 `projectId` 时才走默认 create `dry-run`，审阅文件计划并确认目标为空后 apply；create apply 不接受 `expectedPlanSha256`，dry-run 的 plan hash 只用于审阅，不能误套 update CAS。update 只覆盖旧 Manifest 拥有且哈希未变的文件，保留运行时资产 Manifest、`bun.lock` 和未知用户文件；不存在 force 模式。冲突时由 CodeArts 亲自审阅/合并用户代码，不绕过保护。
    使用仓库自带 `integrations/codearts` launcher 且未覆盖 `GAMEFORGE_PROJECT_OUTPUT_ROOT` 时，apply 后的受管源码位于仓库相对路径 `.gameforge-validation/integrations/projects/<projectId>/`。CodeArts 后续读取和亲自修改玩法代码必须使用这个相对位置；不得改写 `apps/game`，不得把 `<projectId>/` 猜成仓库根目录，也不得在仓库根另建同名项目。不能把绝对主机路径写入 RunEvent、审计摘要或实验记录。若 launcher 明确覆盖了输出根且相对位置不可确定，停止猜测路径并报告配置缺口。
    若 update dry-run/apply 报告未完成的项目更新事务，且 `recover_game_project_update` 已注册，经用户/客户端 `ask` 确认后只调用一次。该工具在 update lock 内按旧/新托管 Manifest 哈希回滚或完成清理，不调用模型、Provider、Relay 或代码修复；返回后必须重新 dry-run，不能沿用中断前的 plan CAS。未知日志、第三种 Manifest 状态或文件哈希冲突必须停止并请求人工检查。
-3. `web` 默认使用 Phaser、Vite 与程序化占位素材；`douyin-mini-game` 使用生成器固定的 LayaAir 3.4.0 TypeScript 源工程。抖音 apply 和媒体落盘完成后，若 `build_douyin_mini_game` 已注册，只调用一次；成功后先确认完整 `handoff` 的 projectId/target/fileCount/totalBytes 与 validation 一致、`remoteOperations` 为 `forbidden`、`devToolVerification` 为 `not-run`，再取工具返回的无路径 `buildEvent`，只补当前权威 runId、下一 sequence 和 emittedAt，立即作为连续 `build.ready` 发布。MCP 响应本身不返回绝对 `outputPath`，禁止从原始 validation 或完整 files 数组手工重建已有 payload。恢复时若 sequence 最新的 `build.ready` 对应同一项目、Manifest revision、聚合 SHA-256 与当前资产一致，可跳过重复构建；历史事件缺少摘要时不得猜测，重新调用一次。工具内部固定构建目标、超时、日志上限、项目锁和双快照，不登录、预览、上传或发布。未注册时报告本地 CLI capability 缺失，不自行拼接 shell 命令。不得用 Chrome `verify_game_project` 或 `devToolVerification: not-run` 冒充平台验收。当前阶段默认只使用 CodeArts 内置文本/代码模型，并保持外部媒体 Provider 未配置；因此使用程序化占位素材。只有用户以后明确启用相应账号级能力、capability snapshot 同时为 ready 且客户端权限确认后，才可调用：
+3. `web` 使用 Phaser、Vite 与程序化占位素材。当前阶段默认只使用 CodeArts 内置文本/代码模型，并保持外部媒体 Provider 未配置；因此使用程序化占位素材。只有用户以后明确启用相应账号级能力、capability snapshot 同时为 ready 且客户端权限确认后，才可调用：
    - `request_image_asset`：一次 Seedream 官方 API 请求并安全落盘；只选择 `player`、`collectible`、`hazard` 或 `background` 图片角色，语音和音频角色不会进入该工具 Schema；
    - `search_sound_asset`：一个 Freesound 官方搜索操作，默认 CC0；只读 HTTP 遇到明确瞬时故障时可做传输层有限退避；
    - `import_sound_asset`：一个预览导入操作并记录许可、署名和哈希；只读下载可做传输层有限退避，短音效使用 `collect-sound`/`hit-sound`，明确选作背景音乐的候选使用 `bgm`，工具会将后者记录为 `music`；
@@ -53,7 +51,7 @@ description: 使用 GameForge 的确定性 MCP 工具，由 CodeArts 主智能�
 
 ## 资产边界
 
-- 资产只能通过 Asset Store 写入受管 target 的运行时资源树：Web 为 `public/assets/`，抖音与微信 Laya 源工程均为 `assets/resources/assets/`；Manifest 中的逻辑路径始终保持 `assets/...`，不得由 Agent 自行拼接物理路径。
+- 资产只能通过 Asset Store 写入受管 Web target 的 `public/assets/` 运行时资源树；Manifest 中的逻辑路径始终保持 `assets/...`，不得由 Agent 自行拼接物理路径。
 - 不把 API key、token、账号或本地环境写入参数、日志、清单或仓库。
 - CC BY 素材必须保留作者、原始页面与许可；默认排除 BY-NC。
 - 生成素材必须记录 provider、model、prompt、license 与 SHA-256。

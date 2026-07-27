@@ -34,6 +34,53 @@ function handoffFixture(
 }
 
 describe("GameForge MCP server", () => {
+  it("does not advertise retired mini-game capabilities", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer({
+      douyinProjectBuilder: {} as never,
+      douyinMiniGameCliProbe: {} as never,
+      wechatProjectBuilder: {} as never,
+      layaGameplayVerifier: {} as never,
+    });
+    const client = new Client({ name: "gameforge-minigame-capability-test", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const capabilities = await client.callTool({ name: "get_gameforge_capabilities", arguments: {} });
+      if (!Array.isArray(capabilities.content) || capabilities.content[0]?.type !== "text") {
+        throw new Error("Expected capability snapshot text.");
+      }
+      expect(JSON.parse(capabilities.content[0].text)).toMatchObject({
+        engineering: {
+          douyinBuild: false,
+          douyinCliProbe: false,
+          wechatBuild: false,
+          gameplayVerifier: false,
+        },
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("does not expose retired Douyin DevTool bridge actions when configured", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer({ douyinBridgeController: {} as never });
+    const client = new Client({ name: "gameforge-douyin-bridge-discovery-test", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      expect((await client.listTools()).tools.map((tool) => tool.name)).not.toEqual(expect.arrayContaining([
+        "get_douyin_devtool_runtime_status",
+        "run_douyin_runtime_action",
+      ]));
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("resolves a CodeArts-owned model route without invoking a model", async () => {
     const policy = await loadModelRoutingPolicy(
       path.resolve(import.meta.dirname, "../../../config/model-routing.example.json"),
@@ -150,7 +197,7 @@ describe("GameForge MCP server", () => {
     }
   });
 
-  it("registers the bounded Douyin build only when a builder is configured", async () => {
+  it("does not expose the retired Douyin build when a builder is configured", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer({
       douyinProjectBuilder: {
@@ -184,17 +231,14 @@ describe("GameForge MCP server", () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("build_douyin_mini_game");
-      const result = await client.callTool({ name: "build_douyin_mini_game", arguments: { projectId: "safe-game" } });
-      expect(result.isError).not.toBe(true);
-      expect(result.content).toEqual(expect.arrayContaining([expect.objectContaining({ type: "text" })]));
+      expect((await client.listTools()).tools.map((tool) => tool.name)).not.toContain("build_douyin_mini_game");
     } finally {
       await client.close();
       await server.close();
     }
   });
 
-  it("registers the bounded WeChat wxgame build only when configured", async () => {
+  it("does not expose the retired WeChat build when a builder is configured", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer({
       wechatProjectBuilder: {
@@ -218,16 +262,14 @@ describe("GameForge MCP server", () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("build_wechat_mini_game");
-      const result = await client.callTool({ name: "build_wechat_mini_game", arguments: { projectId: "safe-game" } });
-      expect(result.isError).not.toBe(true);
+      expect((await client.listTools()).tools.map((tool) => tool.name)).not.toContain("build_wechat_mini_game");
     } finally {
       await client.close();
       await server.close();
     }
   });
 
-  it("registers managed Laya logic verification without browser evidence", async () => {
+  it("does not expose the retired mini-game gameplay verifier when configured", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createServer({
       layaGameplayVerifier: {
@@ -247,9 +289,7 @@ describe("GameForge MCP server", () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("verify_minigame_gameplay");
-      const result = await client.callTool({ name: "verify_minigame_gameplay", arguments: { projectId: "safe-game" } });
-      expect(result.isError).not.toBe(true);
+      expect((await client.listTools()).tools.map((tool) => tool.name)).not.toContain("verify_minigame_gameplay");
     } finally {
       await client.close();
       await server.close();
@@ -390,7 +430,11 @@ describe("GameForge MCP server", () => {
     await client.connect(clientTransport);
 
     try {
-      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("generate_game_project");
+      const tools = (await client.listTools()).tools;
+      expect(tools.map((tool) => tool.name)).toContain("generate_game_project");
+      expect(tools.find((tool) => tool.name === "generate_game_project")?.description).not.toMatch(
+        /douyin|wechat|mini[-_]?game/i,
+      );
       const result = await client.callTool({
         name: "generate_game_project",
         arguments: {
