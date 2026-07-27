@@ -71,10 +71,6 @@ import {
   verifyGameProjectTool,
   getGameforgeCapabilitiesTool,
   getProjectAssetsTool,
-  getDouyinMiniGameCliStatusTool,
-  buildDouyinMiniGameTool,
-  buildWechatMiniGameTool,
-  verifyMiniGameGameplayTool,
   recoverProjectAssetsTool,
   type GameSpecDraftProvider,
   type ProjectGenerator,
@@ -91,8 +87,7 @@ import {
   type LayaGameplayVerifier,
 } from "./tools.js";
 import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditSummaryProvider } from "./tool-audit.js";
-import type { DouyinBridgePort, DouyinRuntimeAction } from "./douyin-bridge-controller.js";
-import { DouyinRuntimeActionCoordinator } from "./douyin-runtime-action.js";
+import type { DouyinBridgePort } from "./douyin-bridge-controller.js";
 
 export type CreateServerOptions = {
   gameSpecDraftProvider?: GameSpecDraftProvider;
@@ -151,10 +146,6 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     engineering: {
       assetStore: options.assetStore?.read !== undefined && options.assetStore.recover !== undefined,
       generator: options.projectGenerator?.recover !== undefined,
-      douyinBuild: options.douyinProjectBuilder !== undefined,
-      douyinCliProbe: options.douyinMiniGameCliProbe !== undefined,
-      wechatBuild: options.wechatProjectBuilder !== undefined,
-      gameplayVerifier: options.layaGameplayVerifier !== undefined,
       verifier: options.projectVerifier !== undefined,
       preview: options.projectPreviewManager !== undefined,
       runRelay: options.runRelayClient !== undefined,
@@ -171,70 +162,6 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     },
     async () => getGameforgeCapabilitiesTool(capabilitySnapshot),
   );
-
-  if (options.douyinBridgeController !== undefined) {
-    const controller = options.douyinBridgeController;
-    const actionCoordinator = new DouyinRuntimeActionCoordinator(controller, options.runRelayClient);
-    registerTool(
-      "get_douyin_devtool_runtime_status",
-      {
-        title: "Inspect the connected Douyin DevTool Runtime",
-        description: "Read the authenticated local MiniApp Runtime status through the loopback bridge. This never previews, uploads, submits, publishes, or accepts JavaScript.",
-        inputSchema: {},
-        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      },
-      async () => {
-        try {
-          const runtime = await controller.getRuntimeStatus();
-          return { content: [{ type: "text", text: JSON.stringify({ bridge: controller.getStatus(), runtime }, null, 2) }] };
-        } catch (error) {
-          return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: "douyin_bridge_unavailable", message: error instanceof Error ? error.message : String(error), bridge: controller.getStatus() }) }] };
-        }
-      },
-    );
-    registerTool(
-      "run_douyin_runtime_action",
-      {
-        title: "Run one bounded Douyin simulator action",
-        description: "Run exactly one fixed local Runtime action: reload, screenshot evidence, bounded console collection, or viewport-validated tap. No arbitrary JavaScript or remote platform operation is exposed.",
-        inputSchema: {
-          action: z.enum(["reload", "screenshot", "tap", "collectConsole"]),
-          actionId: z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9._-]+$/),
-          x: z.number().finite().min(0).max(4_096).optional(),
-          y: z.number().finite().min(0).max(4_096).optional(),
-          durationMs: z.number().int().min(0).max(5_000).optional(),
-          runId: runIdSchema.optional(),
-          after: z.number().int().min(0).optional(),
-        },
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-      },
-      async ({ action, actionId, x, y, durationMs, runId, after }) => {
-        if ((runId === undefined) !== (after === undefined)) {
-          return { isError: true, content: [{ type: "text", text: "runId and after must be supplied together." }] };
-        }
-        if (runId !== undefined && options.runRelayClient === undefined) {
-          return { isError: true, content: [{ type: "text", text: "A configured Run Relay is required when runId and after are supplied." }] };
-        }
-        let request: DouyinRuntimeAction;
-        if (action === "tap") {
-          if (x === undefined || y === undefined) return { isError: true, content: [{ type: "text", text: "tap requires x and y." }] };
-          request = { action, x, y };
-        } else if (action === "collectConsole") {
-          request = { action, durationMs: durationMs ?? 500 };
-        } else request = { action };
-        try {
-          const outcome = await actionCoordinator.execute(
-            actionId,
-            request,
-            runId === undefined || after === undefined ? undefined : { runId, after },
-          );
-          return { content: [{ type: "text", text: JSON.stringify(outcome, null, 2) }] };
-        } catch (error) {
-          return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: "douyin_runtime_action_failed", message: error instanceof Error ? error.message : String(error) }) }] };
-        }
-      },
-    );
-  }
 
   if (options.modelRoutingPolicy !== undefined) {
     registerTool(
@@ -389,61 +316,6 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         inputSchema: projectGenerationRequestSchema.shape,
       },
       async (request) => generateGameProjectTool(projectGenerator, request),
-    );
-  }
-
-  if (options.douyinProjectBuilder !== undefined) {
-    registerTool(
-      "build_douyin_mini_game",
-      {
-        title: "Build and validate a managed Douyin mini-game",
-        description: "Run the fixed LayaAir bytedancegame build once for a managed project, apply deterministic offline validation, and return a path-free, per-file SHA-256 handoff manifest. This never opens DevTools, logs in, previews, uploads, submits for review, or publishes.",
-        inputSchema: { projectId: projectIdSchema },
-      },
-      async ({ projectId }) => buildDouyinMiniGameTool(options.douyinProjectBuilder as DouyinProjectBuilder, projectId),
-    );
-  }
-
-  if (options.douyinMiniGameCliProbe !== undefined) {
-    registerTool(
-      "get_douyin_mini_game_cli_status",
-      {
-        title: "Inspect the configured Douyin mini-game CLI",
-        description:
-          "Run only `bin/tmg.js --version` through the official tt-minigame-ide-cli 2.1.1 entry. This tool never queries a project version, configures an account, opens DevTools, builds npm, previews, uploads, submits for review, or publishes.",
-        inputSchema: {},
-        annotations: {
-          readOnlyHint: true,
-          destructiveHint: false,
-          idempotentHint: true,
-          openWorldHint: false,
-        },
-      },
-      async () => getDouyinMiniGameCliStatusTool(options.douyinMiniGameCliProbe as DouyinMiniGameCliStatusProvider),
-    );
-  }
-
-  if (options.wechatProjectBuilder !== undefined) {
-    registerTool(
-      "build_wechat_mini_game",
-      {
-        title: "Build and validate a managed WeChat mini-game",
-        description: "Run the fixed LayaAir wxgame build once for a managed project, apply deterministic offline validation, and return a path-free, per-file SHA-256 handoff manifest. This never opens DevTools, logs in, previews, uploads, submits for review, or publishes.",
-        inputSchema: { projectId: projectIdSchema },
-      },
-      async ({ projectId }) => buildWechatMiniGameTool(options.wechatProjectBuilder as WechatProjectBuilder, projectId),
-    );
-  }
-
-  if (options.layaGameplayVerifier !== undefined) {
-    registerTool(
-      "verify_minigame_gameplay",
-      {
-        title: "Verify managed mini-game gameplay logic",
-        description: "Run the exact managed Laya template in a bounded deterministic host and prove one genre win plus timeout loss. This is logic evidence only; it does not render, screenshot, open DevTools, or replace device validation.",
-        inputSchema: { projectId: projectIdSchema },
-      },
-      async ({ projectId }) => verifyMiniGameGameplayTool(options.layaGameplayVerifier as LayaGameplayVerifier, projectId),
     );
   }
 
