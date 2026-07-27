@@ -65,7 +65,7 @@ export function safeCodeArtsServerUrl(input: string): string {
 
 export function safeOpenChamberUrl(input: string): string {
   const url = new URL(input);
-  if (!["http:", "https:"].includes(url.protocol) || !isLoopback(url) || hasCredentials(url)) {
+  if (!["http:", "https:"].includes(url.protocol) || !isLoopback(url) || hasCredentials(url) || url.search !== "" || url.hash !== "") {
     throw new Error("OpenChamber URL must be credential-free loopback HTTP(S).");
   }
   return url.href;

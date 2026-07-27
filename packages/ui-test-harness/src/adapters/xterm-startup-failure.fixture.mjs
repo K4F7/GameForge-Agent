@@ -12,8 +12,8 @@ const source = {
   async resize() {},
   async stop() {},
 };
-process.env.GAMEFORGE_BROWSER_CHANNEL = "gameforge-invalid-browser-channel";
-const observer = new XtermTuiObserverDriver();
+delete process.env.GAMEFORGE_BROWSER_CHANNEL;
+const observer = new XtermTuiObserverDriver({ browserChannel: "gameforge-invalid-browser-channel" });
 try {
   await observer.open({
     session: { sessionId: "xterm-startup-failure", startedAt: new Date().toISOString(), mode: "headed/watch" },

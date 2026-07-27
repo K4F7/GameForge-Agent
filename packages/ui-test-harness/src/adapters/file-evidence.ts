@@ -109,7 +109,13 @@ export class FileEvidenceSink implements EvidenceSink {
     const lock = await this.#ensureLock();
     try {
       if (result.status === "completed" && this.#session?.tier === "acceptance") {
-        await this.#waitForAcceptanceAudit(this.#session);
+        try {
+          await this.#waitForAcceptanceAudit(this.#session);
+        } catch (error) {
+          result.status = "failed";
+          result.finishedAt = new Date().toISOString();
+          result.failure = error instanceof Error ? error.message : String(error);
+        }
       } else {
         await this.#consolidateMcpAudit();
       }
@@ -197,8 +203,7 @@ export class FileEvidenceSink implements EvidenceSink {
   #validateAcceptanceAudit(audits: readonly McpToolAudit[], session: HarnessSession): void {
     if (session.taskId === undefined || session.runId === undefined) throw new Error("Completed acceptance Evidence is missing its Task/Run identity.");
     const invocationStartedAt = Date.parse(session.startedAt);
-    const bound = audits.filter((audit) => audit.context?.taskId === session.taskId && audit.context?.runId === session.runId
-      && Date.parse(audit.context?.boundAt ?? "") >= invocationStartedAt);
+    const bound = audits.filter((audit) => audit.context?.taskId === session.taskId && audit.context?.runId === session.runId);
     if (bound.length === 0) throw new Error("Completed acceptance requires a bound MCP audit for its Task and Run.");
     if (bound.some((audit) => audit.truncated)) throw new Error("A truncated MCP audit cannot prove acceptance.");
     const hasReadOnly = bound.some((audit) => audit.calls.some((call) => call.outcome === "success" && ACCEPTANCE_READ_ONLY_TOOLS.has(call.tool)));
@@ -206,7 +211,7 @@ export class FileEvidenceSink implements EvidenceSink {
     const hasRequiredSequence = bound.some((audit) => {
       const successful = audit.calls.filter((call) => call.outcome === "success");
       return successful.some((readOnly) => Date.parse(readOnly.startedAt) >= invocationStartedAt && ACCEPTANCE_READ_ONLY_TOOLS.has(readOnly.tool)
-        && successful.some((call) => call.tool === "bind_mcp_audit_context" && call.sequence < readOnly.sequence)
+        && successful.some((call) => call.tool === "bind_mcp_audit_context" && call.sequence < readOnly.sequence && Date.parse(call.startedAt) >= invocationStartedAt)
         && successful.some((call) => call.tool === "complete_game_run" && call.sequence > readOnly.sequence && Date.parse(call.startedAt) >= invocationStartedAt));
     });
     if (!hasRequiredSequence) throw new Error("Completed acceptance requires the successful MCP call sequence bind, read-only, complete.");

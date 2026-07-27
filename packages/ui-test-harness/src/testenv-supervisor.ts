@@ -60,11 +60,11 @@ export class TestEnvSupervisor {
   async #startAll(): Promise<void> {
     try {
       for (const spec of this.specs) {
-        this.#throwIfStopRequested();
+        await this.#throwIfStopRequested();
         if (await portListening(spec.port)) {
           throw new Error(`Port ${spec.port} for ${spec.name} is already occupied; refusing to start over it.`);
         }
-        this.#throwIfStopRequested();
+        await this.#throwIfStopRequested();
         const child = spawn(spec.command, spec.args, {
           cwd: spec.cwd,
           env: { ...allowlistedEnvironment(), ...spec.env },
@@ -81,8 +81,11 @@ export class TestEnvSupervisor {
     }
   }
 
-  #throwIfStopRequested(): void {
+  async #throwIfStopRequested(): Promise<void> {
     if (this.#stopRequested) throw new Error("Test environment startup was stopped by a concurrent down().");
+    if (await this.options?.externalShutdownRequested?.() === true) {
+      throw new Error("Test environment startup was stopped by an external shutdown request.");
+    }
   }
 
   /**
@@ -129,7 +132,7 @@ export class TestEnvSupervisor {
     child.stderr?.on("data", (chunk: unknown) => { stderrTail = (stderrTail + String(chunk)).slice(-2_048); });
     const startedAt = Date.now();
     while (Date.now() - startedAt < READY_TIMEOUT_MS) {
-      this.#throwIfStopRequested();
+      await this.#throwIfStopRequested();
       if (child.exitCode !== null || child.signalCode !== null) {
         throw new Error(`${spec.name} exited before listening on ${spec.port}: ${stderrTail.trim()}`);
       }

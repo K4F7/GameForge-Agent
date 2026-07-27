@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { loopbackHttpPort, safeCodeArtsServerUrl, safeEvidenceSegment, safeRelayUrl } from "./cli-safety.js";
+import { loopbackHttpPort, safeCodeArtsServerUrl, safeEvidenceSegment, safeOpenChamberUrl, safeRelayUrl } from "./cli-safety.js";
 
 describe("UI harness CLI safety", () => {
   test.each(["../outside", "..\\outside", "nested/path", "nested\\path", ".", "..", ""])
@@ -30,6 +30,11 @@ describe("UI harness CLI safety", () => {
     expect(safeCodeArtsServerUrl("http://127.0.0.1:4097")).toBe("http://127.0.0.1:4097/");
     expect(() => safeCodeArtsServerUrl("http://127.0.0.1:4097/proxy/")).toThrow(/root path/i);
   });
+
+  test.each(["http://127.0.0.1:43163/?token=secret", "http://127.0.0.1:43163/#secret"])
+    ("rejects caller-supplied OpenChamber query or fragment: %s", (value) => {
+      expect(() => safeOpenChamberUrl(value)).toThrow(/OpenChamber URL/i);
+    });
 
   test("derives a management port only from plain-HTTP loopback URLs", () => {
     expect(loopbackHttpPort("http://127.0.0.1:8787/", "Relay URL")).toBe(8787);

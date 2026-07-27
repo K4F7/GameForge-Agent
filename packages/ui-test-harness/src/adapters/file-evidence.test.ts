@@ -33,7 +33,7 @@ describe("FileEvidenceSink", () => {
     { name: "wrong context", audit: { truncated: false, taskId: "task-11111111-1111-1111-1111-111111111111", runId: "run-evidence", tool: "get_game_task" }, message: "bound MCP audit" },
     { name: "no read-only call", audit: { truncated: false, taskId: "task-00000000-0000-0000-0000-000000000000", runId: "run-evidence", tool: "complete_game_run" }, message: "read-only MCP call" },
     { name: "wrong call order", audit: { truncated: false, taskId: "task-00000000-0000-0000-0000-000000000000", runId: "run-evidence", tool: "get_game_task", wrongOrder: true }, message: "call sequence" },
-    { name: "stale", audit: { truncated: false, taskId: "task-00000000-0000-0000-0000-000000000000", runId: "run-evidence", tool: "get_game_task", stale: true }, message: "bound MCP audit" },
+    { name: "stale", audit: { truncated: false, taskId: "task-00000000-0000-0000-0000-000000000000", runId: "run-evidence", tool: "get_game_task", stale: true }, message: "call sequence" },
   ])("rejects $name audit evidence for a completed acceptance", async ({ audit, message }) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
     const sink = new FileEvidenceSink(root);
@@ -46,12 +46,27 @@ describe("FileEvidenceSink", () => {
       calls: (audit.wrongOrder === true
         ? ["complete_game_run", audit.tool, "bind_mcp_audit_context"]
         : ["bind_mcp_audit_context", audit.tool, "complete_game_run"])
-        .map((tool, index) => ({ sequence: index + 1, tool, startedAt: session.startedAt, durationMs: 1, outcome: "success" })),
+        .map((tool, index) => ({ sequence: index + 1, tool, startedAt: audit.stale === true ? "2026-07-22T00:00:00.000Z" : session.startedAt, durationMs: 1, outcome: "success" })),
     }), "utf8");
     const result: HarnessResult = { status: "completed", scenario: "acceptance", startedAt: session.startedAt, finishedAt: session.startedAt };
 
-    await expect(sink.finalize(result)).rejects.toThrow(message);
-    await expect(readFile(path.join(root, "result.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(sink.finalize(result)).resolves.toBeUndefined();
+    expect(JSON.parse(await readFile(path.join(root, "result.json"), "utf8"))).toMatchObject({ status: "failed", failure: expect.stringContaining(message) });
+  });
+
+  it("accepts a retry whose immutable context is old but whose bind call is fresh", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-evidence-")); roots.push(root);
+    const sink = new FileEvidenceSink(root);
+    const session: HarnessSession = { sessionId: "acceptance-retry", taskId: "task-00000000-0000-0000-0000-000000000000", runId: "run-evidence", startedAt: "2026-07-23T00:00:00.000Z", mode: "headed/watch", tier: "acceptance" };
+    await sink.recordSession(session); await mkdir(path.join(root, "mcp-audit"));
+    await writeFile(path.join(root, "mcp-audit", "session.json"), JSON.stringify({
+      schemaVersion: 1, sessionId: "00000000-0000-4000-8000-000000000000", startedAt: "2026-07-22T00:00:00.000Z", truncated: false,
+      context: { taskId: session.taskId, runId: session.runId, boundAt: "2026-07-22T00:00:00.000Z" },
+      calls: ["bind_mcp_audit_context", "get_game_task", "complete_game_run"].map((tool, index) => ({ sequence: index + 1, tool, startedAt: session.startedAt, durationMs: 1, outcome: "success" })),
+    }), "utf8");
+
+    await expect(sink.finalize({ status: "completed", scenario: "retry", startedAt: session.startedAt, finishedAt: session.startedAt })).resolves.toBeUndefined();
+    expect(JSON.parse(await readFile(path.join(root, "result.json"), "utf8"))).toMatchObject({ status: "completed" });
   });
 
   it("waits for the external producer to persist complete_game_run", async () => {

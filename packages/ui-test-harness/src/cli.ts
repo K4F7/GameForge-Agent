@@ -44,7 +44,7 @@ let releaseBootstrapTuiOutput: (() => Promise<void>) | undefined;
 const prepared = await prepareHarnessSession({
   sessionRoot,
   session: bootstrapSession,
-  scenario: buildScenario(options.tier, { openChamberUrl: options.openChamberUrl, instruction: "", totalTimeoutMs: options.totalTimeoutMs }).name,
+  scenario: buildScenario(options.tier, { openChamberUrl: options.openChamberUrl, instruction: "", agentId: options.agentId, totalTimeoutMs: options.totalTimeoutMs }).name,
   correlate: async (evidence) => {
     if (options.codeartsServerUrl === undefined) {
       throw new Error("Preflight failed: codearts-session (the UI harness requires an external CodeArts server and session; provide --codearts-server-url/--codearts-session or GAMEFORGE_CODEARTS_SERVER_URL/GAMEFORGE_CODEARTS_SESSION)");
@@ -126,7 +126,7 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
   const controller = new UiTestController({
     tui, authority, evidence,
     projectFingerprint: () => projectFingerprint(path.join(options.projectsRoot, projectId)),
-    tuiObserver: new XtermTuiObserverDriver(),
+    tuiObserver: new XtermTuiObserverDriver(options.browserChannel === undefined ? {} : { browserChannel: options.browserChannel }),
     gui: new PlaywrightOpenChamberDriver({ sessionRoot, baseUrl: openChamberUrl, ...(options.browserChannel === undefined ? {} : { browserChannel: options.browserChannel }) }),
   }, {
     sessionId,
@@ -146,7 +146,7 @@ async function runAttempt(): Promise<{ attempt: "baseline"; result: HarnessResul
     activityPollMs: 2_000,
     inactivityTimeoutMs: options.inactivityTimeoutMs,
   });
-  const result = await controller.run(buildScenario(options.tier, { openChamberUrl, instruction, totalTimeoutMs: options.totalTimeoutMs }));
+  const result = await controller.run(buildScenario(options.tier, { openChamberUrl, instruction, agentId: options.agentId, totalTimeoutMs: options.totalTimeoutMs }));
   return { attempt, result };
 }
 

@@ -4,15 +4,17 @@ import { READINESS_PROJECT_PREFIX, buildScenario, tierBanner } from "./tiers.js"
 describe("buildScenario", () => {
   it("keeps the acceptance scenario exactly as the existing closure", () => {
     const sessionUrl = "http://127.0.0.1:43163/?ocPanel=session-chat&sessionId=ses_expected&directory=D%3A%5Cproject";
-    const scenario = buildScenario("acceptance", { openChamberUrl: sessionUrl, instruction: "run the task", totalTimeoutMs: 900_000 });
+    const scenario = buildScenario("acceptance", { openChamberUrl: sessionUrl, instruction: "run the task", agentId: "codearts", totalTimeoutMs: 900_000 });
 
     expect(scenario.name).toBe("codearts-minimal-closure:baseline");
     expect(scenario.steps.map((step) => step.kind)).toEqual(["gui.navigate", "tui.text", "authority.wait", "gui.press", "capture"]);
     expect(scenario.steps[0]).toEqual({ kind: "gui.navigate", url: sessionUrl });
+    const gate = scenario.steps.find((step) => step.kind === "authority.wait");
+    expect(gate?.kind === "authority.wait" && gate.gate.accepts({ taskStatus: "completed", runStatus: "completed", claimedBy: "other-agent", eventSequence: 1, capturedAt: "2026-07-27T00:00:00.000Z" })).toBe(false);
   });
 
   it("builds a readiness scenario that never submits a task or waits for authority completion", () => {
-    const scenario = buildScenario("readiness", { openChamberUrl: "http://127.0.0.1:43163/", instruction: "run the task", totalTimeoutMs: 900_000 });
+    const scenario = buildScenario("readiness", { openChamberUrl: "http://127.0.0.1:43163/", instruction: "run the task", agentId: "codearts", totalTimeoutMs: 900_000 });
 
     expect(scenario.name).toBe("testenv-readiness:baseline");
     const kinds = scenario.steps.map((step) => step.kind);

@@ -236,6 +236,17 @@ describe("TestEnvSupervisor", () => {
     expect(supervisor.managedPids()).toEqual([]);
   }, SUPERVISOR_TEST_TIMEOUT_MS);
 
+  it("rolls back startup when an external shutdown arrives before readiness", async () => {
+    const port = await freePort(); let checks = 0;
+    const supervisor = new TestEnvSupervisor([await fixtureService("startup-external-down", port)], {
+      externalShutdownRequested: async () => { checks += 1; return checks >= 3; },
+    });
+    cleanups.push(() => supervisor.down().catch(() => undefined));
+
+    await expect(supervisor.up()).rejects.toThrow(/external shutdown/i);
+    expect(supervisor.managedPids()).toEqual([]);
+  }, SUPERVISOR_TEST_TIMEOUT_MS);
+
   it.skipIf(process.platform !== "win32")("reports simultaneous unrequested resident exits as a failure", async () => {
     const firstPort = await freePort(); const secondPort = await freePort();
     const supervisor = new TestEnvSupervisor([await fixtureService("first-crashed", firstPort), await fixtureService("second-crashed", secondPort)]);

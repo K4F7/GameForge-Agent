@@ -11,7 +11,7 @@ export type { HarnessTier };
 /** Readiness Tasks stay in the relay; the prefix keeps them identifiable and cleanable. */
 export const READINESS_PROJECT_PREFIX = "testenv-readiness-";
 
-export function buildScenario(tier: HarnessTier, options: { openChamberUrl: string; instruction: string; totalTimeoutMs: number }): { name: string; steps: HarnessStep[] } {
+export function buildScenario(tier: HarnessTier, options: { openChamberUrl: string; instruction: string; agentId: string; totalTimeoutMs: number }): { name: string; steps: HarnessStep[] } {
   if (tier === "readiness") {
     return {
       name: "testenv-readiness:baseline",
@@ -31,7 +31,7 @@ export function buildScenario(tier: HarnessTier, options: { openChamberUrl: stri
     steps: [
       { kind: "gui.navigate", url: options.openChamberUrl },
       { kind: "tui.text", text: options.instruction, appendEnter: true },
-      { kind: "authority.wait", gate: { description: "Task and Run completed", timeoutMs: options.totalTimeoutMs, accepts: (snapshot) => snapshot.taskStatus === "completed" && snapshot.runStatus === "completed" } },
+      { kind: "authority.wait", gate: { description: "Task claimed by the configured agent and Task/Run completed", timeoutMs: options.totalTimeoutMs, accepts: (snapshot) => snapshot.claimedBy === options.agentId && snapshot.taskStatus === "completed" && snapshot.runStatus === "completed" } },
       { kind: "gui.press", selector: "body", key: "Escape" },
       { kind: "capture", label: "completed" },
     ],

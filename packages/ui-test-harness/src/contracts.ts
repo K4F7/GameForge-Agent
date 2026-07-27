@@ -84,6 +84,7 @@ export type AuthoritySnapshot = {
   runId?: string;
   projectId?: string;
   taskStatus?: string;
+  claimedBy?: string;
   runStatus?: string;
   eventSequence: number;
   lastEventType?: string;

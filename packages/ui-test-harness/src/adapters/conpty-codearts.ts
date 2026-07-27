@@ -252,6 +252,9 @@ export class ConPtyCodeArtsDriver implements CodeArtsTuiDriver {
         ? /Ask anything|What is the tech stack|\bBuild\b|tab agents|tab commands/i.test(screen)
         : /Ask anything|What is the tech stack|tab agents|tab commands/i.test(screen);
       if (ready) return;
+      if (/authorization (?:is )?required|authentication (?:is )?required|(?:sign|log) in to continue/i.test(screen)) {
+        throw new Error("CodeArts authorization is required or expired.");
+      }
       if (this.#status === "failed" || this.#status === "exited") throw new Error("CodeArts exited before the TUI became ready.");
       await new Promise((resolve) => setTimeout(resolve, 100));
     }

@@ -12,12 +12,17 @@ export class XtermTuiObserverDriver implements CodeArtsTuiObserverDriver {
   #windowProcess: ChildProcess | undefined; #visible = false;
   #closePromise: Promise<void> | undefined;
 
+  constructor(private readonly options: { browserChannel?: string } = {}) {}
+
   async open(options: { session: HarnessSession; source: CodeArtsTuiDriver; visible: boolean; viewport: { width: number; height: number } }): Promise<TuiObserverSnapshot> {
     if (this.#terminal !== undefined || this.#closePromise !== undefined) throw new Error("xterm observer is already open.");
     const source = await options.source.read();
     try {
       if (options.visible) {
-        const helper = fileURLToPath(new URL("./xterm-window.js", import.meta.url)); this.#windowProcess = spawn("node", [helper, String(source.columns), String(source.rows)], { stdio: ["pipe", "pipe", "pipe"], windowsHide: false });
+        const helper = fileURLToPath(new URL("./xterm-window.js", import.meta.url)); this.#windowProcess = spawn("node", [helper, String(source.columns), String(source.rows)], {
+          stdio: ["pipe", "pipe", "pipe"], windowsHide: false,
+          env: { ...process.env, ...(this.options.browserChannel === undefined ? {} : { GAMEFORGE_BROWSER_CHANNEL: this.options.browserChannel }) },
+        });
         await waitReady(this.#windowProcess, 35_000); this.#visible = true;
       }
       this.#session = options.session;

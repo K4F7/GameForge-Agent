@@ -42,10 +42,20 @@ describe("testenv CLI", () => {
     await rm(marker, { force: true });
     const result = spawnSync("bun", [fileURLToPath(new URL("./testenv-cli.ts", import.meta.url)), "down"], {
       encoding: "utf8", timeout: 5_000, windowsHide: true,
-      env: { ...process.env, GAMEFORGE_OPENCHAMBER_URL: "https://example.com:43163/" },
+      env: { ...process.env, GAMEFORGE_OPENCHAMBER_URL: "https://127.0.0.1:43163/" },
     });
 
     expect(result.status).not.toBe(0);
+    await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rejects trailing down arguments before writing shutdown intent", async () => {
+    const marker = path.resolve(import.meta.dirname, "../../..", ".gameforge-validation", "testenv-shutdown-requested");
+    await rm(marker, { force: true });
+    const result = spawnSync("bun", [fileURLToPath(new URL("./testenv-cli.ts", import.meta.url)), "down", "--typo"], { encoding: "utf8", timeout: 5_000, windowsHide: true });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("testenv down does not accept arguments");
     await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
   });
 

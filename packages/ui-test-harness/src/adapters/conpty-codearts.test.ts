@@ -12,6 +12,26 @@ const CONPTY_TEST_TIMEOUT_MS = 45_000;
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))); });
 
 describe("ConPtyCodeArtsDriver", () => {
+  it("reports an authorization-required screen before the generic readiness timeout", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-conpty-auth-")); roots.push(root);
+    const sessionRoot = path.join(root, "evidence");
+    await writeFile(path.join(root, "package.json"), JSON.stringify({ private: true, scripts: { codearts: "bun fixture.ts" } }), "utf8");
+    await writeFile(path.join(root, "fixture.ts"), `process.stdout.write("Authorization required. Run /login to continue.\\r\\n"); process.stdin.resume(); setInterval(() => undefined, 1_000);`, "utf8");
+    const runner = path.join(root, "runner.ts");
+    const driverUrl = new URL("./conpty-codearts.ts", import.meta.url).href;
+    await writeFile(runner, `
+      import { ConPtyCodeArtsDriver } from ${JSON.stringify(driverUrl)};
+      const driver = new ConPtyCodeArtsDriver(${JSON.stringify({ repoRoot: root, sessionRoot })});
+      try { await driver.start({ session: { sessionId: "auth-required", startedAt: new Date().toISOString(), mode: "headed/watch" }, columns: 80, rows: 24 }); }
+      catch (error) { process.stdout.write("AUTH_RESULT:" + (error instanceof Error ? error.message : String(error))); }
+      finally { await driver.stop("failed").catch(() => undefined); }
+    `, "utf8");
+
+    const { stdout } = await execFileAsync(process.env.GAMEFORGE_BUN_BIN?.trim() || "bun", ["run", runner], { cwd: root, timeout: CONPTY_FIXTURE_TIMEOUT_MS });
+    expect(stdout).toContain("AUTH_RESULT:");
+    expect(stdout).toMatch(/authorization is required or expired/i);
+  }, CONPTY_TEST_TIMEOUT_MS);
+
   it("reports an exited snapshot after stopping a real ConPTY session", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "gameforge-conpty-")); roots.push(root);
     const sessionRoot = path.join(root, "evidence");

@@ -29,6 +29,7 @@ const execFileAsync = promisify(execFile);
 const relayUrl = safeRelayUrl(process.env.GAMEFORGE_RUN_RELAY_URL?.trim() || DEFAULT_RELAY_URL);
 loopbackHttpPort(relayUrl, "Relay URL");
 const openChamberUrl = safeOpenChamberUrl(process.env.GAMEFORGE_OPENCHAMBER_URL?.trim() || DEFAULT_OPENCHAMBER_URL);
+loopbackHttpPort(openChamberUrl, "OpenChamber URL");
 
 const command = process.argv[2] ?? "status";
 if (command === "status") {
@@ -38,6 +39,7 @@ if (command === "status") {
 } else if (command === "up") {
   await runUp();
 } else if (command === "down") {
+  if (process.argv.length > 3) throw new Error("testenv down does not accept arguments.");
   await runDown();
 } else {
   process.stderr.write(`Unknown testenv command: ${command}\nUsage: testenv status|up|down\n`);
