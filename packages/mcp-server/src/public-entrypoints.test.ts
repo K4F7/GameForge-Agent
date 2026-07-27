@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -72,5 +72,22 @@ describe("GameForge public discovery", () => {
         /不再(?:是|作为|提供|支持)/,
       );
     }
+  });
+
+  it("does not discover a dedicated mini-game runtime workspace or dependency", async () => {
+    const packageDirectories = await readdir(path.join(repositoryRoot, "packages"), { withFileTypes: true });
+    const workspaceNames = await Promise.all(
+      packageDirectories
+        .filter((entry) => entry.isDirectory())
+        .map(async (entry) => {
+          const manifestPath = path.join(repositoryRoot, "packages", entry.name, "package.json");
+          const source = await readFile(manifestPath, "utf8").catch(() => null);
+          return source === null ? null : (JSON.parse(source) as { name: string }).name;
+        }),
+    );
+
+    expect(workspaceNames).not.toContain("gameforge-douyin-devtool-extension");
+    const lockfile = await readFile(path.join(repositoryRoot, "bun.lock"), "utf8");
+    expect(lockfile).not.toMatch(/gameforge-douyin-devtool-extension|gameforge-douyin-cli-doctor|@types\/vscode/);
   });
 });

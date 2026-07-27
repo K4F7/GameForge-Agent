@@ -72,7 +72,6 @@ export async function writeRuntimeConfig(
     }
   }
   const layaAirCliPath = await optionalRegularFileEnvironment("GAMEFORGE_LAYAIR_CLI");
-  const douyinMiniGameCliPath = await optionalRegularFileEnvironment("GAMEFORGE_DOUYIN_MINIGAME_CLI");
   const permissionMode = options.permissionMode ?? "scoped";
   const permission = permissionMode === "full-access" ? "allow" : {
     "gameforge_*": "ask",
@@ -100,9 +99,6 @@ export async function writeRuntimeConfig(
             ? {}
             : { GAMEFORGE_RUN_RELAY_TOKEN: "{env:GAMEFORGE_RUN_RELAY_TOKEN}" }),
           ...(layaAirCliPath === undefined ? {} : { GAMEFORGE_LAYAIR_CLI: layaAirCliPath }),
-          ...(douyinMiniGameCliPath === undefined
-            ? {}
-            : { GAMEFORGE_DOUYIN_MINIGAME_CLI: douyinMiniGameCliPath }),
           GAMEFORGE_MCP_AUDIT_DIR: runtime.auditDirectory,
           GAMEFORGE_MODEL_ROUTING_POLICY: path.join(runtime.repoRoot, "config", "model-routing.example.json"),
         },

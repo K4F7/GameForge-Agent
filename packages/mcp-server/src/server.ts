@@ -82,12 +82,10 @@ import {
   type ProjectVerifier,
   type ProjectPreviewManager,
   type DouyinProjectBuilder,
-  type DouyinMiniGameCliStatusProvider,
   type WechatProjectBuilder,
   type LayaGameplayVerifier,
 } from "./tools.js";
 import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditSummaryProvider } from "./tool-audit.js";
-import type { DouyinBridgePort } from "./douyin-bridge-controller.js";
 
 export type CreateServerOptions = {
   gameSpecDraftProvider?: GameSpecDraftProvider;
@@ -100,7 +98,6 @@ export type CreateServerOptions = {
   projectPreviewManager?: ProjectPreviewManager;
   projectGenerator?: ProjectGenerator;
   douyinProjectBuilder?: DouyinProjectBuilder;
-  douyinMiniGameCliProbe?: DouyinMiniGameCliStatusProvider;
   wechatProjectBuilder?: WechatProjectBuilder;
   layaGameplayVerifier?: LayaGameplayVerifier;
   runRelayClient?: RunRelayToolClient;
@@ -108,7 +105,6 @@ export type CreateServerOptions = {
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
   toolAudit?: ToolAuditRecorder & Partial<ToolAuditContextBinder & ToolAuditSummaryProvider>;
   modelRoutingPolicy?: ModelRoutingPolicy;
-  douyinBridgeController?: DouyinBridgePort;
 };
 
 export function createServer(options: CreateServerOptions = {}): McpServer {

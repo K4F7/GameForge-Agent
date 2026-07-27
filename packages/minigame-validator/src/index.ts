@@ -157,13 +157,6 @@ export {
 } from "./builder.js";
 
 export {
-  DouyinMiniGameCliProbe,
-  douyinMiniGameCliPolicy,
-  type DouyinMiniGameCliProbeOptions,
-  type DouyinMiniGameCliProbeReport,
-} from "./douyin-cli.js";
-
-export {
   assertMiniGameHandoffSnapshot,
   createMiniGameLocalHandoffManifest,
   type MiniGameHandoffTarget,

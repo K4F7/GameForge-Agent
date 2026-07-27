@@ -7,7 +7,6 @@
   "types": "./dist/index.d.ts",
   "bin": {
     "gameforge-minigame-validate": "dist/cli.js",
-    "gameforge-douyin-cli-doctor": "dist/douyin-cli-doctor.js",
     "gameforge-minigame-handoff": "dist/handoff-cli.js"
   },
   "scripts": {
