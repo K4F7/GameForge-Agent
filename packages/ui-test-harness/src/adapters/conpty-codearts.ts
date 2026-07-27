@@ -130,7 +130,13 @@ export class ConPtyCodeArtsDriver implements CodeArtsTuiDriver {
     };
   }
 
-  subscribeOutput(listener: (frame: TuiOutputFrame) => void): () => void {
+  subscribeOutput(listener: (frame: TuiOutputFrame) => void, options?: { replayBuffered?: boolean }): () => void {
+    if (options?.replayBuffered === true && this.#session !== undefined && this.#history.length > 0) {
+      // One synthetic frame carrying the bounded history. Delivered
+      // synchronously before registration: no data event can interleave, so
+      // live frames observed afterwards keep the sequence monotonic.
+      listener({ sessionId: this.#session.sessionId, sequence: this.#sequence, data: this.#history });
+    }
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   }
@@ -246,6 +252,9 @@ export class ConPtyCodeArtsDriver implements CodeArtsTuiDriver {
         ? /Ask anything|What is the tech stack|\bBuild\b|tab agents|tab commands/i.test(screen)
         : /Ask anything|What is the tech stack|tab agents|tab commands/i.test(screen);
       if (ready) return;
+      if (/authorization (?:is )?required|authentication (?:is )?required|(?:sign|log) in to continue/i.test(screen)) {
+        throw new Error("CodeArts authorization is required or expired.");
+      }
       if (this.#status === "failed" || this.#status === "exited") throw new Error("CodeArts exited before the TUI became ready.");
       await new Promise((resolve) => setTimeout(resolve, 100));
     }

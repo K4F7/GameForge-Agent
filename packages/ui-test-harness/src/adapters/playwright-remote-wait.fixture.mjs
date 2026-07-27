@@ -20,6 +20,9 @@ try {
     mode: "headless",
     viewport: { width: 800, height: 600 },
   });
+  // Navigating to the URL the page is already on must be a no-op, not an
+  // error - the readiness scenario's first step does exactly this.
+  await driver.navigate(`http://127.0.0.1:${address.port}/`);
   await driver.click("#go");
   await driver.waitFor("#done", { state: "visible", timeoutMs: 2_000 });
   const snapshot = await driver.snapshot("remote-complete");

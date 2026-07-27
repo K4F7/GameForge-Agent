@@ -12,16 +12,25 @@ export class XtermTuiObserverDriver implements CodeArtsTuiObserverDriver {
   #windowProcess: ChildProcess | undefined; #visible = false;
   #closePromise: Promise<void> | undefined;
 
+  constructor(private readonly options: { browserChannel?: string } = {}) {}
+
   async open(options: { session: HarnessSession; source: CodeArtsTuiDriver; visible: boolean; viewport: { width: number; height: number } }): Promise<TuiObserverSnapshot> {
     if (this.#terminal !== undefined || this.#closePromise !== undefined) throw new Error("xterm observer is already open.");
     const source = await options.source.read();
     try {
       if (options.visible) {
-        const helper = fileURLToPath(new URL("./xterm-window.js", import.meta.url)); this.#windowProcess = spawn("node", [helper, String(source.columns), String(source.rows)], { stdio: ["pipe", "pipe", "pipe"], windowsHide: false });
+        const helper = fileURLToPath(new URL("./xterm-window.js", import.meta.url)); this.#windowProcess = spawn("node", [helper, String(source.columns), String(source.rows)], {
+          stdio: ["pipe", "pipe", "pipe"], windowsHide: false,
+          env: { ...process.env, ...(this.options.browserChannel === undefined ? {} : { GAMEFORGE_BROWSER_CHANNEL: this.options.browserChannel }) },
+        });
         await waitReady(this.#windowProcess, 35_000); this.#visible = true;
       }
       this.#session = options.session;
       this.#terminal = new Terminal({ cols: source.columns, rows: source.rows, scrollback: 10_000, allowProposedApi: true, logLevel: "off" });
+      // replayBuffered: the observer opens after the TUI has started, and the
+      // startup output - exactly the part that answers "did it come up" - would
+      // otherwise never reach the visible window. Evidence keeps its own
+      // replay-free subscription, so nothing is duplicated into the VT log.
       this.#unsubscribe = options.source.subscribeOutput((frame) => {
         if (frame.sessionId !== options.session.sessionId) throw new Error("xterm received output from another session.");
         this.#pending = this.#pending.then(async () => {
@@ -31,7 +40,7 @@ export class XtermTuiObserverDriver implements CodeArtsTuiObserverDriver {
           });
           if (this.#windowProcess?.stdin?.writable) this.#windowProcess.stdin.write(`${JSON.stringify(frame.data)}\n`);
         });
-      });
+      }, { replayBuffered: true });
       return await this.snapshot();
     } catch (error) {
       await this.close();
@@ -43,6 +52,9 @@ export class XtermTuiObserverDriver implements CodeArtsTuiObserverDriver {
     const session = this.#session; const terminal = this.#terminal;
     if (session === undefined || terminal === undefined) throw new Error("xterm observer has not opened.");
     await this.#pending;
+    if (this.#visible && (this.#windowProcess === undefined || this.#windowProcess.exitCode !== null || this.#windowProcess.signalCode !== null)) {
+      throw new Error("xterm observer window exited before the readiness snapshot.");
+    }
     return { kind: this.kind, sessionId: session.sessionId, visible: this.#visible, status: "open", title: this.#visible ? "CodeArts TUI · xterm observer" : "CodeArts TUI · xterm headless",
       capturedAt: new Date().toISOString() };
   }

@@ -341,17 +341,35 @@ describe("UiTestController", () => {
     expect(finalized).toMatchObject({ status: "failed" });
   });
 
-  it("converts a stopping lifecycle write failure into a finalized failed result", async () => {
-    const sessionId = "stopping-evidence-failure"; let finalized: HarnessResult | undefined;
-    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+  it("stops a transferred TUI when releasing bootstrap output fails", async () => {
+    const sessionId = "bootstrap-release-failure"; let stopped = false;
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() { stopped = true; } };
     const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() {} };
-    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() {} };
-    const evidence = { async recordSession() {}, async recordLifecycle(event: { phase: string }) { if (event.phase === "stopping") throw new Error("stopping evidence unavailable"); }, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize(result: HarnessResult) { finalized = result; } };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { throw new Error("unused"); }, async close() {} };
+    const evidence = { async recordSession() {}, async recordLifecycle() {}, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize() {} };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headless", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, activityPollMs: 1, inactivityTimeoutMs: 100, releaseBootstrapTuiOutput: async () => { throw new Error("bootstrap evidence failed"); } });
+
+    await expect(controller.run({ name: "bootstrap-release-failure", steps: [] })).resolves.toMatchObject({ status: "failed", failure: expect.stringContaining("bootstrap evidence failed") });
+    expect(stopped).toBe(true);
+  });
+
+  it("observes and holds a headed stopping lifecycle failure before cleanup", async () => {
+    const sessionId = "stopping-evidence-failure"; let finalized: HarnessResult | undefined; const events: string[] = [];
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() { events.push("observer:close"); } };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() { events.push("gui:close"); } };
+    let stoppingFailed = false;
+    const evidence = { async recordSession() {}, async recordLifecycle(event: { phase: string }) { events.push(`lifecycle:${event.phase}`); if (event.phase === "stopping" && !stoppingFailed) { stoppingFailed = true; throw new Error("stopping evidence unavailable"); } }, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize(result: HarnessResult) { finalized = result; } };
     const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, runStatus: "completed", capturedAt: new Date().toISOString() }; } }, evidence },
-      { sessionId, mode: "headless", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, activityPollMs: 1, inactivityTimeoutMs: 100 });
+      { sessionId, mode: "headed/watch", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, failureHoldMs: 10, activityPollMs: 1, inactivityTimeoutMs: 100, onFailureObserved(message) { events.push(`observed:${message}`); } });
 
     await expect(controller.run({ name: "stopping-evidence-failure", steps: [] })).resolves.toMatchObject({ status: "failed", failure: "stopping evidence unavailable" });
     expect(finalized).toMatchObject({ status: "failed", failure: "stopping evidence unavailable" });
+    expect(events).toContain("observed:stopping evidence unavailable");
+    expect(events).toContain("lifecycle:observing");
+    expect(events.indexOf("observed:stopping evidence unavailable")).toBeLessThan(events.indexOf("gui:close"));
+    expect(events.indexOf("lifecycle:observing")).toBeLessThan(events.indexOf("observer:close"));
   });
 
   it("reports evidence finalization failure alongside an existing scenario failure", async () => {
@@ -408,6 +426,167 @@ describe("UiTestController", () => {
     await expect(controller.run({ name: "final-snapshot-failure", steps: [] })).resolves.toMatchObject({ status: "failed", failure: "final snapshot disk full" });
     expect(stopped).toBe(true);
     expect(finalized).toMatchObject({ status: "failed" });
+  });
+
+  it("holds headed windows open after a failure before tearing them down", async () => {
+    const sessionId = "failure-hold"; const events: string[] = [];
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() { events.push("tui:stop"); } };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() { events.push("observer:close"); } };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() { throw new Error("navigation failed"); }, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() { events.push("gui:close"); } };
+    const evidence = { async recordSession() {}, async recordLifecycle(event: { phase: string }) { events.push(`lifecycle:${event.phase}`); }, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize() {} };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headed/watch", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, failureHoldMs: 30, activityPollMs: 1, inactivityTimeoutMs: 100 });
+
+    const result = await controller.run({ name: "failure-hold", steps: [{ kind: "gui.navigate", url: "http://127.0.0.1/" }] });
+
+    expect(result).toMatchObject({ status: "failed", failure: "navigation failed" });
+    expect(events).toContain("lifecycle:observing");
+    expect(events.indexOf("lifecycle:observing")).toBeLessThan(events.indexOf("gui:close"));
+    expect(events.indexOf("lifecycle:observing")).toBeLessThan(events.indexOf("observer:close"));
+    // The interrupted phase and the hold keep their own labels; their time
+    // must not be misattributed to teardown on exactly the path timings exist for.
+    expect(result.phases?.map((phase) => phase.label)).toEqual(["tui.start", "observer.open", "gui.launch", "steps", "hold", "teardown", "finalize"]);
+  });
+
+  it("reports and holds a headed failure discovered by the final GUI health snapshot", async () => {
+    const sessionId = "final-gui-diagnostic-hold"; const events: string[] = []; let snapshots = 0;
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() {} };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { snapshots += 1; return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: snapshots > 1 ? ["late failure"] : [], pageErrors: [], failedRequests: [] } }; }, async close() { events.push("gui:close"); } };
+    const evidence = { async recordSession() {}, async recordLifecycle(event: { phase: string }) { events.push(`lifecycle:${event.phase}`); }, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize() {} };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headed/watch", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, failureHoldMs: 1, activityPollMs: 1, inactivityTimeoutMs: 100, onFailureObserved: async () => { events.push("failure:reported"); } });
+
+    await expect(controller.run({ name: "final-gui-diagnostic-hold", steps: [] })).resolves.toMatchObject({ status: "failed", failure: expect.stringContaining("browser diagnostics") });
+    expect(events).toEqual(expect.arrayContaining(["failure:reported", "lifecycle:observing", "gui:close"]));
+    expect(events.indexOf("failure:reported")).toBeLessThan(events.indexOf("lifecycle:observing"));
+    expect(events.indexOf("lifecycle:observing")).toBeLessThan(events.indexOf("gui:close"));
+  });
+
+  it("carries the run tier into the evidence session it records", async () => {
+    const sessionId = "tier-session"; let recorded: HarnessSession | undefined;
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() {} };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() {} };
+    const evidence = { async recordSession(session: HarnessSession) { recorded = session; }, async recordLifecycle() {}, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize() {} };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headless", tier: "readiness", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, activityPollMs: 1, inactivityTimeoutMs: 100 });
+
+    await expect(controller.run({ name: "tier-session", steps: [] })).resolves.toMatchObject({ status: "completed" });
+    expect(recorded?.tier).toBe("readiness");
+  });
+
+  it("fails a capture when the main CodeArts TUI has exited", async () => {
+    const sessionId = "exited-at-capture";
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return { ...tuiSnapshot(sessionId), status: "exited" as const }; }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() {} };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() {} };
+    const evidence = { async recordSession() {}, async recordLifecycle() {}, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize() {} };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority" as const, async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headless", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, activityPollMs: 1, inactivityTimeoutMs: 100 });
+
+    const result = await controller.run({ name: "capture-liveness", steps: [{ kind: "capture", label: "readiness" }] });
+
+    expect(result).toMatchObject({ status: "failed", failure: "CodeArts TUI is not running at capture: exited." });
+  });
+
+  it("includes bootstrap time in the first recorded phase", async () => {
+    const sessionId = "bootstrap-timing";
+    const startedAt = new Date(Date.now() - 100).toISOString();
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() {} };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() {} };
+    const evidence = { async recordSession() {}, async recordLifecycle() {}, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize() {} };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority" as const, async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, startedAt, mode: "headless", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, activityPollMs: 1, inactivityTimeoutMs: 100 });
+
+    const result = await controller.run({ name: "bootstrap-timing", steps: [] });
+
+    expect(result.startedAt).toBe(startedAt);
+    expect(result.phases?.[0]).toMatchObject({ label: "tui.start" });
+    expect(result.phases?.[0]?.durationMs).toBeGreaterThanOrEqual(75);
+  });
+
+  it("records how long each run phase took", async () => {
+    const sessionId = "phase-timings";
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() {} };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() {} };
+    const evidence = { async recordSession() {}, async recordLifecycle() {}, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize() {} };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headless", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, activityPollMs: 1, inactivityTimeoutMs: 100 });
+
+    const result = await controller.run({ name: "phase-timings", steps: [] });
+
+    expect(result.status).toBe("completed");
+    expect(result.phases?.map((phase) => phase.label)).toEqual(["tui.start", "observer.open", "gui.launch", "steps", "teardown", "finalize"]);
+    for (const phase of result.phases ?? []) {
+      expect(Number.isSafeInteger(phase.durationMs)).toBe(true);
+      expect(phase.durationMs).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("includes evidence finalization in the reported run phases", async () => {
+    const sessionId = "finalize-phase-timing"; let committed: HarnessResult | undefined;
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() {} };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() {} };
+    const evidence = { async recordSession() {}, async recordLifecycle() {}, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize(result: HarnessResult, beforeCommit?: () => void) { await new Promise((resolve) => setTimeout(resolve, 120)); beforeCommit?.(); committed = structuredClone(result); } };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headless", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, activityPollMs: 1, inactivityTimeoutMs: 100 });
+
+    const result = await controller.run({ name: "finalize-phase-timing", steps: [] });
+
+    expect(result.phases?.at(-1)).toMatchObject({ label: "finalize" });
+    expect(result.phases?.at(-1)?.durationMs).toBeGreaterThanOrEqual(100);
+    expect(committed?.phases?.at(-1)).toMatchObject({ label: "finalize" });
+    expect(committed?.phases?.at(-1)?.durationMs).toBeGreaterThanOrEqual(100);
+    expect(Date.parse(result.finishedAt) - Date.parse(result.startedAt)).toBeGreaterThanOrEqual(100);
+    expect(committed?.finishedAt).toBe(result.finishedAt);
+  });
+
+  it("notifies the failure observer before the hold and before teardown", async () => {
+    const sessionId = "failure-observer"; const events: string[] = [];
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() { events.push("observer:close"); } };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() { throw new Error("navigation failed"); }, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() { events.push("gui:close"); } };
+    const evidence = { async recordSession() {}, async recordLifecycle(event: { phase: string }) { events.push(`lifecycle:${event.phase}`); }, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize() {} };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headed/watch", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, failureHoldMs: 20, activityPollMs: 1, inactivityTimeoutMs: 100,
+        onFailureObserved: (message) => { events.push(`observed:${message}`); } });
+
+    await expect(controller.run({ name: "failure-observer", steps: [{ kind: "gui.navigate", url: "http://127.0.0.1/" }] })).resolves.toMatchObject({ status: "failed" });
+
+    const observedIndex = events.indexOf("observed:navigation failed");
+    expect(observedIndex).toBeGreaterThanOrEqual(0);
+    expect(observedIndex).toBeLessThan(events.indexOf("lifecycle:observing"));
+    expect(observedIndex).toBeLessThan(events.indexOf("gui:close"));
+    expect(observedIndex).toBeLessThan(events.indexOf("observer:close"));
+  });
+
+  it("rejects a failure hold long enough to strand an unattended run", async () => {
+    const sessionId = "failure-hold-bound";
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() {} };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() {}, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() {} };
+    const evidence = { async recordSession() {}, async recordLifecycle() {}, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize() {} };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headed/watch", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, failureHoldMs: 3_600_000, activityPollMs: 1, inactivityTimeoutMs: 100 });
+
+    await expect(controller.run({ name: "failure-hold-bound", steps: [] })).rejects.toThrow("failureHoldMs");
+  });
+
+  it("does not hold windows open after a headless failure", async () => {
+    const sessionId = "failure-hold-headless"; const events: string[] = [];
+    const tui = { kind: "codearts-original-tui" as const, async start() { return tuiSnapshot(sessionId); }, async read() { return tuiSnapshot(sessionId); }, subscribeOutput() { return () => undefined; }, async sendText() {}, async sendKey() {}, async resize() {}, async stop() {} };
+    const observer = { kind: "independent-xterm" as const, async open() { return observerSnapshot(sessionId); }, async snapshot() { return observerSnapshot(sessionId); }, async close() {} };
+    const gui = { kind: "openchamber-original-gui" as const, async launch() {}, async navigate() { throw new Error("navigation failed"); }, async click() {}, async fill() {}, async press() {}, async waitFor() {}, async snapshot() { return { url: "http://127.0.0.1/", title: "OpenChamber", capturedAt: new Date().toISOString(), diagnostics: { consoleErrors: [], pageErrors: [], failedRequests: [] } }; }, async close() {} };
+    const evidence = { async recordSession() {}, async recordLifecycle(event: { phase: string }) { events.push(event.phase); }, async recordActivity() {}, async recordTuiInput() {}, async recordTuiOutput() {}, async recordTuiSnapshot() {}, async recordTuiObserverSnapshot() {}, async recordGuiSnapshot() {}, async recordAuthoritySnapshot() {}, async finalize() {} };
+    const controller = new UiTestController({ tui, tuiObserver: observer, gui, authority: { kind: "gameforge-authority", async snapshot() { return { eventSequence: 0, capturedAt: new Date().toISOString() }; } }, evidence },
+      { sessionId, mode: "headless", terminal: { columns: 80, rows: 24 }, tuiObserverViewport: { width: 800, height: 600 }, viewport: { width: 800, height: 600 }, observationHoldMs: 0, failureHoldMs: 30, activityPollMs: 1, inactivityTimeoutMs: 100 });
+
+    await expect(controller.run({ name: "failure-hold-headless", steps: [{ kind: "gui.navigate", url: "http://127.0.0.1/" }] })).resolves.toMatchObject({ status: "failed" });
+    expect(events).not.toContain("observing");
   });
 });
 

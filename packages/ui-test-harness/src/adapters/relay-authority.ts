@@ -43,6 +43,7 @@ export class RelayAuthorityDriver implements GameForgeAuthorityDriver {
       runId: task.runId,
       ...(task.projectId === undefined ? {} : { projectId: task.projectId }),
       taskStatus: task.status,
+      ...(task.claimedBy === undefined ? {} : { claimedBy: task.claimedBy }),
       runStatus: runStatus(last),
       eventSequence: last?.sequence ?? 0,
       ...(last === undefined ? {} : { lastEventType: last.type }),

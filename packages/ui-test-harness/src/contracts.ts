@@ -19,12 +19,16 @@ export const tuiKeys = [
 
 export type TuiKey = (typeof tuiKeys)[number];
 export type HarnessMode = "headed/watch" | "headless";
+/** ADR-0005: readiness asserts the environment is usable; only acceptance is an end-to-end verdict. */
+export type HarnessTier = "readiness" | "acceptance";
 export type HarnessPhase = "idle" | "starting" | "running" | "observing" | "stopping" | "completed" | "failed";
 
 export type HarnessSession = {
   sessionId: string;
   startedAt: string;
   mode: HarnessMode;
+  /** Persisted into metadata.json so the tier is readable from the evidence itself. */
+  tier?: HarnessTier;
   taskId?: string;
   runId?: string;
   projectId?: string;
@@ -80,6 +84,7 @@ export type AuthoritySnapshot = {
   runId?: string;
   projectId?: string;
   taskStatus?: string;
+  claimedBy?: string;
   runStatus?: string;
   eventSequence: number;
   lastEventType?: string;
@@ -90,7 +95,14 @@ export interface CodeArtsTuiDriver {
   readonly kind: "codearts-original-tui";
   start(options: { session: HarnessSession; columns: number; rows: number }): Promise<TuiSnapshot>;
   read(): Promise<TuiSnapshot>;
-  subscribeOutput(listener: (frame: TuiOutputFrame) => void): () => void;
+  /**
+   * With replayBuffered, the driver first delivers its bounded VT history as
+   * one synthetic frame (original session id, current sequence) before live
+   * frames, so a late subscriber still sees startup output. Evidence
+   * subscribers must NOT request replay - they subscribe before start and a
+   * replay would duplicate frames into the VT log.
+   */
+  subscribeOutput(listener: (frame: TuiOutputFrame) => void, options?: { replayBuffered?: boolean }): () => void;
   sendText(text: string, options: { appendEnter: boolean }): Promise<void>;
   sendKey(key: TuiKey): Promise<void>;
   resize(columns: number, rows: number): Promise<void>;
@@ -145,7 +157,7 @@ export interface EvidenceSink {
   recordTuiObserverSnapshot(snapshot: TuiObserverSnapshot): Promise<void>;
   recordGuiSnapshot(label: string, snapshot: GuiSnapshot): Promise<void>;
   recordAuthoritySnapshot(snapshot: AuthoritySnapshot): Promise<void>;
-  finalize(result: HarnessResult): Promise<void>;
+  finalize(result: HarnessResult, beforeCommit?: () => void): Promise<void>;
 }
 
 export type AuthorityGate = {
@@ -173,11 +185,25 @@ export type HarnessScenario = {
 
 export type HarnessOptions = {
   sessionId?: string;
+  /** Includes bootstrap and preflight time in the recorded run budget. */
+  startedAt?: string;
+  /** Atomically hands the bootstrap Evidence subscription to the controller. */
+  releaseBootstrapTuiOutput?: () => Promise<void>;
   mode: HarnessMode;
+  /** Propagated into the recorded evidence session so metadata.json keeps the tier. */
+  tier?: HarnessTier;
   terminal: { columns: number; rows: number };
   tuiObserverViewport: { width: number; height: number };
   viewport: { width: number; height: number };
   observationHoldMs: number;
+  /** Headed only: how long failed windows stay on screen before teardown. */
+  failureHoldMs?: number;
+  /**
+   * Invoked with the failure message before the failure hold and before any
+   * teardown, so guidance can reach the operator while the windows are still
+   * on screen. Failures thrown by the observer itself are swallowed.
+   */
+  onFailureObserved?: (failureMessage: string) => void | Promise<void>;
   activityPollMs: number;
   inactivityTimeoutMs: number;
   shutdownTimeoutMs?: number;
@@ -186,10 +212,16 @@ export type HarnessOptions = {
   projectId?: string;
 };
 
+export type PhaseTiming = {
+  label: string;
+  durationMs: number;
+};
+
 export type HarnessResult = {
   status: "completed" | "failed";
   scenario: string;
   startedAt: string;
   finishedAt: string;
   failure?: string;
+  phases?: PhaseTiming[];
 };

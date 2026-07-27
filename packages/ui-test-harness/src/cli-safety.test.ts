@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
-import { safeCodeArtsServerUrl, safeEvidenceSegment, safeRelayUrl } from "./cli-safety.js";
+import { loopbackHttpPort, safeCodeArtsServerUrl, safeEvidenceSegment, safeOpenChamberUrl, safeRelayUrl } from "./cli-safety.js";
 
 describe("UI harness CLI safety", () => {
   test.each(["../outside", "..\\outside", "nested/path", "nested\\path", ".", "..", ""])
@@ -26,6 +28,24 @@ describe("UI harness CLI safety", () => {
 
   test("accepts a credential-free loopback CodeArts attach URL", () => {
     expect(safeCodeArtsServerUrl("http://127.0.0.1:4097")).toBe("http://127.0.0.1:4097/");
+    expect(() => safeCodeArtsServerUrl("http://127.0.0.1:4097/proxy/")).toThrow(/root path/i);
+  });
+
+  test.each(["http://127.0.0.1:43163/?token=secret", "http://127.0.0.1:43163/#secret"])
+    ("rejects caller-supplied OpenChamber query or fragment: %s", (value) => {
+      expect(() => safeOpenChamberUrl(value)).toThrow(/OpenChamber URL/i);
+    });
+
+  test("derives a management port only from plain-HTTP loopback URLs", () => {
+    expect(loopbackHttpPort("http://127.0.0.1:8787/", "Relay URL")).toBe(8787);
+    expect(loopbackHttpPort("http://localhost:43163/", "OpenChamber URL")).toBe(43163);
+    // testenv:up only serves plain HTTP; an HTTPS management URL would report
+    // ready while every probe hits TLS handshake failures on the same listener.
+    expect(() => loopbackHttpPort("https://127.0.0.1:43163/", "OpenChamber URL")).toThrow(/plain HTTP/i);
+    expect(() => loopbackHttpPort("http://relay.example.com/", "Relay URL")).toThrow(/loopback/i);
+    expect(() => loopbackHttpPort("http://user:secret@127.0.0.1:8787/", "Relay URL")).toThrow(/credentials/i);
+    expect(() => loopbackHttpPort("http://127.0.0.1:8787/api", "Relay URL")).toThrow(/root path/i);
+    expect(() => loopbackHttpPort("http://[::1]:8787/", "Relay URL")).toThrow(/127\.0\.0\.1|localhost/i);
   });
 
   test("evaluates the default projects root before contacting Relay", async () => {
@@ -46,6 +66,71 @@ describe("UI harness CLI safety", () => {
   test("requires CodeArts attach URL and session together", async () => {
     const output = await runCli(["--headless", "--codearts-server-url", "http://127.0.0.1:4097"]);
     expect(output).toContain("--codearts-server-url and --codearts-session must be provided together");
+  });
+
+  test("requires environment-provided CodeArts attach URL and session together", async () => {
+    const output = await runCli(["--headed"], {
+      GAMEFORGE_CODEARTS_SERVER_URL: "http://127.0.0.1:4097",
+      GAMEFORGE_CODEARTS_SESSION: undefined,
+    });
+    expect(output).toContain("--codearts-server-url and --codearts-session must be provided together");
+  });
+
+  test("finalizes Evidence when the external CodeArts session is missing", async () => {
+    const experiment = `missing-attach-${Date.now()}`;
+    const output = await runCli(["--headed", "--tier", "acceptance", "--experiment", experiment], {
+      GAMEFORGE_CODEARTS_SERVER_URL: undefined,
+      GAMEFORGE_CODEARTS_SESSION: undefined,
+    });
+    expect(output).toContain("requires an external CodeArts server and session");
+    const experimentRoot = path.resolve(process.cwd(), "../..", ".gameforge-validation", experiment);
+    expect(existsSync(experimentRoot)).toBe(true);
+    expect(output).toContain("result.json");
+  });
+
+  test("requires an explicit shared Evidence session for attached acceptance", async () => {
+    const experiment = `missing-shared-session-${Date.now()}`;
+    const output = await runCli(["--headed", "--tier", "acceptance", "--experiment", experiment], {
+      GAMEFORGE_CODEARTS_SERVER_URL: "http://127.0.0.1:4097/",
+      GAMEFORGE_CODEARTS_SESSION: "ses_shared",
+    });
+    expect(output).toContain("acceptance requires an explicit --session-id");
+    expect(output).toContain("result.json");
+  });
+
+  test("rejects an unknown option instead of silently running the acceptance tier", async () => {
+    const output = await runCli(["--headless", "--tire", "readiness"]);
+    expect(output).toContain("Unknown option: --tire");
+  });
+
+  test("rejects an unconsumed positional argument instead of defaulting to acceptance", async () => {
+    const output = await runCli(["--headed", "readiness"]);
+    expect(output).toContain("Unexpected positional argument: readiness");
+  });
+
+  test("rejects headless readiness before contacting Relay", async () => {
+    const output = await runCli(["--headless", "--tier", "readiness"]);
+    expect(output).toContain("readiness tier requires --headed");
+  });
+
+  test("rejects an existing task tuple for readiness before contacting Relay", async () => {
+    const output = await runCli([
+      "--headed", "--tier", "readiness",
+      "--task-id", "task-1", "--run-id", "run-1", "--project-id", "project-1",
+    ]);
+    expect(output).toContain("readiness tier must create a fresh Authority task");
+  });
+
+  test("accepts zero to disable the headed failure hold", async () => {
+    const output = await runCli(["--headed", "--failure-hold-ms", "0", "--relay-url", "http://127.0.0.1:1/"]);
+    expect(output).not.toContain("Timeout values must be positive integers");
+  });
+
+  test("rejects an unsafe OpenChamber URL before creating Evidence", async () => {
+    const experiment = `unsafe-openchamber-${Date.now()}`;
+    const output = await runCli(["--headless", "--experiment", experiment, "--openchamber-url", "https://example.com:43163/"]);
+    expect(output).toContain("OpenChamber URL must be credential-free loopback HTTP(S)");
+    expect(existsSync(path.resolve(process.cwd(), "../..", ".gameforge-validation", experiment))).toBe(false);
   });
 });
 

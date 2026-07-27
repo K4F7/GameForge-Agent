@@ -9,6 +9,7 @@ import type {
   HarnessOptions,
   HarnessPhase,
   HarnessResult,
+  PhaseTiming,
   HarnessScenario,
   HarnessSession,
   HarnessStep,
@@ -18,6 +19,13 @@ import { compareActivity, inactiveForMs } from "./watchdog.js";
 
 const MAX_GUI_WAIT_TIMEOUT_MS = 900_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+/** Keeps a headed failure hold from turning an unattended run into an attended one. */
+const MAX_FAILURE_HOLD_MS = 300_000;
+/**
+ * Headed failures stay on screen longer than headed successes: a success only
+ * needs a glance to confirm, a failure has to be read.
+ */
+const DEFAULT_FAILURE_HOLD_MS = 30_000;
 const MAX_PENDING_TUI_OUTPUT_FRAMES = 1_024;
 
 export type HarnessDrivers = {
@@ -36,12 +44,26 @@ export class UiTestController {
   ) {}
 
   async run(scenario: HarnessScenario): Promise<HarnessResult> {
-    const startedAt = new Date().toISOString();
+    const startedAt = this.options.startedAt ?? new Date().toISOString();
+    const invocationStartedAt = Date.parse(startedAt);
+    if (!Number.isFinite(invocationStartedAt)) throw new Error("Harness startedAt must be a valid ISO timestamp.");
     const session: HarnessSession = { sessionId: this.options.sessionId ?? randomUUID(), startedAt, mode: this.options.mode,
+      ...(this.options.tier === undefined ? {} : { tier: this.options.tier }),
       ...(this.options.taskId === undefined ? {} : { taskId: this.options.taskId }), ...(this.options.runId === undefined ? {} : { runId: this.options.runId }),
       ...(this.options.projectId === undefined ? {} : { projectId: this.options.projectId }) };
     let failure: unknown;
     let tuiStarted = false;
+    const phases: PhaseTiming[] = [];
+    let phaseStartedAt = invocationStartedAt;
+    // Tracks the segment currently in flight, so a thrown step still books its
+    // time under the right label instead of inflating teardown.
+    let pendingPhase = "tui.start";
+    const markPhase = (label: string): void => {
+      const now = Date.now();
+      phases.push({ label, durationMs: Math.max(0, now - phaseStartedAt) });
+      phaseStartedAt = now;
+    };
+    const completePhase = (label: string, next: string): void => { markPhase(label); pendingPhase = next; };
     let observerOpened = false;
     let guiLaunched = false;
     let failureCaptured = false;
@@ -60,6 +82,23 @@ export class UiTestController {
     if (!Number.isSafeInteger(shutdownTimeoutMs) || shutdownTimeoutMs < 1 || shutdownTimeoutMs > 60_000) {
       throw new Error("Harness shutdownTimeoutMs must be an integer between 1 and 60000.");
     }
+    const configuredFailureHoldMs = this.options.failureHoldMs ?? DEFAULT_FAILURE_HOLD_MS;
+    if (!Number.isSafeInteger(configuredFailureHoldMs) || configuredFailureHoldMs < 0 || configuredFailureHoldMs > MAX_FAILURE_HOLD_MS) {
+      throw new Error(`Harness failureHoldMs must be an integer between 0 and ${MAX_FAILURE_HOLD_MS}.`);
+    }
+    let failureObserved = false;
+    const observeFailure = async (error: unknown): Promise<void> => {
+      if (failureObserved) return;
+      failureObserved = true;
+      if (this.options.onFailureObserved !== undefined) {
+        try { await this.options.onFailureObserved(errorMessage(error)); } catch { /* guidance must never worsen the failure */ }
+      }
+      if (guiLaunched && this.options.mode === "headed/watch" && configuredFailureHoldMs > 0) {
+        await this.recordLifecycle(session, "observing").catch(() => undefined);
+        await delay(configuredFailureHoldMs);
+      }
+      markPhase("hold");
+    };
 
     try {
       await this.drivers.evidence.recordSession(session);
@@ -81,9 +120,11 @@ export class UiTestController {
         });
       });
       tuiStarted = true;
+      await this.options.releaseBootstrapTuiOutput?.();
       const tui = await this.drivers.tui.start({ session, ...this.options.terminal });
       this.assertTuiSession(session, tui.sessionId);
       await this.drivers.evidence.recordTuiSnapshot(tui);
+      completePhase("tui.start", "observer.open");
       observerOpened = true;
       const observer = await this.drivers.tuiObserver.open({
         session,
@@ -93,20 +134,28 @@ export class UiTestController {
       });
       this.assertTuiSession(session, observer.sessionId);
       await this.drivers.evidence.recordTuiObserverSnapshot(observer);
+      completePhase("observer.open", "gui.launch");
       guiLaunched = true;
       await this.drivers.gui.launch({ session, mode: this.options.mode, viewport: this.options.viewport });
       await this.captureGui(session, "loaded");
       await this.recordLifecycle(session, "running");
+      completePhase("gui.launch", "steps");
 
       for (const step of scenario.steps) await this.execute(session, step, trackEvidence);
+      completePhase("steps", "hold");
 
       if (this.options.mode === "headed/watch" && this.options.observationHoldMs > 0) {
         await this.recordLifecycle(session, "observing");
         await delay(this.options.observationHoldMs);
+        markPhase("hold");
       }
     } catch (error) {
       failure = error;
+      // Book the interrupted segment under its own label so its time is not
+      // misattributed to teardown on exactly the path timings exist for.
+      markPhase(pendingPhase);
       if (guiLaunched) { await this.captureGui(session, "failed").catch(() => undefined); failureCaptured = true; }
+      await observeFailure(error);
     }
 
     try { await withTimeout(outputQueue, shutdownTimeoutMs, "TUI output drain"); }
@@ -125,11 +174,13 @@ export class UiTestController {
     }
     if (guiLaunched && failure === undefined) await this.captureGui(session, "success", true).catch((error) => { failure = error; });
     if (guiLaunched && failure !== undefined && !failureCaptured) await this.captureGui(session, "failed").catch(() => undefined);
+    if (failure !== undefined) await observeFailure(failure);
     try {
       await withTimeout(this.recordLifecycle(session, "stopping"), shutdownTimeoutMs, "Stopping lifecycle evidence");
     } catch (error) {
       failure ??= error;
     }
+    if (failure !== undefined) await observeFailure(failure);
     const cleanup = await Promise.allSettled([
       guiLaunched ? withTimeout(this.drivers.gui.close(), shutdownTimeoutMs, "GUI cleanup") : Promise.resolve(),
       observerOpened ? withTimeout(this.drivers.tuiObserver.close(), shutdownTimeoutMs, "TUI observer cleanup") : Promise.resolve(),
@@ -145,12 +196,14 @@ export class UiTestController {
     }
     if (cleanupFailure?.status === "rejected") failure = combineFailure(failure, "Cleanup failed", cleanupFailure.reason);
     await Promise.all([...pendingEvidenceOperations]);
+    markPhase("teardown");
 
     let result: HarnessResult = {
       status: failure === undefined ? "completed" : "failed",
       scenario: scenario.name,
       startedAt,
       finishedAt: new Date().toISOString(),
+      phases,
       ...(failure === undefined ? {} : { failure: errorMessage(failure) }),
     };
     try {
@@ -163,8 +216,15 @@ export class UiTestController {
     } else if (failure !== undefined && result.failure === undefined) {
       result = { ...result, failure: errorMessage(failure) };
     }
+    let finalizeMarked = false;
+    const markFinalize = (): void => {
+      if (finalizeMarked) return;
+      markPhase("finalize");
+      result.finishedAt = new Date().toISOString();
+      finalizeMarked = true;
+    };
     try {
-      await this.drivers.evidence.finalize(result);
+      await this.drivers.evidence.finalize(result, markFinalize);
     } catch (error) {
       if (result.status === "completed") {
         result = { ...result, status: "failed", finishedAt: new Date().toISOString(), failure: errorMessage(error) };
@@ -172,6 +232,7 @@ export class UiTestController {
         result = { ...result, finishedAt: new Date().toISOString(), failure: `${result.failure ?? "Scenario failed"}; Evidence finalization failed: ${errorMessage(error)}` };
       }
     }
+    markFinalize();
     return result;
   }
 
@@ -225,6 +286,7 @@ export class UiTestController {
           this.drivers.authority.snapshot(),
         ]);
         this.assertTuiSession(session, tui.sessionId);
+        if (tui.status !== "running") throw new Error(`CodeArts TUI is not running at capture: ${tui.status}.`);
         const observer = await this.drivers.tuiObserver.snapshot();
         this.assertTuiSession(session, observer.sessionId);
         await Promise.all([

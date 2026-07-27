@@ -16,21 +16,37 @@
 
 ## 当前可运行边界
 
-先启动 Relay 与固定版本的原版 OpenChamber。本机验证版本为 OpenChamber `1.16.3`（MIT）。浏览器验收应使用 `bun run build:web` 后的生产服务；HMR 只用于开发，不作为长期诊断门禁依据。随后运行：
+常驻测试环境与两个运行档位由根目录 `testenv:*` 命令管理（术语见本包 `CONTEXT.md`，档位边界见 `docs/decisions/0005-testenv-readiness-tier.md`）：
 
 ```powershell
-bun run --filter @gameforge/ui-test-harness run:headless
-# 或显式可见的两个独立窗口
-bun run --filter @gameforge/ui-test-harness run:headed
+bun run testenv:status      # 预检 Relay、OpenChamber、CodeArts、浏览器等依赖；短暂启动并关闭 Chrome 验证真实 channel，通常数秒完成
+$experiment="acceptance-20260727-01"; $sessionId="acceptance-20260727-01" # 两者都必须在启动 CodeArts server 前确定
+$env:GAMEFORGE_MCP_AUDIT_DIR=(Join-Path (Resolve-Path .) ".gameforge-validation/$experiment/sessions/$sessionId/mcp-audit")
+$env:GAMEFORGE_CODEARTS_SERVER_URL="http://127.0.0.1:4097/"
+$env:GAMEFORGE_CODEARTS_SESSION="ses_..."
+# 终端 1：使用上述 GAMEFORGE_MCP_AUDIT_DIR 启动 CodeArts server，并创建/选择上述 session
+# 终端 2：确认 server/session 可访问后再执行；此命令前台常驻，Ctrl+C 停止
+bun run testenv:up
+bun run testenv:readiness   # 另一个终端：环境就绪检查（有头），真启动 CodeArts 等到 TUI 就绪，不提交任务
+bun run testenv:acceptance -- --experiment $experiment --session-id $sessionId  # 另一个终端：复用上述外部 CodeArts server/session
+bun run testenv:down        # 从任意终端停止上述两个端口上的 node/bun 监听进程；其他进程只报告不杀
 ```
 
-默认 OpenChamber URL 为 `http://127.0.0.1:5173/`，可用 `--openchamber-url` 或 `GAMEFORGE_OPENCHAMBER_URL` 覆盖，但只接受无凭据 loopback HTTP(S)。该命令使用真实 Bun ConPTY 启动 `bun run codearts`，连接既有 Relay，并将 VT、生命周期、活动样本、Authority 快照、MCP Audit、浏览器诊断和 PNG 截图写入 `.gameforge-validation/`。默认活动超时 120 秒，总门禁 15 分钟；headed 成功后默认保留窗口 10 秒。
+环境就绪检查的通过只表示验收环境可用，**不构成**对产品行为的验收结论；两档在终端输出与 Evidence 中都标注档位。就绪检查创建的 Task 使用 `testenv-readiness-` projectId 前缀留在 Relay 中，可识别可清理。`testenv:up` 不代为构建 OpenChamber 生产产物（约 72 秒的一次性成本），缺失时给出确切构建命令。CodeArts 只被探测，不被接管：其 OAuth 与私有数据目录始终归用户所有。
 
-需要把预先启动的外部 Observer 与 Harness Evidence 关联时，可显式传入 `--session-id <id>`。单次权威执行使用该 ID 关联 Evidence。
+本机验证版本为 OpenChamber `1.16.3`（MIT）。浏览器验收应使用 `bun run build:web` 后的生产服务；HMR 只用于开发，不作为长期诊断门禁依据。`run:headless` / `run:headed` 仍等价于 headless / headed 的真实验收档。
 
-attach 到预先启动的 CodeArts server 时，`--codearts-server-url` 与 `--codearts-session` 必须成对提供。CodeArts 26.6.2 在 Windows 完整渲染时启用 Mode 9001；`bun-pty@0.4.10` 在持续读取 VT 证据时无法用 CR 提交，`node-pty@1.2.0-beta.12` 及 Win32 key record 对照也没有恢复提交。因此 attach 场景的 `tui.text` + `appendEnter` 通过 `@opencode-ai/sdk@1.18.3` 的 `session.promptAsync` 提交到同一真实会话，ConPTY 继续采集原版 TUI 响应；standalone TUI 和普通导航键仍使用 PTY。
+默认 OpenChamber URL 为 `http://127.0.0.1:43163/`（原版生产构建的固定端口，是唯一经过完整验收的端口；Vite dev 端口不作为验收目标），可用 `--openchamber-url` 或 `GAMEFORGE_OPENCHAMBER_URL` 覆盖，但只接受无凭据 loopback HTTP(S)。该命令使用真实 Bun ConPTY 启动 `bun run codearts`，连接既有 Relay，并将 VT、生命周期、活动样本、Authority 快照、MCP Audit、浏览器诊断和 PNG 截图写入 `.gameforge-validation/`。默认活动超时 120 秒，总门禁 15 分钟；headed 成功后默认保留窗口 10 秒，失败后默认保留 30 秒（`--failure-hold-ms` 可调，上限 300 秒），便于阅读屏幕上的错误后再收窗；headless 不保留。
 
-attach 会话的 Agent/MCP 循环运行在 CodeArts server 进程，而不是 attach TUI 进程。若要求把原始 MCP Audit 聚合进本轮 Evidence，必须在启动 server 前把 `GAMEFORGE_MCP_AUDIT_DIR` 指向 `.gameforge-validation/<experiment>/sessions/<session-id>/mcp-audit`，并向 Harness 传入同一个 `--session-id`。只给 attach 进程设置该变量不会改变已运行 server 的 MCP 环境；未预绑定时 RunEvent 仍可完成，但 `mcp-audit.json` 会为空，原始审计保留在 server 启动配置的目录。
+两档都在 Evidence 会话创建之后、Task 关联之前执行运行预检：依赖缺失表现为具名失败并落盘，不是连接超时堆栈。任何失败都会在终端打印分类、最可能原因、值得打开的证据文件与建议的下一条命令（有头模式下先于收窗打印），并写入该 session 的 `diagnosis.md`——它是对既有证据的导航，不是新的事实来源。每次运行还打印分阶段耗时（`tui.start`、`observer.open`、`gui.launch`、`steps`、`teardown`、`finalize`，随 `result.json` 持久化），总耗时超过软预算（默认 60 秒，`--soft-budget-ms` 可调）只警告不失败。
+
+观察窗接入时会先回放 ConPTY 驱动的有界 VT 历史（单条合成帧，保持原 sessionId 与单调 sequence），因此 CodeArts 启动与欢迎界面从第一帧起可见；Evidence 订阅不请求回放，VT 日志不产生重复帧。
+
+需要把预先启动的外部 Observer 与 Harness Evidence 关联时，可显式传入 `--session-id <id>`。单次权威执行使用该 ID 关联 Evidence；attached acceptance 强制要求显式传入该共享 ID，否则会在 Evidence 内以具名预检失败结束。
+
+attach 到预先启动的 CodeArts server 时，`--codearts-server-url` 与 `--codearts-session` 必须成对提供，也可使用成对的 `GAMEFORGE_CODEARTS_SERVER_URL` 与 `GAMEFORGE_CODEARTS_SESSION`；`testenv:up` 会先验证指定 session 存在，再把 OpenChamber 绑定到同一 server，acceptance 则 attach 到该精确 session。CodeArts 26.6.2 在 Windows 完整渲染时启用 Mode 9001；`bun-pty@0.4.10` 在持续读取 VT 证据时无法用 CR 提交，`node-pty@1.2.0-beta.12` 及 Win32 key record 对照也没有恢复提交。因此 attach 场景的 `tui.text` + `appendEnter` 通过 `@opencode-ai/sdk@1.18.3` 的 `session.promptAsync` 提交到同一真实会话，ConPTY 继续采集原版 TUI 响应；standalone TUI 和普通导航键仍使用 PTY。
+
+attach 会话的 Agent/MCP 循环运行在 CodeArts server 进程，而不是 attach TUI 进程。真实 acceptance 必须在启动 server 前把 `GAMEFORGE_MCP_AUDIT_DIR` 指向 `.gameforge-validation/<experiment>/sessions/<session-id>/mcp-audit`，并向 Harness 传入同一个 `--experiment` 与 `--session-id`。只给 attach 进程设置该变量不会改变已运行 server 的 MCP 环境；未预绑定、审计截断、Task/Run 错绑，或缺少成功的 `bind_mcp_audit_context → 确定性只读工具 → complete_game_run` 调用序列时，即使 RunEvent 已完成，acceptance 仍会失败并拒绝发布绿色 `result.json`。
 
 Harness 不对同一个 Task/Run 发起 fallback 重试。HTTP 429、rate-limit 或 quota 只作为失败诊断记录，避免在已发生权威状态变更后重复 MCP 调用、RunEvent 或 Provider 成本；外部 Provider 也不会因环境中的密钥被自动启用。
 
