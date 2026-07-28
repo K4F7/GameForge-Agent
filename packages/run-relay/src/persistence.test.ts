@@ -100,6 +100,15 @@ describe("RelayStatePersistence", () => {
       task: { taskId: created.task.taskId, status: "claimed" },
       event: { type: "run.started", sequence: 1 },
     });
+    second.taskInbox.compileAcceptanceContract(created.task.taskId, {
+      contractVersion: 1,
+      criteria: [{
+        criterionId: "restart-goal",
+        sourceRequirement: "Complete the game after restart.",
+        expected: "Complete the game after restart.",
+        verification: { kind: "public-telemetry", path: "$.completed" },
+      }],
+    });
     second.taskInbox.transition(created.task.taskId, { status: "in-progress", agentId: "codearts" });
     second.taskInbox.finishRun("run-persisted", "run.completed");
     second.taskInbox.transition(created.task.taskId, { status: "completed", agentId: "codearts" });

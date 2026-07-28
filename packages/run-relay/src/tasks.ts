@@ -114,16 +114,17 @@ export class TaskInbox {
     if (current === undefined) throw new TaskInboxError(404, "task_not_found", `Unknown task: ${taskId}`);
     const request = compileTaskAcceptanceContractInputSchema.parse(input);
     const preWork = current.status === "queued" || current.status === "needs-info";
+    const claimedBeforeImplementation = current.status === "claimed";
     const inFlightUpdate = (current.status === "claimed" || current.status === "in-progress") &&
       current.acceptanceContract !== undefined;
-    if (!preWork && !inFlightUpdate) {
+    if (!preWork && !claimedBeforeImplementation && !inFlightUpdate) {
       throw new TaskInboxError(409, "task_acceptance_locked", "Acceptance can only be compiled before implementation.");
     }
     const requirementIssues = request.criteria.length === 0 && request.requirementIssues.length === 0
       ? [{ code: "missing" as const, detail: "At least one acceptance criterion is required." }]
       : request.requirementIssues;
     if (requirementIssues.length > 0) {
-      if (!preWork) {
+      if (!preWork && !claimedBeforeImplementation) {
         throw new TaskInboxError(
           409,
           "task_acceptance_locked",
@@ -134,6 +135,8 @@ export class TaskInbox {
         ...current,
         status: "needs-info",
         reasonCode: { schemaVersion: "1.0", code: "requirements-ambiguous" },
+        claimedAt: undefined,
+        claimedBy: undefined,
         acceptanceContract: undefined,
       });
       this.#tasks.set(taskId, task);
@@ -235,6 +238,14 @@ export class TaskInbox {
         schemaVersion: "1.0",
         outcome: "rejected",
         code: "illegal-transition",
+        task: clone(current),
+      });
+    }
+    if (request.data.status === "in-progress" && current.acceptanceContract === undefined) {
+      return gameTaskTransitionResultSchema.parse({
+        schemaVersion: "1.0",
+        outcome: "rejected",
+        code: "missing-acceptance-contract",
         task: clone(current),
       });
     }

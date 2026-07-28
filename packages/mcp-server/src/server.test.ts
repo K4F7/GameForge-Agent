@@ -427,6 +427,26 @@ describe("GameForge MCP server", () => {
             claimedBy: request.agentId,
           };
         },
+        async compileTaskAcceptanceContract(_taskId, request) {
+          const contract = {
+            schemaVersion: "1.0" as const,
+            contractVersion: request.contractVersion,
+            criteria: request.criteria,
+            fingerprint: "a".repeat(64),
+          };
+          return {
+            schemaVersion: "1.0",
+            outcome: "frozen",
+            task: {
+              ...queued,
+              status: "claimed",
+              claimedAt: "2026-07-16T08:01:00Z",
+              claimedBy: "codearts",
+              acceptanceContract: contract,
+            },
+            contract,
+          } as const;
+        },
         async transitionTask(_taskId, request) {
           return {
             schemaVersion: "1.0",
@@ -451,6 +471,7 @@ describe("GameForge MCP server", () => {
         "list_game_tasks",
         "get_game_task",
         "claim_game_task",
+        "freeze_task_acceptance_contract",
         "transition_game_task",
       ]));
       expect(tools.find((tool) => tool.name === "create_game_task")?.annotations).toEqual({
@@ -474,6 +495,20 @@ describe("GameForge MCP server", () => {
       expect((await client.callTool({
         name: "claim_game_task",
         arguments: { taskId, agentId: "codearts" },
+      })).isError).not.toBe(true);
+      expect((await client.callTool({
+        name: "freeze_task_acceptance_contract",
+        arguments: {
+          taskId,
+          contractVersion: 1,
+          criteria: [{
+            criterionId: "win-state",
+            sourceRequirement: "The player can win.",
+            expected: "The public state reports won.",
+            verification: { kind: "public-telemetry", path: "game.status" },
+          }],
+          requirementIssues: [],
+        },
       })).isError).not.toBe(true);
       expect((await client.callTool({
         name: "transition_game_task",

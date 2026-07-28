@@ -35,9 +35,11 @@ import type {
   CreateGameTaskRequest,
   CreateGameTaskResponse,
   ClaimGameTaskRequest,
+  CompileTaskAcceptanceContractInput,
   GameTask,
   GameTaskTransitionRequest,
   GameTaskTransitionResult,
+  GameTaskAcceptanceCompileResult,
   ListGameTasksRequest,
   RunEventBatch,
   ReplayRunEventsRequest,
@@ -531,6 +533,7 @@ export type TaskRelayToolClient = {
   listTasks(input: ListGameTasksRequest): Promise<ReadonlyArray<GameTask>>;
   getTask(taskId: string): Promise<GameTask>;
   claimTask(taskId: string, input: ClaimGameTaskRequest): Promise<GameTask>;
+  compileTaskAcceptanceContract(taskId: string, input: CompileTaskAcceptanceContractInput): Promise<GameTaskAcceptanceCompileResult>;
   transitionTask(taskId: string, input: GameTaskTransitionRequest): Promise<GameTaskTransitionResult>;
 };
 
@@ -566,6 +569,14 @@ export async function transitionGameTaskTool(
   input: GameTaskTransitionRequest,
 ): Promise<CallToolResult> {
   return relayResult(() => client.transitionTask(taskId, input));
+}
+
+export async function freezeTaskAcceptanceContractTool(
+  client: TaskRelayToolClient,
+  taskId: string,
+  input: CompileTaskAcceptanceContractInput,
+): Promise<CallToolResult> {
+  return relayResult(() => client.compileTaskAcceptanceContract(taskId, input));
 }
 
 export async function createGameRunTool(client: RunRelayToolClient, runId: string): Promise<CallToolResult> {
