@@ -10,6 +10,7 @@ import {
   createGameTaskRequestSchema,
   claimGameTaskRequestSchema,
   gameTaskIdSchema,
+  gameTaskTransitionRequestSchema,
   listGameTasksRequestSchema,
   runEventBatchSchema,
   replayRunEventsRequestSchema,
@@ -66,6 +67,7 @@ import {
   requestImageAssetTool,
   generateMusicAssetTool,
   stopGameRunTool,
+  transitionGameTaskTool,
   startGamePreviewTool,
   stopGamePreviewTool,
   verifyGameProjectTool,
@@ -398,7 +400,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       "list_game_tasks",
       {
         title: "List game build tasks",
-        description: "List one bounded snapshot of queued, claimed, or terminal GameForge tasks. CodeArts can resume its own claimed tasks; this never polls or executes them.",
+        description: "List one bounded snapshot of GameForge tasks. CodeArts can discover its own claimed or in-progress tasks for deterministic resume; this never polls or executes them.",
         inputSchema: listGameTasksRequestSchema.shape,
       },
       async (request) => listGameTasksTool(taskRelayClient, request),
@@ -416,10 +418,24 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       "claim_game_task",
       {
         title: "Claim one game build task",
-        description: "Atomically claim one queued task for CodeArts. Repeating the same agent claim is idempotent.",
+        description: "Atomically claim one queued task for CodeArts. Repeating the same agent claim for an owned claimed or in-progress task resumes idempotently.",
         inputSchema: { taskId: gameTaskIdSchema, ...claimGameTaskRequestSchema.shape },
       },
       async ({ taskId, agentId }) => claimGameTaskTool(taskRelayClient, taskId, { agentId }),
+    );
+    registerTool(
+      "transition_game_task",
+      {
+        title: "Transition one game build task",
+        description:
+          "Apply one explicit Authority Task transition with its versioned reason code when required. Terminal Task transitions require the linked Run to already have the corresponding terminal status. The tool never retries or infers lifecycle state from messages.",
+        inputSchema: { taskId: gameTaskIdSchema, ...gameTaskTransitionRequestSchema.shape },
+      },
+      async ({ taskId, status, reasonCode, agentId }) => transitionGameTaskTool(taskRelayClient, taskId, {
+        status,
+        ...(reasonCode === undefined ? {} : { reasonCode }),
+        ...(agentId === undefined ? {} : { agentId }),
+      }),
     );
   }
 

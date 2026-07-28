@@ -1,4 +1,4 @@
-import { gameTaskSchema, type RunEventBatch, type WireRunEvent } from "@gameforge/contracts";
+import { gameTaskSchema, type GameTask, type RunEventBatch, type WireRunEvent } from "@gameforge/contracts";
 import { describe, expect, it } from "vitest";
 import { captureBenchmarkEvidence, type EvidenceRelayClient } from "./capture.js";
 
@@ -71,6 +71,13 @@ describe("benchmark evidence capture", () => {
         sequence: index + 1,
       })) as WireRunEvent[]),
     })).rejects.toThrow("Completed records require");
+
+    await expect(captureBenchmarkEvidence({
+      definition,
+      metadata,
+      taskId: "task-00000000-0000-0000-0000-000000000000",
+      relay: relayFixture(events.slice(0, -1)),
+    })).rejects.toThrow("Completed Task evidence must end with run.completed");
   });
 
   it("rejects sensitive metadata instead of attempting lossy redaction", async () => {
@@ -118,10 +125,84 @@ describe("benchmark evidence capture", () => {
     })).rejects.toThrow("not bound");
   });
 
+  it("rejects contradictory terminal evidence and derives failure from a valid authoritative Task", async () => {
+    const task = gameTaskSchema.parse({
+      taskId: "task-00000000-0000-0000-0000-000000000000",
+      runId: "capture-run",
+      prompt,
+      language: "en-US",
+      status: "failed",
+      reasonCode: { schemaVersion: "1.0", code: "security-violation" },
+      createdAt: time(1),
+      claimedAt: time(2),
+      claimedBy: "codearts",
+      completedAt: time(1001),
+    });
+
+    await expect(captureBenchmarkEvidence({
+      definition,
+      metadata: { ...metadata, failure: "rate-limit" },
+      taskId: task.taskId,
+      relay: relayFixture(completeEvents(), [], task),
+    })).rejects.toThrow("Failed Task evidence must end with a terminal phase.failed");
+
+    const record = await captureBenchmarkEvidence({
+      definition,
+      metadata: { ...metadata, failure: "rate-limit" },
+      taskId: task.taskId,
+      relay: relayFixture(failedEvents(), [], task),
+    });
+    expect(record).toMatchObject({
+      terminalStatus: "failed",
+      reasonCode: { schemaVersion: "1.0", code: "security-violation" },
+      failure: "unknown",
+    });
+  });
+
+  it.each([
+    ["canceled", "cancellation"],
+    ["conflicted", "stale-base-conflict"],
+  ] as const)("requires stopped Run evidence for a %s Task", async (status, code) => {
+    const task = gameTaskSchema.parse({
+      taskId: "task-00000000-0000-0000-0000-000000000000",
+      runId: "capture-run",
+      prompt,
+      language: "en-US",
+      status,
+      reasonCode: { schemaVersion: "1.0", code },
+      createdAt: time(1),
+      claimedAt: time(2),
+      claimedBy: "codearts",
+      completedAt: time(3),
+    });
+    const started = failedEvents()[0]!;
+
+    await expect(captureBenchmarkEvidence({
+      definition,
+      metadata,
+      taskId: task.taskId,
+      relay: relayFixture([
+        started,
+        { type: "run.completed", runId: "capture-run", sequence: 2, emittedAt: time(2) },
+      ], [], task),
+    })).rejects.toThrow(`${status === "canceled" ? "Canceled" : "Conflicted"} Task evidence must end with run.stopped`);
+
+    const record = await captureBenchmarkEvidence({
+      definition,
+      metadata,
+      taskId: task.taskId,
+      relay: relayFixture([
+        started,
+        { type: "run.stopped", runId: "capture-run", sequence: 2, emittedAt: time(2) },
+      ], [], task),
+    });
+    expect(record).toMatchObject({ terminalStatus: status, reasonCode: { code } });
+  });
+
 });
 
-function relayFixture(events: WireRunEvent[], calls: number[] = []): EvidenceRelayClient {
-  const task = gameTaskSchema.parse({
+function relayFixture(events: WireRunEvent[], calls: number[] = [], taskInput?: GameTask): EvidenceRelayClient {
+  const task = taskInput ?? gameTaskSchema.parse({
     taskId: "task-00000000-0000-0000-0000-000000000000",
     runId: "capture-run",
     prompt,
@@ -179,6 +260,24 @@ function completeEvents(): WireRunEvent[] {
   });
   events.push({ type: "run.completed", runId: "capture-run", sequence: 1001, emittedAt: time(1001) });
   return events;
+}
+
+function failedEvents(): WireRunEvent[] {
+  return [{
+    type: "run.started",
+    runId: "capture-run",
+    sequence: 1,
+    emittedAt: time(1),
+    language: "en-US",
+  }, {
+    type: "phase.failed",
+    runId: "capture-run",
+    sequence: 2,
+    emittedAt: time(2),
+    phase: "build",
+    message: "Build failed terminally.",
+    repairable: false,
+  }];
 }
 
 function time(sequence: number): string {

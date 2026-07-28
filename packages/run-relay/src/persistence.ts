@@ -45,20 +45,10 @@ const relayStateSchema = z.strictObject({
     const run = runs.get(task.runId);
     if (run === undefined) {
       context.addIssue({ code: "custom", path: ["tasks", index, "runId"], message: "Task run must exist." });
-      return;
-    }
-    const expected = task.status === "completed" ? "succeeded"
-      : task.status === "failed" ? "failed"
-      : task.status === "stopped" ? "stopped"
-      : undefined;
-    if (expected !== undefined && run.status !== expected) {
-      context.addIssue({ code: "custom", path: ["tasks", index, "status"], message: "Task and run terminal states must match." });
-    }
-    if (expected === undefined && ["succeeded", "failed", "stopped"].includes(run.status)) {
-      context.addIssue({ code: "custom", path: ["tasks", index, "status"], message: "Active task cannot reference a terminal run." });
     }
   });
 });
+const relayStateLoadSchema = z.preprocess(migrateLegacyTasks, relayStateSchema);
 
 export type RelayStateOptions = RunStoreOptions & TaskInboxOptions;
 
@@ -80,7 +70,7 @@ export class RelayStatePersistence {
     if (info === undefined) return { store, taskInbox };
     if (!info.isFile() || info.isSymbolicLink()) throw new Error("Relay state path must be a regular file.");
     if (info.size > MAX_STATE_BYTES) throw new Error("Relay state file exceeds the byte limit.");
-    const parsed = relayStateSchema.parse(JSON.parse(await readFile(this.#filePath, "utf8")) as unknown);
+    const parsed = relayStateLoadSchema.parse(JSON.parse(await readFile(this.#filePath, "utf8")) as unknown);
     const runSnapshot: RunStoreSnapshot = {
       runs: parsed.runs.map(({ started, ...run }) => (
         started === undefined ? run : { ...run, started }
@@ -141,4 +131,30 @@ function statePath(value: string): string {
 
 function isNodeError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
+function migrateLegacyTasks(input: unknown): unknown {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return input;
+  const state = input as Record<string, unknown>;
+  if (state.schemaVersion !== "1.0" || !Array.isArray(state.tasks)) return input;
+  return {
+    ...state,
+    tasks: state.tasks.map((task) => {
+      if (typeof task !== "object" || task === null || Array.isArray(task)) return task;
+      const record = task as Record<string, unknown>;
+      if (record.reasonCode !== undefined) return task;
+      if (record.status === "failed") {
+        return {
+          ...record,
+          reasonCode: { schemaVersion: "1.0", code: "legacy-unclassified-failure" },
+        };
+      }
+      if (record.status !== "stopped") return task;
+      return {
+        ...record,
+        status: "canceled",
+        reasonCode: { schemaVersion: "1.0", code: "cancellation" },
+      };
+    }),
+  };
 }

@@ -226,6 +226,10 @@ export class RunStore {
     return { ...record.started };
   }
 
+  status(runIdInput: string): RunStatus {
+    return this.#record(runIdSchema.parse(runIdInput)).status;
+  }
+
   #record(runId: string): RunRecord {
     const record = this.#runs.get(runId);
     if (record === undefined) {

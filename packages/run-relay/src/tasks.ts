@@ -3,11 +3,14 @@ import {
   createGameTaskRequestSchema,
   gameTaskIdSchema,
   gameTaskSchema,
+  gameTaskTransitionRequestSchema,
+  gameTaskTransitionResultSchema,
   listGameTasksRequestSchema,
   type ClaimGameTaskRequest,
   type CreateGameTaskRequest,
   type CreateGameTaskResponse,
   type GameTask,
+  type GameTaskTransitionResult,
   type ListGameTasksRequest,
   type WireRunEvent,
 } from "@gameforge/contracts";
@@ -94,12 +97,12 @@ export class TaskInbox {
     const { agentId } = claimGameTaskRequestSchema.parse(input);
     const current = this.#tasks.get(taskId);
     if (current === undefined) throw new TaskInboxError(404, "task_not_found", `Unknown task: ${taskId}`);
-    if (current.status === "completed" || current.status === "failed" || current.status === "stopped") {
-      throw new TaskInboxError(409, "task_terminal", "Terminal tasks cannot be claimed.");
-    }
-    if (current.status === "claimed") {
+    if (current.status === "claimed" || current.status === "in-progress") {
       if (current.claimedBy === agentId) return clone(current);
       throw new TaskInboxError(409, "task_claimed", "Task is already claimed by another agent.");
+    }
+    if (current.status !== "queued") {
+      throw new TaskInboxError(409, "task_not_queued", "Only queued tasks can be claimed.");
     }
     const task = gameTaskSchema.parse({
       ...current,
@@ -111,29 +114,90 @@ export class TaskInbox {
     return clone(task);
   }
 
+  transition(taskIdInput: string, input: unknown): GameTaskTransitionResult {
+    const taskId = gameTaskIdSchema.parse(taskIdInput);
+    const current = this.#tasks.get(taskId);
+    if (current === undefined) throw new TaskInboxError(404, "task_not_found", `Unknown task: ${taskId}`);
+    const request = gameTaskTransitionRequestSchema.safeParse(input);
+    if (!request.success) {
+      return gameTaskTransitionResultSchema.parse({
+        schemaVersion: "1.0",
+        outcome: "invalid",
+        code: "invalid-transition-request",
+        task: clone(current),
+      });
+    }
+    if (current.claimedBy !== undefined && request.data.agentId !== current.claimedBy) {
+      return gameTaskTransitionResultSchema.parse({
+        schemaVersion: "1.0",
+        outcome: "rejected",
+        code: "claimant-mismatch",
+        task: clone(current),
+      });
+    }
+    const allowed = TASK_TRANSITIONS[current.status].includes(request.data.status);
+    if (!allowed) {
+      return gameTaskTransitionResultSchema.parse({
+        schemaVersion: "1.0",
+        outcome: "rejected",
+        code: "illegal-transition",
+        task: clone(current),
+      });
+    }
+    const requiredRunStatus = REQUIRED_RUN_STATUS[request.data.status];
+    if (requiredRunStatus !== undefined && this.#runStore.status(current.runId) !== requiredRunStatus) {
+      return gameTaskTransitionResultSchema.parse({
+        schemaVersion: "1.0",
+        outcome: "rejected",
+        code: "run-state-mismatch",
+        task: clone(current),
+      });
+    }
+    const candidate = gameTaskSchema.safeParse({
+      ...current,
+      status: request.data.status,
+      reasonCode: request.data.reasonCode,
+      ...(request.data.status === "queued" ? {
+        claimedAt: undefined,
+        claimedBy: undefined,
+      } : {}),
+      ...(["completed", "failed", "canceled", "conflicted"].includes(request.data.status)
+        ? { completedAt: new Date().toISOString() }
+        : {}),
+    });
+    if (!candidate.success) {
+      return gameTaskTransitionResultSchema.parse({
+        schemaVersion: "1.0",
+        outcome: "rejected",
+        code: "reason-code-mismatch",
+        task: clone(current),
+      });
+    }
+    this.#tasks.set(taskId, candidate.data);
+    return gameTaskTransitionResultSchema.parse({
+      schemaVersion: "1.0",
+      outcome: "accepted",
+      task: clone(candidate.data),
+    });
+  }
+
   appendRun(runId: string, batch: unknown): ReadonlyArray<WireRunEvent> {
     const taskId = this.#runToTask.get(runId);
     const current = taskId === undefined ? undefined : this.#tasks.get(taskId);
-    if (current?.status === "queued") {
-      throw new TaskInboxError(409, "task_unclaimed", "A queued task must be claimed before events are published.");
+    if (current !== undefined && isUnclaimed(current.status)) {
+      throw new TaskInboxError(409, "task_unclaimed", "A task must be claimed before events are published.");
     }
     const events = this.#runStore.append(runId, batch);
-    if (events.some((event) => event.type === "phase.failed" && !event.repairable)) {
-      this.#markTerminal(runId, "failed");
-    }
     return events;
   }
 
   finishRun(runId: string, type: "run.completed" | "run.stopped"): WireRunEvent {
     const taskId = this.#runToTask.get(runId);
     const current = taskId === undefined ? undefined : this.#tasks.get(taskId);
-    if (type === "run.completed" && current?.status === "queued") {
-      throw new TaskInboxError(409, "task_unclaimed", "A queued task must be claimed before completion.");
+    if (type === "run.completed" && current !== undefined && isUnclaimed(current.status)) {
+      throw new TaskInboxError(409, "task_unclaimed", "A task must be claimed before completion.");
     }
     const event = this.#runStore.finish(runId, type);
-    if (taskId === undefined || current === undefined ||
-        current.status === "completed" || current.status === "failed" || current.status === "stopped") return event;
-    this.#markTerminal(runId, type === "run.completed" ? "completed" : "stopped");
     return event;
   }
 
@@ -154,19 +218,35 @@ export class TaskInbox {
     }
   }
 
-  #markTerminal(runId: string, status: "completed" | "failed" | "stopped"): void {
-    const taskId = this.#runToTask.get(runId);
-    if (taskId === undefined) return;
-    const current = this.#tasks.get(taskId);
-    if (current === undefined) return;
-    this.#tasks.set(taskId, gameTaskSchema.parse({
-      ...current,
-      status,
-      completedAt: new Date().toISOString(),
-    }));
-  }
 }
 
 function clone(task: GameTask): GameTask {
-  return { ...task };
+  return {
+    ...task,
+    ...(task.reasonCode === undefined ? {} : { reasonCode: { ...task.reasonCode } }),
+  };
 }
+
+function isUnclaimed(status: GameTask["status"]): boolean {
+  return status === "queued" || status === "needs-info";
+}
+
+const TASK_TRANSITIONS: Record<GameTask["status"], ReadonlyArray<GameTask["status"]>> = {
+  // claimed 只能由 claim 命令从 queued 进入；恢复可重放同一 claimant 的 owned work，但不自动重试。
+  queued: ["needs-info", "canceled"],
+  "needs-info": ["queued", "canceled"],
+  claimed: ["in-progress", "canceled"],
+  "in-progress": ["retryable", "completed", "failed", "canceled", "conflicted"],
+  retryable: ["queued", "canceled"],
+  completed: [],
+  failed: [],
+  canceled: [],
+  conflicted: [],
+};
+
+const REQUIRED_RUN_STATUS: Partial<Record<GameTask["status"], "succeeded" | "failed" | "stopped">> = {
+  completed: "succeeded",
+  failed: "failed",
+  canceled: "stopped",
+  conflicted: "stopped",
+};

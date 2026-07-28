@@ -427,6 +427,17 @@ describe("GameForge MCP server", () => {
             claimedBy: request.agentId,
           };
         },
+        async transitionTask(_taskId, request) {
+          return {
+            schemaVersion: "1.0",
+            outcome: "accepted",
+            task: {
+              ...queued,
+              status: request.status,
+              ...(request.reasonCode === undefined ? {} : { reasonCode: request.reasonCode }),
+            },
+          } as const;
+        },
       },
     });
     const client = new Client({ name: "gameforge-task-test", version: "1.0.0" });
@@ -440,6 +451,7 @@ describe("GameForge MCP server", () => {
         "list_game_tasks",
         "get_game_task",
         "claim_game_task",
+        "transition_game_task",
       ]));
       expect(tools.find((tool) => tool.name === "create_game_task")?.annotations).toEqual({
         readOnlyHint: false,
@@ -462,6 +474,14 @@ describe("GameForge MCP server", () => {
       expect((await client.callTool({
         name: "claim_game_task",
         arguments: { taskId, agentId: "codearts" },
+      })).isError).not.toBe(true);
+      expect((await client.callTool({
+        name: "transition_game_task",
+        arguments: {
+          taskId,
+          status: "needs-info",
+          reasonCode: { schemaVersion: "1.0", code: "requirements-ambiguous" },
+        },
       })).isError).not.toBe(true);
     } finally {
       await client.close();

@@ -4,7 +4,7 @@
 >
 > UI 状态说明（2026-07-22）：本文中涉及 Workbench/TUI reducer、表单或展示行为的段落记录的是已删除客户端的历史契约验证。当前仓库没有这些产品入口；Task、RunEvent、Relay、生成器和浏览器验证契约仍然有效。
 
-更新日期：2026-07-18
+更新日期：2026-07-28
 官方资料访问日期：2026-07-16
 
 ## 目标与边界
@@ -156,6 +156,7 @@ bun run dev:relay
 | `GET` | `/tasks?status=queued&limit=20` | 有界列出任务快照，默认最多20项 |
 | `GET` | `/tasks/:id` | 读取一项不可变 Prompt 和任务状态 |
 | `POST` | `/tasks/:id/claim` | 由一个 agent ID 原子认领；同一 agent 重复调用幂等 |
+| `POST` | `/tasks/:id/transition` | 应用显式 Task 状态转换；认领后的转换必须携带并匹配 claimant agent ID，需分类的状态必须携带版本化 reasonCode |
 | `POST` | `/runs` | 创建运行并由服务生成序号1的`run.started` |
 | `POST` | `/runs/:id/events` | 追加同一运行、严格连续的事件批次 |
 | `GET` | `/runs/:id/events?after=N` | 从游标后回放，单页最多1000项 |
@@ -163,13 +164,13 @@ bun run dev:relay
 | `POST` | `/runs/:id/stop` | 幂等停止运行 |
 | `POST` | `/runs/:id/complete` | 幂等完成运行 |
 
-Task Prompt 长度为10至12000字符，语言只允许 `zh-CN`/`en-US`；未知字段（包括密钥）被拒绝。任务状态为 `queued`、`claimed`、`completed`、`failed`、`stopped`：未认领任务不能完成，停止可以发生在认领前，不可修复的阶段失败会同步为 `failed`；同一任务不能被不同 agent 重复认领。服务限制请求体为1 MiB、默认最多100个任务和100个运行、每个运行保留10000条事件、最多50个SSE客户端。浏览器来源默认只允许工作台的`localhost:4173`和`127.0.0.1:4173`，CLI请求可以不带Origin。
+Task Prompt 长度为10至12000字符，语言只允许 `zh-CN`/`en-US`；未知字段（包括密钥）被拒绝。Task Authority 状态为 `queued`、`needs-info`、`claimed`、`in-progress`、`retryable`、`completed`、`failed`、`canceled`、`conflicted`。Run 的完成、停止或消息文本不会隐式改变 Task；CodeArts 必须调用显式 transition，并为 `needs-info`、`retryable`、`failed`、`canceled`、`conflicted` 提供状态匹配的 `{ schemaVersion: "1.0", code }`。未知或错配 reasonCode 失败关闭且不改变 Task 字节。认领后的 transition 必须携带与 `claimedBy` 相同的 agent ID；同一任务不能被其他 agent 接管。服务限制请求体为1 MiB、默认最多100个任务和100个运行、每个运行保留10000条事件、最多50个SSE客户端。浏览器来源默认只允许工作台的`localhost:4173`和`127.0.0.1:4173`，CLI请求可以不带Origin。
 
 Task 创建的权威 `run.started` 可携带可选 language。由 `/tasks` 创建时必定写入规范化后的任务语言；直接 `/runs` 创建的通用 Run 为兼容旧客户端可以不带 language。Workbench 从零回放后以该字段恢复语言选择，不依赖页面内存或猜测 Prompt。旧快照和旧事件仍可解析。
 
 `POST /tasks` 使用 Run ID 作为幂等键。相同 Run ID、规范化后完全相同的 Prompt 与语言会返回原 Task 和权威 `run.started`，包括跨快照恢复后的重试；该路径在容量已满时仍可读取原结果。相同 Run ID 但 Prompt 或语言不同则返回 HTTP 409 和 `task_run_conflict`。RunStore 为此在事件保留窗口之外单独保存权威 start event，并将其纳入快照；客户端不得通过复用 Run ID 创建新任务。
 
-默认状态仍仅在内存中。生产入口可设置 `GAMEFORGE_RUN_RELAY_STATE_FILE`（绝对路径）启用本地快照：每次 Task/Run 变更等待串行保存队列，快照经过严格 Schema、事件连续性和 Task/Run 终态一致性校验，并以临时文件同步后 rename。启动时恢复 Task、RunEvent、终态和游标，但不恢复 SSE 连接；Workbench 和 CodeArts 应按现有回放协议重连。文件包含 Prompt、事件和日志，应使用受限目录，不放入仓库或云同步目录。若磁盘写入失败，请求返回 500，但本进程内存可能已应用该次变更；此时应停止 Relay、处理磁盘问题并从最后成功快照恢复，再由 CodeArts 使用 `replay_game_run` 对账。本机制面向单机研究，不替代数据库事务、多实例一致性或高可用存储。
+默认状态仍仅在内存中。生产入口可设置 `GAMEFORGE_RUN_RELAY_STATE_FILE`（绝对路径）启用本地快照：每次 Task/Run 变更等待串行保存队列，快照经过严格 Schema、事件连续性和 Task/Run 关联校验，并以临时文件同步后 rename。加载旧 schema 1.0 快照时，`stopped` Task 确定性迁移为 `canceled/cancellation`；缺少 reasonCode 的旧 `failed` Task 标记为 `failed/legacy-unclassified-failure`，不会猜测原始失败原因。启动时恢复 Task、RunEvent、终态和游标，但不恢复 SSE 连接；Workbench 和 CodeArts 应按现有回放协议重连。文件包含 Prompt、事件和日志，应使用受限目录，不放入仓库或云同步目录。若磁盘写入失败，请求返回 500，但本进程内存可能已应用该次变更；此时应停止 Relay、处理磁盘问题并从最后成功快照恢复，再由 CodeArts 使用 `replay_game_run` 对账。本机制面向单机研究，不替代数据库事务、多实例一致性或高可用存储。
 
 Workbench 不依赖原生 `EventSource` 用旧 URL 盲目重连。SSE `error` 或真实 sequence 缺口发生后，客户端关闭旧连接，从最后成功消费的 sequence 调用 `/events?after=N` 回放连续批次，再以新游标建立 stream。网络故障采用 500/1000/2000/4000/8000 ms 的有限退避；HTTP 409 `cursor_ahead`、410 `cursor_expired` 或五次耗尽会进入显式错误，用户可点击“恢复连接”从同一游标重试。重复 sequence 被忽略，只有成功交给 reducer 后才推进游标；终态事件会关闭 stream。Workbench 与 TUI 复用 `@gameforge/run-relay/recovery` 的同一纯 TypeScript 恢复状态机，仅传输适配分别使用浏览器 EventSource 和 Bun fetch stream；只有序列实际推进才重置重试预算，避免连接反复 open/断开造成无限重试。该控制器只消费确定性 HTTP/SSE，不调用模型、MCP 或 Agent 循环。
 
@@ -180,10 +181,11 @@ Workbench 不依赖原生 `EventSource` 用旧 URL 盲目重连。SSE `error` �
 - `list_game_tasks`：读取一次有界任务快照，不轮询；
 - `get_game_task`：按 Task ID 读取权威 Prompt 与 Run ID；
 - `claim_game_task`：以 CodeArts agent ID 原子认领，冲突时返回稳定错误码。
+- `transition_game_task`：显式推进 Authority 生命周期；认领后的调用必须携带 claimant agent ID，需分类的状态使用版本化 reasonCode。Task 进入终态前，关联 Run 必须已进入对应终态：completed 对应 succeeded、failed 对应 failed、canceled/conflicted 对应 stopped。
 
 这些工具只做状态协调。`create_game_task` 复用 Relay 的严格请求 Schema 与单次 HTTP 创建，不生成 Prompt、不选择项目、不自动重试；它的 MCP annotations 标记 `readOnlyHint: false`、`destructiveHint: false`、`idempotentHint: true`、`openWorldHint: false`。这些字段只是客户端提示，不能替代 `ask` 权限。CodeArts 认领 Task 后先从 `after: 0` 回放，以恢复已存在的结构化产物和权威 sequence；若恰好返回 1000 项，由 CodeArts 决定是否用最后 sequence 读取下一页。游标冲突时同样只读取一次当前页，再决定如何继续。工具不等待新事件、不自动重试。何时创建、读取、选择哪个任务、如何生成与修复仍由 CodeArts 决定。
 
-CodeArts 新会话调用一次不带 status 的 `list_game_tasks`，优先恢复 `status: claimed` 且 `claimedBy: codearts` 的相关 Task，再选择与当前需求明确匹配的 queued Task；不得认领无关任务。当前用户明确开始新需求且没有匹配 Task 时，可经 `ask` 调用一次 `create_game_task`，并保存完整请求以供同参数幂等重试。成功后直接认领返回的 Task，不再调用 `create_game_run`。同一 agent 的 `claim_game_task` 是幂等操作。恢复后根据回放中的结构化阶段与产物事件跳过已完成步骤，不重复生成项目、媒体或预览。真实集成测试使用两个独立 MCP Client 会话证明 claimed Task、已完成阶段、游标和最终 completed 状态可续接；另一个真实 MCP→HTTP Relay 测试证明无 GUI 创建、同参数重试和冲突拒绝；Relay 进程重启恢复由持久化实验独立证明。
+CodeArts 新会话调用一次不带 status 的 `list_game_tasks`，优先恢复 `claimedBy: codearts` 且状态为 `in-progress` 或 `claimed` 的相关 Task（`in-progress` 优先），再选择与当前需求明确匹配的 queued Task；不得认领无关任务。当前用户明确开始新需求且没有匹配 Task 时，可经 `ask` 调用一次 `create_game_task`，并保存完整请求以供同参数幂等重试。成功后直接认领返回的 Task，不再调用 `create_game_run`。同一 agent 对自己持有的 claimed/in-progress Task 调用 `claim_game_task` 是幂等恢复操作；只有 claimed 返回值再以 `agentId: codearts` transition 到 in-progress，已是 in-progress 时直接回放。恢复后根据回放中的结构化阶段与产物事件跳过已完成步骤，不重复生成项目、媒体或预览。真实集成测试使用两个独立 MCP Client 会话证明 crash-after-in-progress 的 Task、已完成阶段、游标和最终 completed 状态可续接；另一个真实 MCP→HTTP Relay 测试证明无 GUI 创建、同参数重试和冲突拒绝；Relay 进程重启恢复由持久化实验独立证明。
 
 工作台连接方式：
 

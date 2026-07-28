@@ -231,6 +231,7 @@ describe("validation tool handlers", () => {
       async listTasks() { throw new Error("Unexpected list."); },
       async getTask() { throw new Error("Unexpected get."); },
       async claimTask() { throw new Error("Unexpected claim."); },
+      async transitionTask() { throw new Error("Unexpected transition."); },
     }, {
       runId: "run-task-create",
       prompt: "Create one deterministic Web game task.",

@@ -101,7 +101,7 @@ const task = prepared.correlated;
 const instruction = [
   `执行 GameForge 队列任务 ${task.taskId}。`,
   `使用固定 agentId ${options.agentId} 认领任务，绑定 MCP Audit 到 taskId=${task.taskId} 和 runId=${runId}。`,
-  "调用至少一个确定性只读 MCP 工具，发布必要 RunEvent，然后调用 complete_game_run。",
+  `以 agentId ${options.agentId} 调用 transition_game_task 进入 in-progress，调用至少一个确定性只读 MCP 工具并发布必要 RunEvent，然后依次调用 complete_game_run 和携带同一 agentId 的 transition_game_task 进入 completed。`,
   "不要部署、发布、上传或调用任何外部媒体 Provider。",
 ].join("\n");
 

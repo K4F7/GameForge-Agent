@@ -4,6 +4,7 @@ import {
   createGameTaskResponseSchema,
   gameTaskIdSchema,
   gameTaskSchema,
+  gameTaskTransitionResultSchema,
   listGameTasksRequestSchema,
   listGameTasksResponseSchema,
   runEventBatchSchema,
@@ -16,6 +17,7 @@ import {
   type CreateGameTaskRequest,
   type CreateGameTaskResponse,
   type GameTask,
+  type GameTaskTransitionResult,
   type ListGameTasksRequest,
   type WireRunEvent,
 } from "@gameforge/contracts";
@@ -186,6 +188,19 @@ export class RunRelayClient {
       throw new RunRelayClientError("protocol", "Run relay returned an invalid task claim response.");
     }
     return parsed.data.task;
+  }
+
+  async transitionTask(taskIdInput: string, input: unknown): Promise<GameTaskTransitionResult> {
+    const taskId = gameTaskIdSchema.parse(taskIdInput);
+    const response = await this.#request(`tasks/${encodeURIComponent(taskId)}/transition`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    const parsed = gameTaskTransitionResultSchema.safeParse(response);
+    if (!parsed.success || parsed.data.task.taskId !== taskId) {
+      throw new RunRelayClientError("protocol", "Run relay returned an invalid Task transition result.");
+    }
+    return parsed.data;
   }
 
   async #finish(

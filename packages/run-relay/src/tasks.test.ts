@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { GameTask } from "@gameforge/contracts";
 import { RunStore } from "./store.js";
 import { TaskInbox } from "./tasks.js";
 
@@ -52,13 +53,13 @@ describe("TaskInbox", () => {
     expect(() => inbox.claim(first.task.taskId, { agentId: "other-agent" })).toThrow("another agent");
   });
 
-  it("tracks run completion and prevents terminal claims", () => {
+  it("does not infer Task completion from transport Run completion", () => {
     const inbox = new TaskInbox(new RunStore());
     const created = inbox.create({ runId: "run-1", prompt: "Create a complete browser arcade game.", language: "en-US" });
     inbox.claim(created.task.taskId, { agentId: "codearts" });
     inbox.finishRun("run-1", "run.completed");
-    expect(inbox.get(created.task.taskId)).toMatchObject({ status: "completed" });
-    expect(() => inbox.claim(created.task.taskId, { agentId: "codearts" })).toThrow("Terminal");
+    expect(inbox.get(created.task.taskId)).toMatchObject({ status: "claimed" });
+    expect(inbox.claim(created.task.taskId, { agentId: "codearts" })).toMatchObject({ status: "claimed" });
   });
 
   it("rejects completion before claim without terminating the run", () => {
@@ -79,7 +80,7 @@ describe("TaskInbox", () => {
     expect(inbox.finishRun("run-1", "run.stopped")).toMatchObject({ type: "run.stopped" });
   });
 
-  it("synchronizes an unrecoverable phase failure to the task", () => {
+  it("does not classify Task retryability from a Run message or repairable flag", () => {
     const inbox = new TaskInbox(new RunStore());
     const created = inbox.create({
       runId: "run-1",
@@ -100,6 +101,198 @@ describe("TaskInbox", () => {
         repairable: false,
       }],
     });
-    expect(inbox.get(created.task.taskId)).toMatchObject({ status: "failed" });
+    expect(inbox.get(created.task.taskId)).toMatchObject({ status: "claimed" });
+    expect(inbox.get(created.task.taskId)).not.toHaveProperty("reasonCode");
+  });
+
+  it("resumes needs-info and retryable Tasks only through the explicit queue and claim path", () => {
+    const inbox = new TaskInbox(new RunStore());
+    const created = inbox.create({
+      runId: "run-lifecycle",
+      prompt: "Create a browser game through an explicit lifecycle.",
+      language: "en-US",
+    });
+
+    expect(inbox.transition(created.task.taskId, {
+      status: "needs-info",
+      reasonCode: { schemaVersion: "1.0", code: "requirements-ambiguous" },
+    })).toMatchObject({ outcome: "accepted", task: { status: "needs-info" } });
+    expect(inbox.transition(created.task.taskId, { status: "queued" }))
+      .toMatchObject({ outcome: "accepted", task: { status: "queued", reasonCode: undefined } });
+    inbox.claim(created.task.taskId, { agentId: "codearts" });
+    expect(inbox.transition(created.task.taskId, { status: "in-progress", agentId: "codearts" }))
+      .toMatchObject({ outcome: "accepted", task: { status: "in-progress" } });
+    expect(inbox.transition(created.task.taskId, {
+      status: "retryable",
+      agentId: "codearts",
+      reasonCode: { schemaVersion: "1.0", code: "bounded-timeout" },
+    })).toMatchObject({ outcome: "accepted", task: { status: "retryable" } });
+
+    expect(inbox.transition(created.task.taskId, { status: "queued", agentId: "codearts" }))
+      .toMatchObject({ outcome: "accepted", task: { status: "queued", claimedBy: undefined } });
+    expect(inbox.claim(created.task.taskId, { agentId: "new-attempt-agent" }))
+      .toMatchObject({ status: "claimed", claimedBy: "new-attempt-agent" });
+  });
+
+  it("allows only the claimant to transition owned work", () => {
+    const inbox = new TaskInbox(new RunStore());
+    const taskId = inbox.create({
+      runId: "run-claimant-transition",
+      prompt: "Create a browser game with claimant-bound lifecycle transitions.",
+      language: "en-US",
+    }).task.taskId;
+    inbox.claim(taskId, { agentId: "codearts" });
+
+    expect(inbox.transition(taskId, { status: "in-progress", agentId: "other-agent" }))
+      .toMatchObject({ outcome: "rejected", code: "claimant-mismatch", task: { status: "claimed" } });
+    expect(inbox.transition(taskId, { status: "in-progress", agentId: "codearts" }))
+      .toMatchObject({ outcome: "accepted", task: { status: "in-progress" } });
+  });
+
+  it.each(["completed", "failed", "canceled", "conflicted"] as const)(
+    "requires the transport Run to finish before accepting a %s Task transition",
+    (status) => {
+      const runs = new RunStore();
+      const inbox = new TaskInbox(runs);
+      const taskId = inbox.create({
+        runId: `run-terminal-order-${status}`,
+        prompt: "Create a browser game with consistent terminal authority.",
+        language: "en-US",
+      }).task.taskId;
+      inbox.claim(taskId, { agentId: "codearts" });
+      inbox.transition(taskId, { status: "in-progress", agentId: "codearts" });
+      const transition = transitionTo(status, "codearts");
+
+      expect(inbox.transition(taskId, transition))
+        .toMatchObject({ outcome: "rejected", code: "run-state-mismatch", task: { status: "in-progress" } });
+      prepareRunForTransition(inbox, taskId, status);
+      expect(inbox.transition(taskId, transition))
+        .toMatchObject({ outcome: "accepted", task: { status } });
+    },
+  );
+
+  it("accepts only the conservative public Task transition matrix", () => {
+    const statuses = [
+      "queued",
+      "needs-info",
+      "claimed",
+      "in-progress",
+      "retryable",
+      "completed",
+      "failed",
+      "canceled",
+      "conflicted",
+    ] as const satisfies ReadonlyArray<GameTask["status"]>;
+    const accepted = new Set([
+      "queued>needs-info",
+      "queued>claimed",
+      "queued>canceled",
+      "needs-info>queued",
+      "needs-info>canceled",
+      "claimed>in-progress",
+      "claimed>canceled",
+      "in-progress>retryable",
+      "in-progress>completed",
+      "in-progress>failed",
+      "in-progress>canceled",
+      "in-progress>conflicted",
+      "retryable>queued",
+      "retryable>canceled",
+    ]);
+
+    let sequence = 0;
+    for (const from of statuses) {
+      for (const to of statuses) {
+        sequence += 1;
+        const { inbox, taskId } = taskAt(from, sequence);
+        if (accepted.has(`${from}>${to}`)) prepareRunForTransition(inbox, taskId, to);
+        const outcome = from === "queued" && to === "claimed"
+          ? (inbox.claim(taskId, { agentId: "matrix-agent" }), "accepted")
+          : inbox.transition(taskId, transitionTo(to, "source-agent")).outcome;
+        expect(outcome, `${from}>${to}`).toBe(accepted.has(`${from}>${to}`) ? "accepted" : "rejected");
+      }
+    }
+  });
+
+  it("rejects illegal and mismatched transitions without changing Task bytes", () => {
+    const inbox = new TaskInbox(new RunStore());
+    const taskId = inbox.create({
+      runId: "run-rejected-transition",
+      prompt: "Create a browser game whose rejected Task remains unchanged.",
+      language: "en-US",
+    }).task.taskId;
+    const before = JSON.stringify(inbox.get(taskId));
+
+    expect(inbox.transition(taskId, { status: "completed" }))
+      .toMatchObject({ outcome: "rejected", code: "illegal-transition" });
+    expect(JSON.stringify(inbox.get(taskId))).toBe(before);
+    expect(inbox.transition(taskId, {
+      status: "needs-info",
+      reasonCode: { schemaVersion: "1.0", code: "bounded-timeout" },
+    })).toMatchObject({ outcome: "rejected", code: "reason-code-mismatch" });
+    expect(JSON.stringify(inbox.get(taskId))).toBe(before);
   });
 });
+
+function taskAt(status: GameTask["status"], sequence: number): { inbox: TaskInbox; taskId: string } {
+  const inbox = new TaskInbox(new RunStore());
+  const taskId = inbox.create({
+    runId: `run-matrix-${sequence}`,
+    prompt: "Create a browser game for lifecycle matrix verification.",
+    language: "en-US",
+  }).task.taskId;
+  if (status === "queued") return { inbox, taskId };
+  if (status === "needs-info") {
+    inbox.transition(taskId, transitionTo("needs-info"));
+    return { inbox, taskId };
+  }
+  if (status === "canceled") {
+    inbox.finishRun(`run-matrix-${sequence}`, "run.stopped");
+    inbox.transition(taskId, transitionTo("canceled"));
+    return { inbox, taskId };
+  }
+  inbox.claim(taskId, { agentId: "source-agent" });
+  if (status === "claimed") return { inbox, taskId };
+  inbox.transition(taskId, transitionTo("in-progress", "source-agent"));
+  if (status === "in-progress") return { inbox, taskId };
+  prepareRunForTransition(inbox, taskId, status);
+  inbox.transition(taskId, transitionTo(status, "source-agent"));
+  return { inbox, taskId };
+}
+
+function prepareRunForTransition(inbox: TaskInbox, taskId: string, status: GameTask["status"]): void {
+  const runId = inbox.get(taskId).runId;
+  if (status === "completed") {
+    inbox.finishRun(runId, "run.completed");
+  } else if (status === "canceled" || status === "conflicted") {
+    inbox.finishRun(runId, "run.stopped");
+  } else if (status === "failed") {
+    inbox.appendRun(runId, {
+      runId,
+      after: 1,
+      events: [{
+        type: "phase.failed",
+        runId,
+        sequence: 2,
+        emittedAt: "2026-07-16T08:00:00Z",
+        phase: "build",
+        message: "Build failed terminally.",
+        repairable: false,
+      }],
+    });
+  }
+}
+
+function transitionTo(status: GameTask["status"], agentId?: string): Record<string, unknown> {
+  const reasonCode = status === "needs-info" ? "requirements-ambiguous"
+    : status === "retryable" ? "bounded-timeout"
+    : status === "failed" ? "schema-violation"
+    : status === "canceled" ? "cancellation"
+    : status === "conflicted" ? "stale-base-conflict"
+    : undefined;
+  return {
+    status,
+    ...(agentId === undefined ? {} : { agentId }),
+    ...(reasonCode === undefined ? {} : { reasonCode: { schemaVersion: "1.0", code: reasonCode } }),
+  };
+}

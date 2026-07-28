@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import {
+  gameTaskReasonCodeClassifiesStatus,
+  gameTaskReasonCodeSchema,
+  gameTaskStatusSchema,
+  type GameTaskReasonCode,
+} from "@gameforge/contracts";
 
 export const benchmarkDefinitionSchema = z.strictObject({
   benchmarkId: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,79}$/),
@@ -38,6 +44,7 @@ export const benchmarkClientSchema = z.strictObject({
 export const benchmarkFailureSchema = z.enum([
   "none", "rate-limit", "authentication", "provider", "tool", "timeout", "stopped", "unknown",
 ]);
+export type BenchmarkFailure = z.infer<typeof benchmarkFailureSchema>;
 
 export const benchmarkRecordSchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -46,7 +53,19 @@ export const benchmarkRecordSchema = z.strictObject({
   client: benchmarkClientSchema,
   taskId: z.string().trim().min(1).max(120),
   runId: z.string().trim().min(1).max(120),
-  terminalStatus: z.enum(["completed", "failed", "stopped", "queued", "claimed"]),
+  terminalStatus: z.enum([
+    "queued",
+    "needs-info",
+    "claimed",
+    "in-progress",
+    "retryable",
+    "completed",
+    "failed",
+    "canceled",
+    "conflicted",
+    "stopped",
+  ]),
+  reasonCode: gameTaskReasonCodeSchema.optional(),
   durationMs: z.number().int().nonnegative().optional(),
   events: eventSummarySchema,
   tools: toolSummarySchema,
@@ -88,10 +107,28 @@ export const benchmarkRecordSchema = z.strictObject({
   if (record.terminalStatus !== "completed" && record.failure === "none") {
     context.addIssue({ code: "custom", path: ["failure"], message: "Incomplete records require a failure classification." });
   }
+  if (record.reasonCode !== undefined && record.failure !== benchmarkFailureForReasonCode(record.reasonCode)) {
+    context.addIssue({
+      code: "custom",
+      path: ["failure"],
+      message: "Failure classification must match the authoritative Task reason code.",
+    });
+  }
+  if (record.reasonCode !== undefined && !reasonClassifiesStatus(record.terminalStatus, record.reasonCode.code)) {
+    context.addIssue({
+      code: "custom",
+      path: ["reasonCode"],
+      message: "Task reason code does not classify the recorded terminal status.",
+    });
+  }
 });
 
 export type BenchmarkDefinition = z.infer<typeof benchmarkDefinitionSchema>;
 export type BenchmarkRecord = z.infer<typeof benchmarkRecordSchema>;
+
+export function benchmarkFailureForReasonCode(reasonCode: GameTaskReasonCode): BenchmarkFailure {
+  return REASON_FAILURES[reasonCode.code];
+}
 
 export function hasSuccessfulWorkflowEvidence(record: {
   verification?: { passed: boolean } | undefined;
@@ -112,3 +149,33 @@ function canonicalize(value: unknown): unknown {
   }
   return value;
 }
+
+function reasonClassifiesStatus(status: string, code: GameTaskReasonCode["code"]): boolean {
+  if (status === "stopped") return code === "cancellation";
+  const currentStatus = gameTaskStatusSchema.safeParse(status);
+  return currentStatus.success && gameTaskReasonCodeClassifiesStatus(
+    currentStatus.data,
+    { schemaVersion: "1.0", code },
+  );
+}
+
+const REASON_FAILURES: Record<GameTaskReasonCode["code"], BenchmarkFailure> = {
+  "requirements-ambiguous": "unknown",
+  "infrastructure-unavailable": "tool",
+  "rate-limited": "rate-limit",
+  "unexpected-process-exit": "tool",
+  "bounded-timeout": "timeout",
+  "browser-startup-failed": "tool",
+  "evidence-write-interrupted": "tool",
+  "build-failed": "tool",
+  "gameplay-failed": "tool",
+  "browser-diagnostic-failed": "tool",
+  "task-criterion-failed": "tool",
+  "schema-violation": "tool",
+  "security-violation": "unknown",
+  "stale-base-conflict": "unknown",
+  "unchanged-human-rejection": "unknown",
+  cancellation: "stopped",
+  "capability-removed": "tool",
+  "legacy-unclassified-failure": "unknown",
+};

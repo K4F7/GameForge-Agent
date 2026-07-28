@@ -3,7 +3,18 @@ import { RunRelayClient } from "@gameforge/run-relay/client";
 
 type StatusSnapshot = {
   mcp: Record<string, string>;
-  relay: { reachable: boolean; queued: number; claimed: number; completed: number; failed: number; stopped: number };
+  relay: {
+    reachable: boolean;
+    queued: number;
+    needsInfo: number;
+    claimed: number;
+    inProgress: number;
+    retryable: number;
+    completed: number;
+    failed: number;
+    canceled: number;
+    conflicted: number;
+  };
 };
 
 export const GameForgePlugin: Plugin = async (input) => {
@@ -38,14 +49,32 @@ export const GameForgePlugin: Plugin = async (input) => {
         relay: {
           reachable: true,
           queued: tasks.filter((task) => task.status === "queued").length,
+          needsInfo: tasks.filter((task) => task.status === "needs-info").length,
           claimed: tasks.filter((task) => task.status === "claimed").length,
+          inProgress: tasks.filter((task) => task.status === "in-progress").length,
+          retryable: tasks.filter((task) => task.status === "retryable").length,
           completed: tasks.filter((task) => task.status === "completed").length,
           failed: tasks.filter((task) => task.status === "failed").length,
-          stopped: tasks.filter((task) => task.status === "stopped").length,
+          canceled: tasks.filter((task) => task.status === "canceled").length,
+          conflicted: tasks.filter((task) => task.status === "conflicted").length,
         },
       };
     } catch {
-      return { mcp, relay: { reachable: false, queued: 0, claimed: 0, completed: 0, failed: 0, stopped: 0 } };
+      return {
+        mcp,
+        relay: {
+          reachable: false,
+          queued: 0,
+          needsInfo: 0,
+          claimed: 0,
+          inProgress: 0,
+          retryable: 0,
+          completed: 0,
+          failed: 0,
+          canceled: 0,
+          conflicted: 0,
+        },
+      };
     }
   };
 
