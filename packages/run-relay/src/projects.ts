@@ -1,4 +1,6 @@
 import {
+  attemptIdSchema,
+  attemptSchema,
   candidateRevisionSchema,
   candidateAcceptanceValiditySchema,
   createCandidateRevisionInputSchema,
@@ -6,11 +8,16 @@ import {
   projectIdSchema,
   projectSchema,
   revisionIdSchema,
+  retryAttemptInputSchema,
+  startAttemptInputSchema,
+  type Attempt,
   type CandidateRevision,
   type CandidateAcceptanceValidity,
   type CreateCandidateRevisionInput,
   type CreateProjectInput,
   type Project,
+  type RetryAttemptInput,
+  type StartAttemptInput,
 } from "@gameforge/contracts";
 import { randomUUID } from "node:crypto";
 import type { TaskInbox } from "./tasks.js";
@@ -21,7 +28,13 @@ export class ProjectAuthorityError extends Error {
       | "project_not_found"
       | "revision_not_found"
       | "acceptance_contract_not_frozen"
-      | "task_project_mismatch",
+      | "task_project_mismatch"
+      | "revision_project_mismatch"
+      | "attempt_not_found"
+      | "stale_base_revision"
+      | "acceptance_contract_changed"
+      | "attempt_already_started"
+      | "attempt_already_retried",
     message: string,
   ) {
     super(message);
@@ -32,6 +45,8 @@ export class ProjectAuthorityError extends Error {
 export class ProjectAuthority {
   readonly #projects = new Map<string, Project>();
   readonly #revisions = new Map<string, CandidateRevision>();
+  readonly #attempts = new Map<string, Attempt>();
+  readonly #retriedAttemptIds = new Set<string>();
 
   constructor(
     readonly taskAuthority: Pick<
@@ -107,5 +122,119 @@ export class ProjectAuthority {
         revision.acceptanceContractFingerprint,
       ),
     });
+  }
+
+  startAttempt(input: StartAttemptInput): Attempt {
+    const request = startAttemptInputSchema.parse(input);
+    const project = this.getProject(request.projectId);
+    const contract = this.#currentTaskContract(request.taskId, request.projectId);
+    const previous = this.#attemptForTask(request.taskId);
+    if (previous !== undefined &&
+      project.currentRevisionId === (previous.baseRevisionId ?? null) &&
+      contract.fingerprint === previous.acceptanceContractFingerprint) {
+      throw new ProjectAuthorityError(
+        "attempt_already_started",
+        `Task ${request.taskId} already has an Attempt; use explicit retry.`,
+      );
+    }
+    const attempt = this.#createAttempt({
+      ...request,
+      ...(project.currentRevisionId === null ? {} : { baseRevisionId: project.currentRevisionId }),
+      acceptanceContractFingerprint: contract.fingerprint,
+    });
+    return attempt;
+  }
+
+  #createAttempt(request: Omit<Attempt, "attemptId" | "revisionId" | "state">): Attempt {
+    this.getProject(request.projectId);
+    if (request.baseRevisionId !== undefined) {
+      const baseRevision = this.getRevision(request.baseRevisionId);
+      if (baseRevision.projectId !== request.projectId) {
+        throw new ProjectAuthorityError(
+          "revision_project_mismatch",
+          `Revision ${baseRevision.revisionId} does not belong to Project ${request.projectId}.`,
+        );
+      }
+    }
+    const candidate = this.createCandidateRevision({
+      projectId: request.projectId,
+      taskId: request.taskId,
+    });
+    const attempt = attemptSchema.parse({
+      attemptId: `attempt-${randomUUID()}`,
+      ...request,
+      revisionId: candidate.revisionId,
+      state: "running",
+    });
+    this.#attempts.set(attempt.attemptId, attempt);
+    return attemptSchema.parse(attempt);
+  }
+
+  getAttempt(attemptIdInput: string): Attempt {
+    const attemptId = attemptIdSchema.parse(attemptIdInput);
+    const attempt = this.#attempts.get(attemptId);
+    if (attempt === undefined) {
+      throw new ProjectAuthorityError("attempt_not_found", `Unknown Attempt: ${attemptId}`);
+    }
+    return attemptSchema.parse(attempt);
+  }
+
+  retryAttempt(input: RetryAttemptInput): Attempt {
+    const request = retryAttemptInputSchema.parse(input);
+    const previous = this.getAttempt(request.attemptId);
+    if (this.#retriedAttemptIds.has(previous.attemptId)) {
+      throw new ProjectAuthorityError(
+        "attempt_already_retried",
+        `Attempt ${previous.attemptId} already has an explicit retry.`,
+      );
+    }
+    const project = this.getProject(previous.projectId);
+    if (project.currentRevisionId !== (previous.baseRevisionId ?? null)) {
+      throw new ProjectAuthorityError(
+        "stale_base_revision",
+        `Attempt ${previous.attemptId} is not based on the current Project Revision.`,
+      );
+    }
+    const contract = this.#currentTaskContract(previous.taskId, previous.projectId);
+    if (contract.fingerprint !== previous.acceptanceContractFingerprint) {
+      throw new ProjectAuthorityError(
+        "acceptance_contract_changed",
+        `Attempt ${previous.attemptId} is not bound to the current acceptance contract.`,
+      );
+    }
+    const retry = this.#createAttempt({
+      taskId: previous.taskId,
+      projectId: previous.projectId,
+      ...(previous.baseRevisionId === undefined ? {} : { baseRevisionId: previous.baseRevisionId }),
+      acceptanceContractFingerprint: previous.acceptanceContractFingerprint,
+    });
+    this.#retriedAttemptIds.add(previous.attemptId);
+    return retry;
+  }
+
+  #currentTaskContract(taskId: string, projectId: string) {
+    const task = this.taskAuthority.get(taskId);
+    if (task.projectId !== undefined && task.projectId !== projectId) {
+      throw new ProjectAuthorityError(
+        "task_project_mismatch",
+        `Task ${task.taskId} belongs to Project ${task.projectId}, not ${projectId}.`,
+      );
+    }
+    const contract = this.taskAuthority.acceptanceContract(taskId);
+    if (contract === undefined) {
+      throw new ProjectAuthorityError(
+        "acceptance_contract_not_frozen",
+        "Attempt requires a frozen acceptance contract.",
+      );
+    }
+    return contract;
+  }
+
+  #attemptForTask(taskId: string): Attempt | undefined {
+    let latest: Attempt | undefined;
+    for (const attempt of this.#attempts.values()) {
+      if (attempt.taskId === taskId) latest = attempt;
+    }
+    return latest;
   }
 }
