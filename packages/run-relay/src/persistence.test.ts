@@ -38,7 +38,7 @@ describe("RelayStatePersistence", () => {
               sound: { provider: "freesound", ready: false },
               music: { provider: "minimax", ready: false },
             },
-            engineering: { assetStore: true, generator: true, douyinBuild: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
+            engineering: { assetStore: true, generator: true, verifier: true, preview: true, runRelay: true, taskInbox: true },
           },
         },
         {
@@ -60,30 +60,9 @@ describe("RelayStatePersistence", () => {
           status: "processing",
         },
         {
-          type: "build.ready",
-          runId: "run-persisted",
-          sequence: 5,
-          emittedAt: "2026-07-16T13:00:02Z",
-          projectId: "persisted-game",
-          target: "douyin-mini-game",
-          cliVersion: "3.4.0",
-          passed: true,
-          fileCount: 16,
-          totalBytes: 1_108_438,
-          mainPackageBytes: 1_108_438,
-          subpackages: [],
-          deviceOrientation: "portrait",
-          capabilities: { network: false, login: false, share: false, ads: false, payments: false },
-          allowedNetworkHosts: [],
-          assetManifestRevision: 1,
-          assetCount: 1,
-          stdoutTruncated: false,
-          stderrTruncated: false,
-        },
-        {
           type: "verification.ready",
           runId: "run-persisted",
-          sequence: 6,
+          sequence: 5,
           emittedAt: "2026-07-16T13:00:03Z",
           projectId: "persisted-game",
           passed: true,
@@ -111,7 +90,6 @@ describe("RelayStatePersistence", () => {
       "capabilities.ready",
       "phase.started",
       "voice.job.updated",
-      "build.ready",
       "verification.ready",
     ]);
     expect(second.taskInbox.create({
@@ -127,8 +105,8 @@ describe("RelayStatePersistence", () => {
 
     const third = await new RelayStatePersistence(file).load();
     expect(third.taskInbox.get(created.task.taskId)).toMatchObject({ status: "completed" });
-    expect(third.store.replay("run-persisted", 6).events).toEqual([
-      expect.objectContaining({ type: "run.completed", sequence: 7 }),
+    expect(third.store.replay("run-persisted", 5).events).toEqual([
+      expect.objectContaining({ type: "run.completed", sequence: 6 }),
     ]);
   });
 

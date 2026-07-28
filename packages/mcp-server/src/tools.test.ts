@@ -233,7 +233,7 @@ describe("validation tool handlers", () => {
       async claimTask() { throw new Error("Unexpected claim."); },
     }, {
       runId: "run-task-create",
-      prompt: "Create one deterministic mini game task.",
+      prompt: "Create one deterministic Web game task.",
       language: "en-US",
     });
 

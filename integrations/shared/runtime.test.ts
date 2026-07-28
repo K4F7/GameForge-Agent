@@ -48,13 +48,11 @@ describe("integration runtime", () => {
     const runtime = await resolveRuntime(import.meta.dirname, "codearts");
     const previousToken = process.env.GAMEFORGE_RUN_RELAY_TOKEN;
     const previousLayaCli = process.env.GAMEFORGE_LAYAIR_CLI;
-    const previousDouyinCli = process.env.GAMEFORGE_DOUYIN_MINIGAME_CLI;
     const previousSpeechToken = process.env.VOLCENGINE_SPEECH_API_TOKEN;
     let layaCliLink: string | undefined;
     try {
       delete process.env.GAMEFORGE_RUN_RELAY_TOKEN;
       delete process.env.GAMEFORGE_LAYAIR_CLI;
-      delete process.env.GAMEFORGE_DOUYIN_MINIGAME_CLI;
       process.env.VOLCENGINE_SPEECH_API_TOKEN = "ambient-token-must-not-reach-mcp";
       await writeRuntimeConfig(runtime);
       const config = JSON.parse(await readFile(runtime.configPath, "utf8")) as {
@@ -66,7 +64,6 @@ describe("integration runtime", () => {
       expect(config.mcp.gameforge.timeout).toBe(180_000);
       expect(config.mcp.gameforge.environment.GAMEFORGE_RUN_RELAY_TOKEN).toBeUndefined();
       expect(config.mcp.gameforge.environment.GAMEFORGE_LAYAIR_CLI).toBeUndefined();
-      expect(config.mcp.gameforge.environment.GAMEFORGE_DOUYIN_MINIGAME_CLI).toBeUndefined();
       expect(config.mcp.gameforge.environment.VOLCENGINE_SPEECH_API_TOKEN).toBe("");
       expect(config.mcp.gameforge.environment.GAMEFORGE_MCP_AUDIT_DIR).toBe(runtime.auditDirectory);
       const policyPath = config.mcp.gameforge.environment.GAMEFORGE_MODEL_ROUTING_POLICY;
@@ -110,19 +107,11 @@ describe("integration runtime", () => {
       };
       expect(layaConfig.mcp.gameforge.environment.GAMEFORGE_LAYAIR_CLI).toBe(builtMcpEntry);
 
-      process.env.GAMEFORGE_DOUYIN_MINIGAME_CLI = "tmg";
-      await writeRuntimeConfig(runtime);
-      const douyinConfig = JSON.parse(await readFile(runtime.configPath, "utf8")) as {
-        mcp: { gameforge: { environment: Record<string, string> } };
-      };
-      expect(douyinConfig.mcp.gameforge.environment.GAMEFORGE_DOUYIN_MINIGAME_CLI).toBeUndefined();
     } finally {
       if (previousToken === undefined) delete process.env.GAMEFORGE_RUN_RELAY_TOKEN;
       else process.env.GAMEFORGE_RUN_RELAY_TOKEN = previousToken;
       if (previousLayaCli === undefined) delete process.env.GAMEFORGE_LAYAIR_CLI;
       else process.env.GAMEFORGE_LAYAIR_CLI = previousLayaCli;
-      if (previousDouyinCli === undefined) delete process.env.GAMEFORGE_DOUYIN_MINIGAME_CLI;
-      else process.env.GAMEFORGE_DOUYIN_MINIGAME_CLI = previousDouyinCli;
       if (previousSpeechToken === undefined) delete process.env.VOLCENGINE_SPEECH_API_TOKEN;
       else process.env.VOLCENGINE_SPEECH_API_TOKEN = previousSpeechToken;
       if (layaCliLink !== undefined) await unlink(layaCliLink).catch(() => undefined);

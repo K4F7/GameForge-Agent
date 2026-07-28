@@ -68,15 +68,6 @@ describe("GameProjectGenerator", () => {
     expect(manifest.files).toHaveLength(result.plan.files.length - 1);
   });
 
-  it("rejects retired mini-game targets", async () => {
-    const { generator } = await createGenerator();
-
-    for (const target of ["douyin-mini-game", "wechat-mini-game"] as const) {
-      await expect(generator.execute({ projectId: `retired-${target}`, spec, target }))
-        .rejects.toThrow("only supports Web Phaser/Vite projects");
-    }
-  });
-
   it("never overwrites an existing project", async () => {
     const { generator } = await createGenerator();
     await generator.execute({ projectId: "safety-sprint", spec, mode: "apply" });

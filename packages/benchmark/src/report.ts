@@ -36,11 +36,9 @@ export function formatComparison(definition: BenchmarkDefinition, comparison: Be
     "|---|---|---|---:|---:|---:|---:|---:|---|---|",
   ];
   for (const record of comparison.records) {
-    const proof = record.minigame !== undefined
-      ? `mini:${record.minigame.target}/pass`
-      : record.verification === undefined
-        ? "—"
-        : `browser:${record.verification.outcome}/${record.verification.passed ? "pass" : "fail"}`;
+    const proof = record.verification === undefined
+      ? "—"
+      : `browser:${record.verification.outcome}/${record.verification.passed ? "pass" : "fail"}`;
     lines.push(`| ${record.client.name} | ${cell(record.client.version)} | ${cell(record.client.model ?? "—")} | ${record.terminalStatus} | ${record.events.count} | ${record.tools.count ?? "unknown"} | ${record.tools.errors ?? "unknown"} | ${record.humanInterventions.length} | ${record.failure} | ${proof} |`);
   }
   lines.push("", "不同 Task ID/Run ID 是预期行为；`definitionFingerprint` 才是同任务判据。凭据、会话正文和完整本地日志不属于基准记录。", "");
@@ -49,13 +47,8 @@ export function formatComparison(definition: BenchmarkDefinition, comparison: Be
 
 function workflowEvidenceMatches(definition: BenchmarkDefinition, record: BenchmarkRecord): boolean {
   if (!hasSuccessfulWorkflowEvidence(record)) return false;
-  const platform = definition.target.platform;
-  if (platform === undefined || platform === "web") return record.verification?.passed === true;
-  if (platform === "douyin-mini-game" || platform === "wechat-mini-game") {
-    return record.minigame?.target === platform &&
-      (definition.target.runtimeGenre === undefined || record.minigame.genre === definition.target.runtimeGenre);
-  }
-  return false;
+  return (definition.target.platform === undefined || definition.target.platform === "web") &&
+    record.verification?.passed === true;
 }
 
 function cell(value: string): string {

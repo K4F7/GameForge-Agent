@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { generatedProjectFileSchema, projectGenerationRequestSchema } from "./project-generation.js";
+import {
+  gamePlatformTargetSchema,
+  generatedProjectFileSchema,
+  projectGenerationRequestSchema,
+} from "./project-generation.js";
 
 const spec = {
   title: "Safety Sprint",
@@ -21,11 +25,10 @@ describe("project generation contracts", () => {
     });
   });
 
-  it("accepts only explicit supported platform targets", () => {
-    expect(projectGenerationRequestSchema.parse({ projectId: "safety-sprint", spec, target: "douyin-mini-game" }).target)
-      .toBe("douyin-mini-game");
-    expect(projectGenerationRequestSchema.parse({ projectId: "safety-sprint", spec, target: "wechat-mini-game" }).target)
-      .toBe("wechat-mini-game");
+  it("exposes web as the only supported platform target", () => {
+    expect(gamePlatformTargetSchema.options).toEqual(["web"]);
+    expect(projectGenerationRequestSchema.parse({ projectId: "safety-sprint", spec, target: "web" }).target)
+      .toBe("web");
     expect(projectGenerationRequestSchema.safeParse({ projectId: "safety-sprint", spec, target: "unknown" }).success)
       .toBe(false);
   });
