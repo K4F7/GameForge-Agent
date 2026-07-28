@@ -45,17 +45,6 @@ const relayStateSchema = z.strictObject({
     const run = runs.get(task.runId);
     if (run === undefined) {
       context.addIssue({ code: "custom", path: ["tasks", index, "runId"], message: "Task run must exist." });
-      return;
-    }
-    const expected = task.status === "completed" ? "succeeded"
-      : task.status === "failed" ? "failed"
-      : task.status === "stopped" ? "stopped"
-      : undefined;
-    if (expected !== undefined && run.status !== expected) {
-      context.addIssue({ code: "custom", path: ["tasks", index, "status"], message: "Task and run terminal states must match." });
-    }
-    if (expected === undefined && ["succeeded", "failed", "stopped"].includes(run.status)) {
-      context.addIssue({ code: "custom", path: ["tasks", index, "status"], message: "Active task cannot reference a terminal run." });
     }
   });
 });

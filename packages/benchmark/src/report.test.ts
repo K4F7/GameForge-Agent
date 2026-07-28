@@ -8,7 +8,7 @@ const definition = benchmarkDefinitionSchema.parse({
   language: "en-US",
   target: { genre: "collect", durationSeconds: 60, collectibleCount: 2, hazardCount: 1, startingLives: 3, movementSpeed: 200, mediaEnabled: false },
 });
-const record = (name: "codearts" | "opencode", status: "completed" | "stopped") => benchmarkRecordSchema.parse({
+const record = (name: "codearts" | "opencode", status: "completed" | "canceled") => benchmarkRecordSchema.parse({
   schemaVersion: 1,
   benchmarkId: definition.benchmarkId,
   definitionFingerprint: fingerprintDefinition(definition),
@@ -40,7 +40,7 @@ describe("client benchmark report", () => {
   });
 
   it("distinguishes task equivalence from workflow comparability", () => {
-    const comparison = compareRecords(definition, [record("codearts", "completed"), record("opencode", "stopped")]);
+    const comparison = compareRecords(definition, [record("codearts", "completed"), record("opencode", "canceled")]);
     expect(comparison).toMatchObject({ comparableTask: true, workflowComparable: false });
     expect(formatComparison(definition, comparison)).toContain("不能比较工作流质量");
   });

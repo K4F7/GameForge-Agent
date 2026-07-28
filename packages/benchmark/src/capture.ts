@@ -84,7 +84,7 @@ export async function captureBenchmarkEvidence(input: {
   }
   const events = await replayAll(input.relay, task.runId);
   validateSequence(events, task.runId);
-  validateTerminal(task, events);
+  validateCompletedTaskEvidence(task, events);
   const verificationEvent = [...events].reverse().find((event) => event.type === "verification.ready");
   const evidence = [...new Set([
     ...metadata.evidence,
@@ -160,19 +160,8 @@ function validateSequence(events: ReadonlyArray<WireRunEvent>, runId: string): v
   }
 }
 
-function validateTerminal(task: GameTask, events: ReadonlyArray<WireRunEvent>): void {
-  const last = events.at(-1)!;
-  if (task.status === "completed" && last.type !== "run.completed") {
+function validateCompletedTaskEvidence(task: GameTask, events: ReadonlyArray<WireRunEvent>): void {
+  if (task.status === "completed" && events.at(-1)?.type !== "run.completed") {
     throw new Error("Completed Task evidence must end with run.completed.");
-  }
-  if (task.status === "stopped" && last.type !== "run.stopped") {
-    throw new Error("Stopped Task evidence must end with run.stopped.");
-  }
-  if (task.status === "failed" && !events.some((event) => event.type === "phase.failed" && !event.repairable)) {
-    throw new Error("Failed Task evidence requires an unrecoverable phase.failed event.");
-  }
-  if ((task.status === "queued" || task.status === "claimed") &&
-      events.some((event) => event.type === "run.completed" || event.type === "run.stopped")) {
-    throw new Error("Nonterminal Task evidence cannot contain a terminal Run event.");
   }
 }

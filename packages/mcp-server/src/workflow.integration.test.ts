@@ -217,7 +217,9 @@ describe("local CodeArts workflow boundary", () => {
         projectId: "resume-game",
         jobHandle: recoveredJob?.type === "voice.job.updated" ? recoveredJob.jobHandle : "missing",
       })).resolves.toMatchObject({ jobHandle: recoveryJobHandle, status: "succeeded" });
+      await relayClient.transitionTask(created.task.taskId, { status: "in-progress" });
       await callJson(secondClient, "complete_game_run", { runId: created.task.runId });
+      await relayClient.transitionTask(created.task.taskId, { status: "completed" });
       await expect(relayClient.getTask(created.task.taskId)).resolves.toMatchObject({ status: "completed" });
     } finally {
       await secondClient.close();
@@ -622,7 +624,9 @@ describe("local CodeArts workflow boundary", () => {
           durationMs: verification.durationMs,
         }],
       });
+      await relayClient.transitionTask(created.task.taskId, { status: "in-progress" });
       await callJson(mcpClient, "complete_game_run", { runId: "run-local-e2e" });
+      await relayClient.transitionTask(created.task.taskId, { status: "completed" });
 
       const finalReplay = runEventBatchSchema.parse(await callJson(mcpClient, "replay_game_run", {
         runId: "run-local-e2e",

@@ -11,7 +11,7 @@ afterEach(async () => {
 });
 
 describe("RelayStatePersistence", () => {
-  it("atomically restores claimed tasks, run events, and terminal state", async () => {
+  it("atomically restores independent Task and Run lifecycle state", async () => {
     const file = await stateFile();
     const persistence = new RelayStatePersistence(file);
     const first = await persistence.load();
@@ -100,7 +100,9 @@ describe("RelayStatePersistence", () => {
       task: { taskId: created.task.taskId, status: "claimed" },
       event: { type: "run.started", sequence: 1 },
     });
+    second.taskInbox.transition(created.task.taskId, { status: "in-progress" });
     second.taskInbox.finishRun("run-persisted", "run.completed");
+    second.taskInbox.transition(created.task.taskId, { status: "completed" });
     await new RelayStatePersistence(file).save(second.store, second.taskInbox);
 
     const third = await new RelayStatePersistence(file).load();
@@ -136,15 +138,16 @@ describe("RelayStatePersistence", () => {
     expect(await readFile(file, "utf8")).toContain("schemaVersion");
   });
 
-  it("rejects snapshots whose task and run terminal states disagree", async () => {
+  it("restores Task terminal state independently from its transport Run", async () => {
     const file = await stateFile();
     const persistence = new RelayStatePersistence(file);
     const state = await persistence.load();
-    state.taskInbox.create({
+    const created = state.taskInbox.create({
       runId: "run-inconsistent",
       prompt: "Create a browser game with consistent durable state.",
       language: "en-US",
     });
+    state.taskInbox.claim(created.task.taskId, { agentId: "codearts" });
     await persistence.save(state.store, state.taskInbox);
     const corrupted = JSON.parse(await readFile(file, "utf8")) as {
       tasks: Array<Record<string, unknown>>;
@@ -155,7 +158,9 @@ describe("RelayStatePersistence", () => {
     task.completedAt = "2026-07-16T13:00:00Z";
     await writeFile(file, JSON.stringify(corrupted));
 
-    await expect(new RelayStatePersistence(file).load()).rejects.toThrow("terminal states");
+    const restored = await new RelayStatePersistence(file).load();
+    expect(restored.taskInbox.get(created.task.taskId)).toMatchObject({ status: "completed" });
+    expect(restored.store.replay("run-inconsistent", 0).events.at(-1)).toMatchObject({ type: "run.started" });
   });
 });
 

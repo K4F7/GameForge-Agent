@@ -99,6 +99,12 @@ export function createRunRelayServer(options: RunRelayServerOptions = {}): Serve
         writeJson(response, 200, { task });
         return;
       }
+      if (taskRoute?.command === "transition" && request.method === "POST") {
+        const result = taskInbox.transition(taskRoute.taskId, await readJson(request));
+        if (result.outcome === "accepted") await options.persistState?.();
+        writeJson(response, 200, result);
+        return;
+      }
 
       if (request.method === "POST" && url.pathname === "/runs") {
         const input = createRunSchema.parse(await readJson(request));
@@ -180,12 +186,12 @@ export function createRunRelayServer(options: RunRelayServerOptions = {}): Serve
   });
 }
 
-function matchTaskRoute(pathname: string): { taskId: string; command?: "claim" } | undefined {
-  const match = /^\/tasks\/([^/]+)(?:\/(claim))?$/.exec(pathname);
+function matchTaskRoute(pathname: string): { taskId: string; command?: "claim" | "transition" } | undefined {
+  const match = /^\/tasks\/([^/]+)(?:\/(claim|transition))?$/.exec(pathname);
   if (match?.[1] === undefined) return undefined;
   try {
     const taskId = gameTaskIdSchema.parse(decodeURIComponent(match[1]));
-    return match[2] === "claim" ? { taskId, command: "claim" } : { taskId };
+    return match[2] === "claim" || match[2] === "transition" ? { taskId, command: match[2] } : { taskId };
   } catch {
     throw new HttpError(400, "invalid_task_id", "Task ID is invalid.");
   }

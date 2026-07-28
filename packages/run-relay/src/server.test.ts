@@ -119,7 +119,7 @@ describe("run relay HTTP server", () => {
     await expect(relayClient.claimTask(created.task.taskId, { agentId: "codearts" }))
       .resolves.toMatchObject({ status: "claimed", claimedBy: "codearts" });
     await expect(relayClient.completeRun("run-task-1")).resolves.toMatchObject({ type: "run.completed" });
-    await expect(relayClient.getTask(created.task.taskId)).resolves.toMatchObject({ status: "completed" });
+    await expect(relayClient.getTask(created.task.taskId)).resolves.toMatchObject({ status: "claimed" });
   });
 
   it("creates a task through the shared client without browser-only APIs", async () => {
@@ -133,6 +133,37 @@ describe("run relay HTTP server", () => {
     expect(created).toMatchObject({
       task: { runId: "run-client-task", language: "en-US", status: "queued" },
       event: { type: "run.started", language: "en-US", sequence: 1 },
+    });
+  });
+
+  it("returns a stable invalid result for an unknown reason without changing the public Task bytes", async () => {
+    const baseUrl = await startServer();
+    const client = new RunRelayClient({ baseUrl });
+    const created = await client.createTask({
+      runId: "run-unknown-reason",
+      prompt: "Create a browser game while preserving fail-closed Task state.",
+      language: "en-US",
+    });
+    const before = JSON.stringify(await client.getTask(created.task.taskId));
+
+    await expect(client.transitionTask(created.task.taskId, {
+      status: "completed",
+      reasonCode: { schemaVersion: "1.0", code: "unknown-failure" },
+    })).resolves.toMatchObject({
+      schemaVersion: "1.0",
+      outcome: "invalid",
+      code: "invalid-transition-request",
+      task: { status: "queued" },
+    });
+
+    expect(JSON.stringify(await client.getTask(created.task.taskId))).toBe(before);
+    await expect(client.transitionTask(created.task.taskId, {
+      status: "needs-info",
+      reasonCode: { schemaVersion: "1.0", code: "requirements-ambiguous" },
+    })).resolves.toMatchObject({ outcome: "accepted", task: { status: "needs-info" } });
+    await expect(client.getTask(created.task.taskId)).resolves.toMatchObject({
+      status: "needs-info",
+      reasonCode: { schemaVersion: "1.0", code: "requirements-ambiguous" },
     });
   });
 

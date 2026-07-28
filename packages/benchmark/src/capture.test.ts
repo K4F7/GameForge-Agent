@@ -71,6 +71,13 @@ describe("benchmark evidence capture", () => {
         sequence: index + 1,
       })) as WireRunEvent[]),
     })).rejects.toThrow("Completed records require");
+
+    await expect(captureBenchmarkEvidence({
+      definition,
+      metadata,
+      taskId: "task-00000000-0000-0000-0000-000000000000",
+      relay: relayFixture(events.slice(0, -1)),
+    })).rejects.toThrow("Completed Task evidence must end with run.completed");
   });
 
   it("rejects sensitive metadata instead of attempting lossy redaction", async () => {
