@@ -97,7 +97,7 @@ export class TaskInbox {
     const { agentId } = claimGameTaskRequestSchema.parse(input);
     const current = this.#tasks.get(taskId);
     if (current === undefined) throw new TaskInboxError(404, "task_not_found", `Unknown task: ${taskId}`);
-    if (current.status === "claimed") {
+    if (current.status === "claimed" || current.status === "in-progress") {
       if (current.claimedBy === agentId) return clone(current);
       throw new TaskInboxError(409, "task_claimed", "Task is already claimed by another agent.");
     }
@@ -124,6 +124,14 @@ export class TaskInbox {
         schemaVersion: "1.0",
         outcome: "invalid",
         code: "invalid-transition-request",
+        task: clone(current),
+      });
+    }
+    if (current.claimedBy !== undefined && request.data.agentId !== current.claimedBy) {
+      return gameTaskTransitionResultSchema.parse({
+        schemaVersion: "1.0",
+        outcome: "rejected",
+        code: "claimant-mismatch",
         task: clone(current),
       });
     }

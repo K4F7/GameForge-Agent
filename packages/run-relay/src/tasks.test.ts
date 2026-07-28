@@ -120,17 +120,33 @@ describe("TaskInbox", () => {
     expect(inbox.transition(created.task.taskId, { status: "queued" }))
       .toMatchObject({ outcome: "accepted", task: { status: "queued", reasonCode: undefined } });
     inbox.claim(created.task.taskId, { agentId: "codearts" });
-    expect(inbox.transition(created.task.taskId, { status: "in-progress" }))
+    expect(inbox.transition(created.task.taskId, { status: "in-progress", agentId: "codearts" }))
       .toMatchObject({ outcome: "accepted", task: { status: "in-progress" } });
     expect(inbox.transition(created.task.taskId, {
       status: "retryable",
+      agentId: "codearts",
       reasonCode: { schemaVersion: "1.0", code: "bounded-timeout" },
     })).toMatchObject({ outcome: "accepted", task: { status: "retryable" } });
 
-    expect(inbox.transition(created.task.taskId, { status: "queued" }))
+    expect(inbox.transition(created.task.taskId, { status: "queued", agentId: "codearts" }))
       .toMatchObject({ outcome: "accepted", task: { status: "queued", claimedBy: undefined } });
     expect(inbox.claim(created.task.taskId, { agentId: "new-attempt-agent" }))
       .toMatchObject({ status: "claimed", claimedBy: "new-attempt-agent" });
+  });
+
+  it("allows only the claimant to transition owned work", () => {
+    const inbox = new TaskInbox(new RunStore());
+    const taskId = inbox.create({
+      runId: "run-claimant-transition",
+      prompt: "Create a browser game with claimant-bound lifecycle transitions.",
+      language: "en-US",
+    }).task.taskId;
+    inbox.claim(taskId, { agentId: "codearts" });
+
+    expect(inbox.transition(taskId, { status: "in-progress", agentId: "other-agent" }))
+      .toMatchObject({ outcome: "rejected", code: "claimant-mismatch", task: { status: "claimed" } });
+    expect(inbox.transition(taskId, { status: "in-progress", agentId: "codearts" }))
+      .toMatchObject({ outcome: "accepted", task: { status: "in-progress" } });
   });
 
   it("accepts only the conservative public Task transition matrix", () => {
@@ -169,7 +185,7 @@ describe("TaskInbox", () => {
         const { inbox, taskId } = taskAt(from, sequence);
         const outcome = from === "queued" && to === "claimed"
           ? (inbox.claim(taskId, { agentId: "matrix-agent" }), "accepted")
-          : inbox.transition(taskId, transitionTo(to)).outcome;
+          : inbox.transition(taskId, transitionTo(to, "source-agent")).outcome;
         expect(outcome, `${from}>${to}`).toBe(accepted.has(`${from}>${to}`) ? "accepted" : "rejected");
       }
     }
@@ -213,13 +229,13 @@ function taskAt(status: GameTask["status"], sequence: number): { inbox: TaskInbo
   }
   inbox.claim(taskId, { agentId: "source-agent" });
   if (status === "claimed") return { inbox, taskId };
-  inbox.transition(taskId, transitionTo("in-progress"));
+  inbox.transition(taskId, transitionTo("in-progress", "source-agent"));
   if (status === "in-progress") return { inbox, taskId };
-  inbox.transition(taskId, transitionTo(status));
+  inbox.transition(taskId, transitionTo(status, "source-agent"));
   return { inbox, taskId };
 }
 
-function transitionTo(status: GameTask["status"]): Record<string, unknown> {
+function transitionTo(status: GameTask["status"], agentId?: string): Record<string, unknown> {
   const reasonCode = status === "needs-info" ? "requirements-ambiguous"
     : status === "retryable" ? "bounded-timeout"
     : status === "failed" ? "schema-violation"
@@ -228,6 +244,7 @@ function transitionTo(status: GameTask["status"]): Record<string, unknown> {
     : undefined;
   return {
     status,
+    ...(agentId === undefined ? {} : { agentId }),
     ...(reasonCode === undefined ? {} : { reasonCode: { schemaVersion: "1.0", code: reasonCode } }),
   };
 }

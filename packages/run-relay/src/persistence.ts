@@ -48,7 +48,7 @@ const relayStateSchema = z.strictObject({
     }
   });
 });
-const relayStateLoadSchema = z.preprocess(migrateLegacyStoppedTasks, relayStateSchema);
+const relayStateLoadSchema = z.preprocess(migrateLegacyTasks, relayStateSchema);
 
 export type RelayStateOptions = RunStoreOptions & TaskInboxOptions;
 
@@ -133,7 +133,7 @@ function isNodeError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
-function migrateLegacyStoppedTasks(input: unknown): unknown {
+function migrateLegacyTasks(input: unknown): unknown {
   if (typeof input !== "object" || input === null || Array.isArray(input)) return input;
   const state = input as Record<string, unknown>;
   if (state.schemaVersion !== "1.0" || !Array.isArray(state.tasks)) return input;
@@ -142,7 +142,14 @@ function migrateLegacyStoppedTasks(input: unknown): unknown {
     tasks: state.tasks.map((task) => {
       if (typeof task !== "object" || task === null || Array.isArray(task)) return task;
       const record = task as Record<string, unknown>;
-      if (record.status !== "stopped" || record.reasonCode !== undefined) return task;
+      if (record.reasonCode !== undefined) return task;
+      if (record.status === "failed") {
+        return {
+          ...record,
+          reasonCode: { schemaVersion: "1.0", code: "legacy-unclassified-failure" },
+        };
+      }
+      if (record.status !== "stopped") return task;
       return {
         ...record,
         status: "canceled",

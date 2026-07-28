@@ -100,9 +100,9 @@ describe("RelayAuthorityDriver", () => {
         detail: `Step ${index + 1}`,
       })),
     });
-    await client.transitionTask(created.task.taskId, { status: "in-progress" });
+    await client.transitionTask(created.task.taskId, { status: "in-progress", agentId: "codearts" });
     await client.completeRun(created.task.runId);
-    await client.transitionTask(created.task.taskId, { status: "completed" });
+    await client.transitionTask(created.task.taskId, { status: "completed", agentId: "codearts" });
 
     const authority = new RelayAuthorityDriver({ baseUrl, taskId: created.task.taskId, runId: created.task.runId, projectId: "pagination-game" });
     await expect(authority.snapshot()).resolves.toMatchObject({ taskStatus: "completed", runStatus: "completed", eventSequence: 1_002, lastEventType: "run.completed" });

@@ -16,13 +16,14 @@ const record = (name: "codearts" | "opencode", status: "completed" | "canceled")
   taskId: `task-${name}`,
   runId: `run-${name}`,
   terminalStatus: status,
+  ...(status === "canceled" ? { reasonCode: { schemaVersion: "1.0" as const, code: "cancellation" as const } } : {}),
   events: status === "completed"
     ? { count: 6, types: { "run.started": 1, "capabilities.ready": 1, "spec.ready": 1, "verification.ready": 1, "preview.ready": 1, "run.completed": 1 } }
     : { count: 2, types: { "run.started": 1, "run.stopped": 1 } },
   tools: { count: status === "completed" ? 8 : 0, names: [], errors: 0 },
   ...(status === "completed" ? { verification: { passed: true, outcome: "won", score: 2, lives: 3, diagnostics: 0 } } : {}),
   humanInterventions: [],
-  failure: status === "completed" ? "none" : "rate-limit",
+  failure: status === "completed" ? "none" : "stopped",
   evidence: ["result.md"],
 });
 describe("client benchmark report", () => {
@@ -37,6 +38,7 @@ describe("client benchmark report", () => {
       "terminalStatus", "reasonCode", "durationMs", "events", "tools", "toolAudit", "verification",
       "humanInterventions", "failure", "evidence",
     ]);
+    expect(benchmarkRecordSchema.shape.terminalStatus.options).toContain("stopped");
   });
 
   it("distinguishes task equivalence from workflow comparability", () => {
@@ -76,6 +78,22 @@ describe("client benchmark report", () => {
       comparableTask: true,
       workflowComparable: true,
     });
+  });
+
+  it("keeps legacy schemaVersion 1 stopped records readable", () => {
+    const canceled = record("codearts", "canceled");
+    const { reasonCode: _reasonCode, ...legacy } = canceled;
+    expect(benchmarkRecordSchema.parse({ ...legacy, terminalStatus: "stopped" }))
+      .toMatchObject({ schemaVersion: 1, terminalStatus: "stopped", failure: "stopped" });
+  });
+
+  it("rejects a reason code that cannot classify the recorded Task status", () => {
+    expect(() => benchmarkRecordSchema.parse({
+      ...record("codearts", "canceled"),
+      terminalStatus: "failed",
+      reasonCode: { schemaVersion: "1.0", code: "bounded-timeout" },
+      failure: "timeout",
+    })).toThrow("reason code does not classify");
   });
 
 });

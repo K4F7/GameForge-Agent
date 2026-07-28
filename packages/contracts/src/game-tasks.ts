@@ -44,6 +44,7 @@ export const gameTaskReasonCodeSchema = z.strictObject({
     "unchanged-human-rejection",
     "cancellation",
     "capability-removed",
+    "legacy-unclassified-failure",
   ]),
 });
 export const gameTaskAgentIdSchema = z
@@ -70,6 +71,7 @@ export const listGameTasksRequestSchema = z.strictObject({
 export const gameTaskTransitionRequestSchema = z.strictObject({
   status: gameTaskStatusSchema,
   reasonCode: gameTaskReasonCodeSchema.optional(),
+  agentId: gameTaskAgentIdSchema.optional(),
 });
 
 export const gameTaskSchema = z.strictObject({
@@ -99,15 +101,11 @@ export const gameTaskSchema = z.strictObject({
   if ((task.status === "queued" || task.status === "needs-info") && claimed) {
     context.addIssue({ code: "custom", path: ["status"], message: "Pre-work tasks cannot contain claim metadata." });
   }
-  const expectedReason: readonly string[] = task.status === "needs-info" ? ["requirements-ambiguous"]
-    : task.status === "retryable" ? RETRYABLE_REASON_CODES
-    : task.status === "failed" ? FAILED_REASON_CODES
-    : task.status === "canceled" ? ["cancellation"]
-    : task.status === "conflicted" ? ["stale-base-conflict"]
-    : [];
-  if (expectedReason.length === 0 && task.reasonCode !== undefined) {
+  const requiresReason = ["needs-info", "retryable", "failed", "canceled", "conflicted"].includes(task.status);
+  if (!requiresReason && task.reasonCode !== undefined) {
     context.addIssue({ code: "custom", path: ["reasonCode"], message: "This Task state cannot contain a reason code." });
-  } else if (expectedReason.length > 0 && !expectedReason.includes(task.reasonCode?.code ?? "")) {
+  } else if (requiresReason && (task.reasonCode === undefined ||
+      !gameTaskReasonCodeClassifiesStatus(task.status, task.reasonCode))) {
     context.addIssue({ code: "custom", path: ["reasonCode"], message: "Task reason code does not classify this state." });
   }
 });
@@ -121,7 +119,7 @@ export const gameTaskTransitionResultSchema = z.discriminatedUnion("outcome", [
   z.strictObject({
     schemaVersion: z.literal("1.0"),
     outcome: z.literal("rejected"),
-    code: z.enum(["illegal-transition", "reason-code-mismatch"]),
+    code: z.enum(["illegal-transition", "reason-code-mismatch", "claimant-mismatch"]),
     task: gameTaskSchema,
   }),
   z.strictObject({
@@ -148,6 +146,18 @@ export type GameTaskTransitionRequest = z.infer<typeof gameTaskTransitionRequest
 export type GameTaskTransitionResult = z.infer<typeof gameTaskTransitionResultSchema>;
 export type CreateGameTaskResponse = z.infer<typeof createGameTaskResponseSchema>;
 
+export function gameTaskReasonCodeClassifiesStatus(
+  status: z.infer<typeof gameTaskStatusSchema>,
+  reasonCode: GameTaskReasonCode,
+): boolean {
+  if (status === "needs-info") return reasonCode.code === "requirements-ambiguous";
+  if (status === "retryable") return RETRYABLE_REASON_CODES.some((code) => code === reasonCode.code);
+  if (status === "failed") return FAILED_REASON_CODES.some((code) => code === reasonCode.code);
+  if (status === "canceled") return reasonCode.code === "cancellation";
+  if (status === "conflicted") return reasonCode.code === "stale-base-conflict";
+  return false;
+}
+
 const RETRYABLE_REASON_CODES = [
   "infrastructure-unavailable",
   "rate-limited",
@@ -166,4 +176,5 @@ const FAILED_REASON_CODES = [
   "security-violation",
   "unchanged-human-rejection",
   "capability-removed",
+  "legacy-unclassified-failure",
 ] as const;

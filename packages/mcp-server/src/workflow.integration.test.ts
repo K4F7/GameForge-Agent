@@ -115,7 +115,7 @@ describe("local CodeArts workflow boundary", () => {
     }
   });
 
-  it("resumes an already claimed task after the CodeArts MCP client restarts", async () => {
+  it("resumes an owned in-progress task after the CodeArts MCP client crashes", async () => {
     const relayBaseUrl = await startRelay();
     const relayClient = new RunRelayClient({ baseUrl: relayBaseUrl });
     const createdResponse = await fetch(`${relayBaseUrl}/tasks`, {
@@ -172,6 +172,11 @@ describe("local CodeArts workflow boundary", () => {
           },
         ],
       });
+      await callJson(firstClient, "transition_game_task", {
+        taskId: created.task.taskId,
+        status: "in-progress",
+        agentId: "codearts",
+      });
     } finally {
       await firstClient.close();
       await firstServer.close();
@@ -191,12 +196,12 @@ describe("local CodeArts workflow boundary", () => {
         tasks: Array<{ taskId: string; status: string; claimedBy?: string }>;
       };
       expect(snapshot.tasks).toEqual([
-        expect.objectContaining({ taskId: created.task.taskId, status: "claimed", claimedBy: "codearts" }),
+        expect.objectContaining({ taskId: created.task.taskId, status: "in-progress", claimedBy: "codearts" }),
       ]);
       await expect(callJson(secondClient, "claim_game_task", {
         taskId: created.task.taskId,
         agentId: "codearts",
-      })).resolves.toMatchObject({ task: { status: "claimed", claimedBy: "codearts" } });
+      })).resolves.toMatchObject({ task: { status: "in-progress", claimedBy: "codearts" } });
       const replay = runEventBatchSchema.parse(await callJson(secondClient, "replay_game_run", {
         runId: created.task.runId,
         after: 0,
@@ -217,14 +222,11 @@ describe("local CodeArts workflow boundary", () => {
         projectId: "resume-game",
         jobHandle: recoveredJob?.type === "voice.job.updated" ? recoveredJob.jobHandle : "missing",
       })).resolves.toMatchObject({ jobHandle: recoveryJobHandle, status: "succeeded" });
-      await callJson(secondClient, "transition_game_task", {
-        taskId: created.task.taskId,
-        status: "in-progress",
-      });
       await callJson(secondClient, "complete_game_run", { runId: created.task.runId });
       await callJson(secondClient, "transition_game_task", {
         taskId: created.task.taskId,
         status: "completed",
+        agentId: "codearts",
       });
       await expect(relayClient.getTask(created.task.taskId)).resolves.toMatchObject({ status: "completed" });
     } finally {
@@ -633,11 +635,13 @@ describe("local CodeArts workflow boundary", () => {
       await callJson(mcpClient, "transition_game_task", {
         taskId: created.task.taskId,
         status: "in-progress",
+        agentId: "codearts",
       });
       await callJson(mcpClient, "complete_game_run", { runId: "run-local-e2e" });
       await callJson(mcpClient, "transition_game_task", {
         taskId: created.task.taskId,
         status: "completed",
+        agentId: "codearts",
       });
 
       const finalReplay = runEventBatchSchema.parse(await callJson(mcpClient, "replay_game_run", {

@@ -100,9 +100,9 @@ describe("RelayStatePersistence", () => {
       task: { taskId: created.task.taskId, status: "claimed" },
       event: { type: "run.started", sequence: 1 },
     });
-    second.taskInbox.transition(created.task.taskId, { status: "in-progress" });
+    second.taskInbox.transition(created.task.taskId, { status: "in-progress", agentId: "codearts" });
     second.taskInbox.finishRun("run-persisted", "run.completed");
-    second.taskInbox.transition(created.task.taskId, { status: "completed" });
+    second.taskInbox.transition(created.task.taskId, { status: "completed", agentId: "codearts" });
     await new RelayStatePersistence(file).save(second.store, second.taskInbox);
 
     const third = await new RelayStatePersistence(file).load();
@@ -187,6 +187,32 @@ describe("RelayStatePersistence", () => {
       status: "canceled",
       reasonCode: { schemaVersion: "1.0", code: "cancellation" },
       completedAt: "2026-07-16T13:00:00Z",
+    });
+  });
+
+  it("loads a schema 1.0 failed Task without a reason as an explicitly unclassified failure", async () => {
+    const file = await stateFile();
+    const persistence = new RelayStatePersistence(file);
+    const state = await persistence.load();
+    const created = state.taskInbox.create({
+      runId: "run-legacy-failed",
+      prompt: "Restore a failed Task from the previous Relay lifecycle.",
+      language: "en-US",
+    });
+    await persistence.save(state.store, state.taskInbox);
+    const legacy = JSON.parse(await readFile(file, "utf8")) as { tasks: Array<Record<string, unknown>> };
+    const task = legacy.tasks[0];
+    if (task === undefined) throw new Error("Expected one persisted task.");
+    task.status = "failed";
+    task.claimedAt = "2026-07-16T12:00:00Z";
+    task.claimedBy = "legacy-agent";
+    task.completedAt = "2026-07-16T13:00:00Z";
+    await writeFile(file, JSON.stringify(legacy));
+
+    const restored = await new RelayStatePersistence(file).load();
+    expect(restored.taskInbox.get(created.task.taskId)).toMatchObject({
+      status: "failed",
+      reasonCode: { schemaVersion: "1.0", code: "legacy-unclassified-failure" },
     });
   });
 });

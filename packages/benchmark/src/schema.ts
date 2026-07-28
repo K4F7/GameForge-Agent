@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { gameTaskReasonCodeSchema, type GameTaskReasonCode } from "@gameforge/contracts";
+import {
+  gameTaskReasonCodeClassifiesStatus,
+  gameTaskReasonCodeSchema,
+  gameTaskStatusSchema,
+  type GameTaskReasonCode,
+} from "@gameforge/contracts";
 
 export const benchmarkDefinitionSchema = z.strictObject({
   benchmarkId: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,79}$/),
@@ -58,6 +63,7 @@ export const benchmarkRecordSchema = z.strictObject({
     "failed",
     "canceled",
     "conflicted",
+    "stopped",
   ]),
   reasonCode: gameTaskReasonCodeSchema.optional(),
   durationMs: z.number().int().nonnegative().optional(),
@@ -108,6 +114,13 @@ export const benchmarkRecordSchema = z.strictObject({
       message: "Failure classification must match the authoritative Task reason code.",
     });
   }
+  if (record.reasonCode !== undefined && !reasonClassifiesStatus(record.terminalStatus, record.reasonCode.code)) {
+    context.addIssue({
+      code: "custom",
+      path: ["reasonCode"],
+      message: "Task reason code does not classify the recorded terminal status.",
+    });
+  }
 });
 
 export type BenchmarkDefinition = z.infer<typeof benchmarkDefinitionSchema>;
@@ -137,6 +150,15 @@ function canonicalize(value: unknown): unknown {
   return value;
 }
 
+function reasonClassifiesStatus(status: string, code: GameTaskReasonCode["code"]): boolean {
+  if (status === "stopped") return code === "cancellation";
+  const currentStatus = gameTaskStatusSchema.safeParse(status);
+  return currentStatus.success && gameTaskReasonCodeClassifiesStatus(
+    currentStatus.data,
+    { schemaVersion: "1.0", code },
+  );
+}
+
 const REASON_FAILURES: Record<GameTaskReasonCode["code"], BenchmarkFailure> = {
   "requirements-ambiguous": "unknown",
   "infrastructure-unavailable": "tool",
@@ -155,4 +177,5 @@ const REASON_FAILURES: Record<GameTaskReasonCode["code"], BenchmarkFailure> = {
   "unchanged-human-rejection": "unknown",
   cancellation: "stopped",
   "capability-removed": "tool",
+  "legacy-unclassified-failure": "unknown",
 };
