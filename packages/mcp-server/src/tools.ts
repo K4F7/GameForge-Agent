@@ -36,6 +36,8 @@ import type {
   CreateGameTaskResponse,
   ClaimGameTaskRequest,
   GameTask,
+  GameTaskTransitionRequest,
+  GameTaskTransitionResult,
   ListGameTasksRequest,
   RunEventBatch,
   ReplayRunEventsRequest,
@@ -529,6 +531,7 @@ export type TaskRelayToolClient = {
   listTasks(input: ListGameTasksRequest): Promise<ReadonlyArray<GameTask>>;
   getTask(taskId: string): Promise<GameTask>;
   claimTask(taskId: string, input: ClaimGameTaskRequest): Promise<GameTask>;
+  transitionTask(taskId: string, input: GameTaskTransitionRequest): Promise<GameTaskTransitionResult>;
 };
 
 export async function createGameTaskTool(
@@ -555,6 +558,14 @@ export async function claimGameTaskTool(
   input: ClaimGameTaskRequest,
 ): Promise<CallToolResult> {
   return relayResult(async () => ({ task: await client.claimTask(taskId, input) }));
+}
+
+export async function transitionGameTaskTool(
+  client: TaskRelayToolClient,
+  taskId: string,
+  input: GameTaskTransitionRequest,
+): Promise<CallToolResult> {
+  return relayResult(() => client.transitionTask(taskId, input));
 }
 
 export async function createGameRunTool(client: RunRelayToolClient, runId: string): Promise<CallToolResult> {

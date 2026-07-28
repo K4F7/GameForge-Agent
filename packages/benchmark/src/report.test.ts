@@ -34,7 +34,7 @@ describe("client benchmark report", () => {
     ]);
     expect(benchmarkRecordSchema.keyof().options).toEqual([
       "schemaVersion", "benchmarkId", "definitionFingerprint", "client", "taskId", "runId",
-      "terminalStatus", "durationMs", "events", "tools", "toolAudit", "verification",
+      "terminalStatus", "reasonCode", "durationMs", "events", "tools", "toolAudit", "verification",
       "humanInterventions", "failure", "evidence",
     ]);
   });

@@ -48,6 +48,7 @@ const relayStateSchema = z.strictObject({
     }
   });
 });
+const relayStateLoadSchema = z.preprocess(migrateLegacyStoppedTasks, relayStateSchema);
 
 export type RelayStateOptions = RunStoreOptions & TaskInboxOptions;
 
@@ -69,7 +70,7 @@ export class RelayStatePersistence {
     if (info === undefined) return { store, taskInbox };
     if (!info.isFile() || info.isSymbolicLink()) throw new Error("Relay state path must be a regular file.");
     if (info.size > MAX_STATE_BYTES) throw new Error("Relay state file exceeds the byte limit.");
-    const parsed = relayStateSchema.parse(JSON.parse(await readFile(this.#filePath, "utf8")) as unknown);
+    const parsed = relayStateLoadSchema.parse(JSON.parse(await readFile(this.#filePath, "utf8")) as unknown);
     const runSnapshot: RunStoreSnapshot = {
       runs: parsed.runs.map(({ started, ...run }) => (
         started === undefined ? run : { ...run, started }
@@ -130,4 +131,23 @@ function statePath(value: string): string {
 
 function isNodeError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
+function migrateLegacyStoppedTasks(input: unknown): unknown {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return input;
+  const state = input as Record<string, unknown>;
+  if (state.schemaVersion !== "1.0" || !Array.isArray(state.tasks)) return input;
+  return {
+    ...state,
+    tasks: state.tasks.map((task) => {
+      if (typeof task !== "object" || task === null || Array.isArray(task)) return task;
+      const record = task as Record<string, unknown>;
+      if (record.status !== "stopped" || record.reasonCode !== undefined) return task;
+      return {
+        ...record,
+        status: "canceled",
+        reasonCode: { schemaVersion: "1.0", code: "cancellation" },
+      };
+    }),
+  };
 }

@@ -12,6 +12,7 @@ import {
   benchmarkClientSchema,
   benchmarkDefinitionSchema,
   benchmarkFailureSchema,
+  benchmarkFailureForReasonCode,
   benchmarkRecordSchema,
   fingerprintDefinition,
   toolSummarySchema,
@@ -103,6 +104,7 @@ export async function captureBenchmarkEvidence(input: {
     taskId: task.taskId,
     runId: task.runId,
     terminalStatus: task.status,
+    ...(task.reasonCode === undefined ? {} : { reasonCode: task.reasonCode }),
     durationMs: Math.max(0, lastTime - firstTime),
     events: { count: events.length, types },
     tools: mcpAudit === undefined ? metadata.tools : {
@@ -129,7 +131,7 @@ export async function captureBenchmarkEvidence(input: {
       },
     }),
     humanInterventions: metadata.humanInterventions,
-    failure: metadata.failure,
+    failure: task.reasonCode === undefined ? metadata.failure : benchmarkFailureForReasonCode(task.reasonCode),
     evidence,
   });
 }

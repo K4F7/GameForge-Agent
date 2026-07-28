@@ -87,6 +87,7 @@ describe("GameForge doctor core", () => {
       "start_game_preview",
       "stop_game_preview",
       "stop_game_run",
+      "transition_game_task",
       "verify_game_project",
     ]);
   });

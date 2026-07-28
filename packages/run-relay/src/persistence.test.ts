@@ -162,6 +162,33 @@ describe("RelayStatePersistence", () => {
     expect(restored.taskInbox.get(created.task.taskId)).toMatchObject({ status: "completed" });
     expect(restored.store.replay("run-inconsistent", 0).events.at(-1)).toMatchObject({ type: "run.started" });
   });
+
+  it("loads a schema 1.0 stopped Task as a canceled public Task", async () => {
+    const file = await stateFile();
+    const persistence = new RelayStatePersistence(file);
+    const state = await persistence.load();
+    const created = state.taskInbox.create({
+      runId: "run-legacy-stopped",
+      prompt: "Restore a stopped Task from the previous Relay lifecycle.",
+      language: "en-US",
+    });
+    await persistence.save(state.store, state.taskInbox);
+    const legacy = JSON.parse(await readFile(file, "utf8")) as {
+      tasks: Array<Record<string, unknown>>;
+    };
+    const task = legacy.tasks[0];
+    if (task === undefined) throw new Error("Expected one persisted task.");
+    task.status = "stopped";
+    task.completedAt = "2026-07-16T13:00:00Z";
+    await writeFile(file, JSON.stringify(legacy));
+
+    const restored = await new RelayStatePersistence(file).load();
+    expect(restored.taskInbox.get(created.task.taskId)).toMatchObject({
+      status: "canceled",
+      reasonCode: { schemaVersion: "1.0", code: "cancellation" },
+      completedAt: "2026-07-16T13:00:00Z",
+    });
+  });
 });
 
 async function stateFile(): Promise<string> {

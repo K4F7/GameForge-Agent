@@ -86,7 +86,7 @@ export function expectedConditionalTools(snapshot: {
       ? ["create_game_run", "replay_game_run", "publish_run_events", "complete_game_run", "stop_game_run"]
       : []),
     ...(snapshot.engineering.taskInbox
-      ? ["create_game_task", "list_game_tasks", "get_game_task", "claim_game_task"]
+      ? ["create_game_task", "list_game_tasks", "get_game_task", "claim_game_task", "transition_game_task"]
       : []),
   ].sort();
 }

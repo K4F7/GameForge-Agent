@@ -1,4 +1,4 @@
-import { gameTaskSchema, type RunEventBatch, type WireRunEvent } from "@gameforge/contracts";
+import { gameTaskSchema, type GameTask, type RunEventBatch, type WireRunEvent } from "@gameforge/contracts";
 import { describe, expect, it } from "vitest";
 import { captureBenchmarkEvidence, type EvidenceRelayClient } from "./capture.js";
 
@@ -125,10 +125,38 @@ describe("benchmark evidence capture", () => {
     })).rejects.toThrow("not bound");
   });
 
+  it("uses the authoritative Task reason instead of legacy failure metadata", async () => {
+    const task = gameTaskSchema.parse({
+      taskId: "task-00000000-0000-0000-0000-000000000000",
+      runId: "capture-run",
+      prompt,
+      language: "en-US",
+      status: "failed",
+      reasonCode: { schemaVersion: "1.0", code: "security-violation" },
+      createdAt: time(1),
+      claimedAt: time(2),
+      claimedBy: "codearts",
+      completedAt: time(1001),
+    });
+
+    const record = await captureBenchmarkEvidence({
+      definition,
+      metadata: { ...metadata, failure: "rate-limit" },
+      taskId: task.taskId,
+      relay: relayFixture(completeEvents(), [], task),
+    });
+
+    expect(record).toMatchObject({
+      terminalStatus: "failed",
+      reasonCode: { schemaVersion: "1.0", code: "security-violation" },
+      failure: "unknown",
+    });
+  });
+
 });
 
-function relayFixture(events: WireRunEvent[], calls: number[] = []): EvidenceRelayClient {
-  const task = gameTaskSchema.parse({
+function relayFixture(events: WireRunEvent[], calls: number[] = [], taskInput?: GameTask): EvidenceRelayClient {
+  const task = taskInput ?? gameTaskSchema.parse({
     taskId: "task-00000000-0000-0000-0000-000000000000",
     runId: "capture-run",
     prompt,

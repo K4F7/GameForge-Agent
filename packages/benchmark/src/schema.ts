@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { gameTaskReasonCodeSchema, type GameTaskReasonCode } from "@gameforge/contracts";
 
 export const benchmarkDefinitionSchema = z.strictObject({
   benchmarkId: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,79}$/),
@@ -38,6 +39,7 @@ export const benchmarkClientSchema = z.strictObject({
 export const benchmarkFailureSchema = z.enum([
   "none", "rate-limit", "authentication", "provider", "tool", "timeout", "stopped", "unknown",
 ]);
+export type BenchmarkFailure = z.infer<typeof benchmarkFailureSchema>;
 
 export const benchmarkRecordSchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -57,6 +59,7 @@ export const benchmarkRecordSchema = z.strictObject({
     "canceled",
     "conflicted",
   ]),
+  reasonCode: gameTaskReasonCodeSchema.optional(),
   durationMs: z.number().int().nonnegative().optional(),
   events: eventSummarySchema,
   tools: toolSummarySchema,
@@ -98,10 +101,21 @@ export const benchmarkRecordSchema = z.strictObject({
   if (record.terminalStatus !== "completed" && record.failure === "none") {
     context.addIssue({ code: "custom", path: ["failure"], message: "Incomplete records require a failure classification." });
   }
+  if (record.reasonCode !== undefined && record.failure !== benchmarkFailureForReasonCode(record.reasonCode)) {
+    context.addIssue({
+      code: "custom",
+      path: ["failure"],
+      message: "Failure classification must match the authoritative Task reason code.",
+    });
+  }
 });
 
 export type BenchmarkDefinition = z.infer<typeof benchmarkDefinitionSchema>;
 export type BenchmarkRecord = z.infer<typeof benchmarkRecordSchema>;
+
+export function benchmarkFailureForReasonCode(reasonCode: GameTaskReasonCode): BenchmarkFailure {
+  return REASON_FAILURES[reasonCode.code];
+}
 
 export function hasSuccessfulWorkflowEvidence(record: {
   verification?: { passed: boolean } | undefined;
@@ -122,3 +136,23 @@ function canonicalize(value: unknown): unknown {
   }
   return value;
 }
+
+const REASON_FAILURES: Record<GameTaskReasonCode["code"], BenchmarkFailure> = {
+  "requirements-ambiguous": "unknown",
+  "infrastructure-unavailable": "tool",
+  "rate-limited": "rate-limit",
+  "unexpected-process-exit": "tool",
+  "bounded-timeout": "timeout",
+  "browser-startup-failed": "tool",
+  "evidence-write-interrupted": "tool",
+  "build-failed": "tool",
+  "gameplay-failed": "tool",
+  "browser-diagnostic-failed": "tool",
+  "task-criterion-failed": "tool",
+  "schema-violation": "tool",
+  "security-violation": "unknown",
+  "stale-base-conflict": "unknown",
+  "unchanged-human-rejection": "unknown",
+  cancellation: "stopped",
+  "capability-removed": "tool",
+};

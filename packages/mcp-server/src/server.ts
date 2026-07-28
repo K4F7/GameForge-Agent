@@ -10,6 +10,7 @@ import {
   createGameTaskRequestSchema,
   claimGameTaskRequestSchema,
   gameTaskIdSchema,
+  gameTaskTransitionRequestSchema,
   listGameTasksRequestSchema,
   runEventBatchSchema,
   replayRunEventsRequestSchema,
@@ -66,6 +67,7 @@ import {
   requestImageAssetTool,
   generateMusicAssetTool,
   stopGameRunTool,
+  transitionGameTaskTool,
   startGamePreviewTool,
   stopGamePreviewTool,
   verifyGameProjectTool,
@@ -420,6 +422,19 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         inputSchema: { taskId: gameTaskIdSchema, ...claimGameTaskRequestSchema.shape },
       },
       async ({ taskId, agentId }) => claimGameTaskTool(taskRelayClient, taskId, { agentId }),
+    );
+    registerTool(
+      "transition_game_task",
+      {
+        title: "Transition one game build task",
+        description:
+          "Apply one explicit Authority Task transition with its versioned reason code when required. The tool never retries or infers lifecycle state from messages.",
+        inputSchema: { taskId: gameTaskIdSchema, ...gameTaskTransitionRequestSchema.shape },
+      },
+      async ({ taskId, status, reasonCode }) => transitionGameTaskTool(taskRelayClient, taskId, {
+        status,
+        ...(reasonCode === undefined ? {} : { reasonCode }),
+      }),
     );
   }
 

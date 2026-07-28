@@ -167,8 +167,8 @@ export class TaskInbox {
   appendRun(runId: string, batch: unknown): ReadonlyArray<WireRunEvent> {
     const taskId = this.#runToTask.get(runId);
     const current = taskId === undefined ? undefined : this.#tasks.get(taskId);
-    if (current?.status === "queued") {
-      throw new TaskInboxError(409, "task_unclaimed", "A queued task must be claimed before events are published.");
+    if (current !== undefined && isUnclaimed(current.status)) {
+      throw new TaskInboxError(409, "task_unclaimed", "A task must be claimed before events are published.");
     }
     const events = this.#runStore.append(runId, batch);
     return events;
@@ -177,8 +177,8 @@ export class TaskInbox {
   finishRun(runId: string, type: "run.completed" | "run.stopped"): WireRunEvent {
     const taskId = this.#runToTask.get(runId);
     const current = taskId === undefined ? undefined : this.#tasks.get(taskId);
-    if (type === "run.completed" && current?.status === "queued") {
-      throw new TaskInboxError(409, "task_unclaimed", "A queued task must be claimed before completion.");
+    if (type === "run.completed" && current !== undefined && isUnclaimed(current.status)) {
+      throw new TaskInboxError(409, "task_unclaimed", "A task must be claimed before completion.");
     }
     const event = this.#runStore.finish(runId, type);
     return event;
@@ -208,6 +208,10 @@ function clone(task: GameTask): GameTask {
     ...task,
     ...(task.reasonCode === undefined ? {} : { reasonCode: { ...task.reasonCode } }),
   };
+}
+
+function isUnclaimed(status: GameTask["status"]): boolean {
+  return status === "queued" || status === "needs-info";
 }
 
 const TASK_TRANSITIONS: Record<GameTask["status"], ReadonlyArray<GameTask["status"]>> = {

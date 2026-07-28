@@ -167,6 +167,32 @@ describe("run relay HTTP server", () => {
     });
   });
 
+  it("rejects Run append and completion while a Task needs information", async () => {
+    const baseUrl = await startServer();
+    const client = new RunRelayClient({ baseUrl });
+    const created = await client.createTask({
+      runId: "run-needs-info-guard",
+      prompt: "Clarify this browser game before publishing any Run evidence.",
+      language: "en-US",
+    });
+    await client.transitionTask(created.task.taskId, {
+      status: "needs-info",
+      reasonCode: { schemaVersion: "1.0", code: "requirements-ambiguous" },
+    });
+
+    await expect(client.publishEvents({
+      runId: created.task.runId,
+      after: 1,
+      events: [],
+    })).rejects.toMatchObject({ relayCode: "task_unclaimed" });
+    await expect(client.completeRun(created.task.runId))
+      .rejects.toMatchObject({ relayCode: "task_unclaimed" });
+    await expect(client.getTask(created.task.taskId)).resolves.toMatchObject({ status: "needs-info" });
+    await expect(client.replayEvents({ runId: created.task.runId, after: 0 })).resolves.toMatchObject({
+      events: [expect.objectContaining({ type: "run.started", sequence: 1 })],
+    });
+  });
+
   it("creates a run, appends events, and replays a validated batch", async () => {
     const baseUrl = await startServer();
     const created = await fetch(`${baseUrl}/runs`, {
