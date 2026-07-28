@@ -54,9 +54,10 @@ afterEach(async () => {
 describe("GameProjectGenerator", () => {
   it("creates deterministic dry-run plans without writing files", async () => {
     const { generator, root } = await createGenerator();
+    const identity = candidateIdentity();
 
-    const first = await generator.execute({ projectId: "safety-sprint", spec });
-    const second = await generator.execute({ projectId: "safety-sprint", spec });
+    const first = await generator.execute({ projectId: "safety-sprint", spec, ...identity });
+    const second = await generator.execute({ projectId: "safety-sprint", spec, ...identity });
 
     expect(first).toEqual(second);
     expect(first.mode).toBe("dry-run");
@@ -115,6 +116,7 @@ describe("GameProjectGenerator", () => {
       projectId: "safety-sprint",
       spec: revised,
       operation: "update",
+      ...candidateIdentity(),
     });
     expect(preview.update).toMatchObject({
       currentPlanSha256: created.plan.planSha256,
@@ -193,7 +195,9 @@ describe("GameProjectGenerator", () => {
     await writeFile(gameSourcePath, "// user modification\n");
     const acceptedBefore = await readFile(gameSourcePath, "utf8");
     const revised = { ...spec, title: "Revised" };
-    const preview = await generator.execute({ projectId: "safety-sprint", spec: revised, operation: "update" });
+    const preview = await generator.execute({
+      projectId: "safety-sprint", spec: revised, operation: "update", ...candidateIdentity(),
+    });
     expect(preview.update?.conflicts).toEqual(["src/game.ts"]);
     const failedIdentity = candidateIdentity();
     await expect(generator.execute({
@@ -371,6 +375,7 @@ describe("GameProjectGenerator", () => {
       const result = await generator.execute({
         projectId: `game-${genre}`,
         spec: { ...spec, genre },
+        ...candidateIdentity(),
       });
       expect(result.plan.files.some((file) => file.path === "src/main.ts")).toBe(true);
     }

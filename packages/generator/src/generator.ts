@@ -102,13 +102,6 @@ export class GameProjectGenerator {
       })),
     });
 
-    if (input.mode === "apply" && (input.attemptId === undefined || input.revisionId === undefined)) {
-      throw new Error("Project generation apply requires Attempt and Revision identity.");
-    }
-    if (input.mode === "dry-run" && (input.attemptId !== undefined || input.revisionId !== undefined)) {
-      throw new Error("Attempt and Revision identity are only valid when applying a candidate.");
-    }
-
     if (input.operation === "update") {
       const inspection = await this.#inspectUpdate(this.#outputRoot, input.projectId, input.target, generated.files);
       if (input.mode === "dry-run") {

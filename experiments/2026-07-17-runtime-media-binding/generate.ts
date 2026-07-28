@@ -1,13 +1,17 @@
 import { ProjectAssetStore } from "../../packages/asset-store/src/index.js";
 import { GameProjectGenerator } from "../../packages/generator/src/index.js";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { rename } from "node:fs/promises";
 import path from "node:path";
 
 const outputRoot = path.resolve(".gameforge-validation/runtime-media-binding-v040");
 const projectId = "media-runtime";
-await new GameProjectGenerator({ outputRoot }).execute({
+const id = randomUUID();
+const generated = await new GameProjectGenerator({ outputRoot }).execute({
   projectId,
   mode: "apply",
+  attemptId: `attempt-${id}`,
+  revisionId: `revision-${id}`,
   spec: {
     title: "Media Runtime",
     genre: "arcade",
@@ -18,6 +22,7 @@ await new GameProjectGenerator({ outputRoot }).execute({
     targetDurationSeconds: 60,
   },
 });
+await rename(generated.outputPath!, path.join(outputRoot, projectId));
 
 const sampleRate = 8_000;
 const sampleCount = 800;

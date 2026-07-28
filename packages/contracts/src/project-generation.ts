@@ -15,8 +15,8 @@ export const projectGenerationRequestSchema = z.strictObject({
   operation: projectGenerationOperationSchema.default("create"),
   target: gamePlatformTargetSchema.default("web"),
   expectedPlanSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
-  attemptId: attemptIdSchema.optional(),
-  revisionId: revisionIdSchema.optional(),
+  attemptId: attemptIdSchema,
+  revisionId: revisionIdSchema,
 });
 
 export const generatedProjectFileSchema = z.strictObject({

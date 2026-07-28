@@ -265,12 +265,15 @@ describe("GameForge MCP server", () => {
       expect(tools.map((tool) => tool.name)).toContain("generate_game_project");
       const generationTool = tools.find((tool) => tool.name === "generate_game_project");
       expect(generationTool?.inputSchema).toMatchObject({
-        properties: { target: { default: "web", const: "web" } },
+        properties: { target: { default: "web", enum: ["web"] } },
       });
+      expect(generationTool?.inputSchema.required).toEqual(expect.arrayContaining(["attemptId", "revisionId"]));
       const result = await client.callTool({
         name: "generate_game_project",
         arguments: {
           projectId: "safety-sprint",
+          attemptId: "attempt-00000000-0000-4000-8000-000000000064",
+          revisionId: "revision-00000000-0000-4000-8000-000000000064",
           spec: {
             title: "Safety Sprint",
             genre: "arcade",

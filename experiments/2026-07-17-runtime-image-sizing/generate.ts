@@ -1,14 +1,18 @@
 import { ProjectAssetStore } from "../../packages/asset-store/src/index.js";
 import { GameProjectGenerator } from "../../packages/generator/src/index.js";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { rename } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 import path from "node:path";
 
 const outputRoot = path.resolve(".gameforge-validation/runtime-image-sizing-v050");
 const projectId = "sized-images";
-await new GameProjectGenerator({ outputRoot }).execute({
+const id = randomUUID();
+const generated = await new GameProjectGenerator({ outputRoot }).execute({
   projectId,
   mode: "apply",
+  attemptId: `attempt-${id}`,
+  revisionId: `revision-${id}`,
   spec: {
     title: "Sized Images",
     genre: "arcade",
@@ -19,6 +23,7 @@ await new GameProjectGenerator({ outputRoot }).execute({
     targetDurationSeconds: 60,
   },
 });
+await rename(generated.outputPath!, path.join(outputRoot, projectId));
 
 const store = new ProjectAssetStore({ projectsRoot: outputRoot });
 const inputs = [

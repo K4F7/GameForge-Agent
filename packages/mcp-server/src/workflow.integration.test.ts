@@ -398,11 +398,11 @@ describe("local CodeArts workflow boundary", () => {
         ],
       });
 
-      const generationInput = { projectId: "local-e2e", spec };
-      const dryRun = await callJson(mcpClient, "generate_game_project", generationInput);
-      expect(dryRun).toMatchObject({ mode: "dry-run", plan: { projectId: "local-e2e" } });
       const attemptId = "attempt-00000000-0000-4000-8000-000000000064";
       const revisionId = "revision-00000000-0000-4000-8000-000000000064";
+      const generationInput = { projectId: "local-e2e", spec, attemptId, revisionId };
+      const dryRun = await callJson(mcpClient, "generate_game_project", generationInput);
+      expect(dryRun).toMatchObject({ mode: "dry-run", plan: { projectId: "local-e2e" } });
       const applied = await callJson(mcpClient, "generate_game_project", {
         ...generationInput,
         mode: "apply",
