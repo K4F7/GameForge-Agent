@@ -1,5 +1,5 @@
 /**
- * @typedef {{ name: string, conclusion: string | null }} CheckRun
+ * @typedef {{ id: number, name: string, conclusion: string | null }} CheckRun
  * @typedef {{
  *   requiredChecks: string[],
  *   maxAttempts: number,
@@ -20,8 +20,14 @@ export async function waitForRequiredChecks(options) {
 
   for (let attempt = 1; attempt <= options.maxAttempts; attempt += 1) {
     const checkRuns = await options.listCheckRuns();
-    const conclusions = new Map(checkRuns.map((check) => [check.name, check.conclusion]));
-    missingChecks = options.requiredChecks.filter((name) => conclusions.get(name) !== "success");
+    const latestByName = new Map();
+    for (const check of checkRuns) {
+      const latest = latestByName.get(check.name);
+      if (!latest || check.id > latest.id) {
+        latestByName.set(check.name, check);
+      }
+    }
+    missingChecks = options.requiredChecks.filter((name) => latestByName.get(name)?.conclusion !== "success");
     if (missingChecks.length === 0) {
       return { kind: "ready", attempts: attempt };
     }

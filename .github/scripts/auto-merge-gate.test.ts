@@ -5,10 +5,10 @@ import { selectLatestReviewerRun, waitForRequiredChecks } from "./auto-merge-gat
 describe("waitForRequiredChecks", () => {
   test("waits for a required check that has not propagated yet", async () => {
     const responses = [
-      [{ name: "bun", conclusion: "success" }],
+      [{ id: 1, name: "bun", conclusion: "success" }],
       [
-        { name: "bun", conclusion: "success" },
-        { name: "PR Gate", conclusion: "success" },
+        { id: 1, name: "bun", conclusion: "success" },
+        { id: 2, name: "PR Gate", conclusion: "success" },
       ],
     ];
     const delays: number[] = [];
@@ -43,6 +43,36 @@ describe("waitForRequiredChecks", () => {
 
     expect(result).toEqual({ kind: "not-ready", attempts: 3, missingChecks: ["PR Gate"] });
     expect(calls).toBe(3);
+  });
+
+  test("accepts a current success when an older run has the same check name", async () => {
+    const result = await waitForRequiredChecks({
+      requiredChecks: ["PR Gate"],
+      maxAttempts: 1,
+      delayMs: 25,
+      listCheckRuns: async () => [
+        { id: 2, name: "PR Gate", conclusion: "success" },
+        { id: 1, name: "PR Gate", conclusion: "failure" },
+      ],
+      sleep: async () => {},
+    });
+
+    expect(result).toEqual({ kind: "ready", attempts: 1 });
+  });
+
+  test("rejects an older success when the newest check failed", async () => {
+    const result = await waitForRequiredChecks({
+      requiredChecks: ["PR Gate"],
+      maxAttempts: 1,
+      delayMs: 25,
+      listCheckRuns: async () => [
+        { id: 2, name: "PR Gate", conclusion: "failure" },
+        { id: 1, name: "PR Gate", conclusion: "success" },
+      ],
+      sleep: async () => {},
+    });
+
+    expect(result).toEqual({ kind: "not-ready", attempts: 1, missingChecks: ["PR Gate"] });
   });
 });
 
