@@ -5,6 +5,7 @@ export * from "./game-tasks.js";
 export * from "./mcp-audit.js";
 export * from "./model-routing.js";
 export * from "./project-generation.js";
+export * from "./project-revisions.js";
 export * from "./providers.js";
 export * from "./run-events.js";
 export * from "./runtime-assets.js";

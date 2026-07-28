@@ -13,6 +13,8 @@ import { z } from "zod";
 import { RunStore, RunStoreError, type RunStoreOptions } from "./store.js";
 import { TaskInbox, TaskInboxError } from "./tasks.js";
 
+export { ProjectAuthority, ProjectAuthorityError } from "./projects.js";
+
 const createRunSchema = z.strictObject({ runId: runIdSchema });
 const MAX_BODY_BYTES = 1024 * 1024;
 
