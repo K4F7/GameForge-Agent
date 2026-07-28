@@ -139,6 +139,78 @@ describe("ProjectAuthority candidate Revisions", () => {
   });
 });
 
+describe("ProjectAuthority Attempts", () => {
+  it("starts an immutable Attempt bound to authoritative Task, base, contract, and candidate state", () => {
+    const { authority, project, taskId, contract } = candidateFixture();
+
+    const attempt = authority.startAttempt({ taskId, projectId: project.projectId });
+
+    expect(attempt).toMatchObject({
+      taskId,
+      projectId: project.projectId,
+      acceptanceContractFingerprint: contract.fingerprint,
+      state: "running",
+    });
+    expect(attempt.baseRevisionId).toBeUndefined();
+    expect(attempt.attemptId).toMatch(/^attempt-[a-f0-9-]{36}$/);
+    expect(attempt.revisionId).toMatch(/^revision-[a-f0-9-]{36}$/);
+    expect(authority.getRevision(attempt.revisionId).state).toBe("candidate");
+    expect(authority.getAttempt(attempt.attemptId)).toEqual(attempt);
+    expect(Object.isFrozen(attempt)).toBe(true);
+  });
+
+  it("creates an explicit retry as a new Attempt without rewriting the previous Attempt", () => {
+    const { authority, project, taskId } = candidateFixture();
+    const first = authority.startAttempt({ taskId, projectId: project.projectId });
+    const previousSnapshot = structuredClone(first);
+
+    const retry = authority.retryAttempt({ attemptId: first.attemptId });
+
+    expect(retry).toMatchObject({
+      taskId: first.taskId,
+      projectId: first.projectId,
+      acceptanceContractFingerprint: first.acceptanceContractFingerprint,
+      state: "running",
+    });
+    expect(retry.attemptId).not.toBe(first.attemptId);
+    expect(retry.revisionId).not.toBe(first.revisionId);
+    expect(authority.getAttempt(first.attemptId)).toEqual(previousSnapshot);
+    expect(Object.isFrozen(authority.getAttempt(first.attemptId))).toBe(true);
+  });
+
+  it("rejects a retry after Authority advances the frozen acceptance contract", () => {
+    const { authority, project, taskId, tasks } = candidateFixture();
+    const first = authority.startAttempt({ taskId, projectId: project.projectId });
+    const versionTwo = tasks.compileAcceptanceContract(taskId, acceptanceInput(2, "Reach the harder goal."));
+    if (versionTwo.outcome !== "frozen") throw new Error("Expected version two to freeze.");
+
+    expect(() => authority.retryAttempt({ attemptId: first.attemptId }))
+      .toThrow(expect.objectContaining({ code: "acceptance_contract_changed" }));
+    expect(authority.getAttempt(first.attemptId)).toEqual(first);
+  });
+
+  it("requires the explicit retry operation for a Task that already has an Attempt", () => {
+    const { authority, project, taskId } = candidateFixture();
+    const input = { taskId, projectId: project.projectId } as const;
+    const first = authority.startAttempt(input);
+
+    expect(() => authority.startAttempt(input))
+      .toThrow(expect.objectContaining({ code: "attempt_already_started" }));
+    expect(authority.retryAttempt({ attemptId: first.attemptId }).attemptId).not.toBe(first.attemptId);
+  });
+
+  it("rejects caller-supplied base and acceptance state", () => {
+    const { authority, project, taskId, contract } = candidateFixture();
+
+    expect(() => authority.startAttempt({
+      taskId,
+      projectId: project.projectId,
+      baseRevisionId: "revision-11111111-1111-4111-8111-111111111111",
+      acceptanceContractFingerprint: contract.fingerprint,
+    } as never)).toThrow();
+  });
+});
+
 function acceptanceInput(contractVersion: number, expected: string) {
   return {
     contractVersion,
@@ -163,5 +235,5 @@ function candidateFixture() {
   }).task.taskId;
   const result = tasks.compileAcceptanceContract(taskId, acceptanceInput(1, "Reach the goal."));
   if (result.outcome !== "frozen") throw new Error("Expected fixture acceptance to freeze.");
-  return { authority, project, taskId, tasks };
+  return { authority, project, taskId, tasks, contract: result.contract };
 }
