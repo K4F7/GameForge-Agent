@@ -223,7 +223,7 @@ function isUnclaimed(status: GameTask["status"]): boolean {
 }
 
 const TASK_TRANSITIONS: Record<GameTask["status"], ReadonlyArray<GameTask["status"]>> = {
-  // claimed 只能由 claim 命令从 queued 进入；恢复只回 queued，不自动认领或重试。
+  // claimed 只能由 claim 命令从 queued 进入；恢复可重放同一 claimant 的 owned work，但不自动重试。
   queued: ["needs-info", "canceled"],
   "needs-info": ["queued", "canceled"],
   claimed: ["in-progress", "canceled"],
