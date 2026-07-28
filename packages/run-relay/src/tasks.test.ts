@@ -53,6 +53,64 @@ describe("TaskInbox", () => {
     expect(() => inbox.claim(first.task.taskId, { agentId: "other-agent" })).toThrow("another agent");
   });
 
+  it("freezes the initial acceptance contract after claim but before implementation starts", () => {
+    const inbox = new TaskInbox(new RunStore());
+    const taskId = inbox.create({
+      runId: "run-claimed-acceptance",
+      prompt: "Create a browser game with acceptance frozen before implementation.",
+      language: "en-US",
+    }).task.taskId;
+    inbox.claim(taskId, { agentId: "codearts" });
+
+    expect(inbox.compileAcceptanceContract(taskId, taskAcceptanceInput()))
+      .toMatchObject({
+        outcome: "frozen",
+        task: { status: "claimed", claimedBy: "codearts" },
+        contract: { contractVersion: 1 },
+      });
+  });
+
+  it("rejects implementation start until the acceptance contract is frozen", () => {
+    const inbox = new TaskInbox(new RunStore());
+    const taskId = inbox.create({
+      runId: "run-missing-acceptance",
+      prompt: "Create a browser game only after acceptance is frozen.",
+      language: "en-US",
+    }).task.taskId;
+    inbox.claim(taskId, { agentId: "codearts" });
+
+    const result = inbox.transition(taskId, { status: "in-progress", agentId: "codearts" });
+    expect(result).toMatchObject({
+      outcome: "rejected",
+      code: "missing-acceptance-contract",
+      task: { status: "claimed" },
+    });
+    expect(result.task).not.toHaveProperty("acceptanceContract");
+  });
+
+  it("releases a claimed task when ambiguous acceptance moves it to needs-info", () => {
+    const inbox = new TaskInbox(new RunStore());
+    const taskId = inbox.create({
+      runId: "run-claimed-ambiguous",
+      prompt: "Create a browser game after ambiguous requirements are clarified.",
+      language: "en-US",
+    }).task.taskId;
+    inbox.claim(taskId, { agentId: "codearts" });
+
+    expect(inbox.compileAcceptanceContract(taskId, {
+      contractVersion: 1,
+      criteria: [],
+      requirementIssues: [{ code: "assumption-dependent", detail: "The win condition is unclear." }],
+    })).toMatchObject({
+      outcome: "needs-info",
+      task: {
+        status: "needs-info",
+        reasonCode: { code: "requirements-ambiguous" },
+      },
+    });
+    expect(inbox.get(taskId)).toMatchObject({ claimedBy: undefined, claimedAt: undefined });
+  });
+
   it("does not infer Task completion from transport Run completion", () => {
     const inbox = new TaskInbox(new RunStore());
     const created = inbox.create({ runId: "run-1", prompt: "Create a complete browser arcade game.", language: "en-US" });
@@ -120,6 +178,7 @@ describe("TaskInbox", () => {
     expect(inbox.transition(created.task.taskId, { status: "queued" }))
       .toMatchObject({ outcome: "accepted", task: { status: "queued", reasonCode: undefined } });
     inbox.claim(created.task.taskId, { agentId: "codearts" });
+    inbox.compileAcceptanceContract(created.task.taskId, taskAcceptanceInput());
     expect(inbox.transition(created.task.taskId, { status: "in-progress", agentId: "codearts" }))
       .toMatchObject({ outcome: "accepted", task: { status: "in-progress" } });
     expect(inbox.transition(created.task.taskId, {
@@ -142,6 +201,7 @@ describe("TaskInbox", () => {
       language: "en-US",
     }).task.taskId;
     inbox.claim(taskId, { agentId: "codearts" });
+    inbox.compileAcceptanceContract(taskId, taskAcceptanceInput());
 
     expect(inbox.transition(taskId, { status: "in-progress", agentId: "other-agent" }))
       .toMatchObject({ outcome: "rejected", code: "claimant-mismatch", task: { status: "claimed" } });
@@ -160,6 +220,7 @@ describe("TaskInbox", () => {
         language: "en-US",
       }).task.taskId;
       inbox.claim(taskId, { agentId: "codearts" });
+      inbox.compileAcceptanceContract(taskId, taskAcceptanceInput());
       inbox.transition(taskId, { status: "in-progress", agentId: "codearts" });
       const transition = transitionTo(status, "codearts");
 
@@ -252,6 +313,7 @@ function taskAt(status: GameTask["status"], sequence: number): { inbox: TaskInbo
     return { inbox, taskId };
   }
   inbox.claim(taskId, { agentId: "source-agent" });
+  inbox.compileAcceptanceContract(taskId, taskAcceptanceInput());
   if (status === "claimed") return { inbox, taskId };
   inbox.transition(taskId, transitionTo("in-progress", "source-agent"));
   if (status === "in-progress") return { inbox, taskId };
@@ -294,5 +356,17 @@ function transitionTo(status: GameTask["status"], agentId?: string): Record<stri
     status,
     ...(agentId === undefined ? {} : { agentId }),
     ...(reasonCode === undefined ? {} : { reasonCode: { schemaVersion: "1.0", code: reasonCode } }),
+  };
+}
+
+function taskAcceptanceInput() {
+  return {
+    contractVersion: 1,
+    criteria: [{
+      criterionId: "goal",
+      sourceRequirement: "Reach the goal.",
+      expected: "Reach the goal.",
+      verification: { kind: "public-telemetry" as const, path: "$.goalReached" },
+    }],
   };
 }

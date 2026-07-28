@@ -100,6 +100,16 @@ describe("RelayAuthorityDriver", () => {
         detail: `Step ${index + 1}`,
       })),
     });
+    await client.compileTaskAcceptanceContract(created.task.taskId, {
+      contractVersion: 1,
+      criteria: [{
+        criterionId: "terminal-run",
+        sourceRequirement: "The run reaches a terminal state.",
+        expected: "The public run status is completed.",
+        verification: { kind: "public-telemetry", path: "run.status" },
+      }],
+      requirementIssues: [],
+    });
     await client.transitionTask(created.task.taskId, { status: "in-progress", agentId: "codearts" });
     await client.completeRun(created.task.runId);
     await client.transitionTask(created.task.taskId, { status: "completed", agentId: "codearts" });

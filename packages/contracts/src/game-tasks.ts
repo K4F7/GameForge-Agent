@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { runEventSchema, runIdSchema } from "./run-events.js";
 import { projectIdSchema } from "./project-generation.js";
+import {
+  taskAcceptanceContractSchema,
+  taskAcceptanceRequirementIssueSchema,
+} from "./task-acceptance.js";
 
 export const gameTaskIdSchema = z
   .string()
@@ -86,6 +90,7 @@ export const gameTaskSchema = z.strictObject({
   claimedAt: z.string().datetime({ offset: true }).optional(),
   claimedBy: gameTaskAgentIdSchema.optional(),
   completedAt: z.string().datetime({ offset: true }).optional(),
+  acceptanceContract: taskAcceptanceContractSchema.optional(),
 }).superRefine((task, context) => {
   const claimed = task.claimedAt !== undefined || task.claimedBy !== undefined;
   if ((task.claimedAt === undefined) !== (task.claimedBy === undefined)) {
@@ -119,7 +124,13 @@ export const gameTaskTransitionResultSchema = z.discriminatedUnion("outcome", [
   z.strictObject({
     schemaVersion: z.literal("1.0"),
     outcome: z.literal("rejected"),
-    code: z.enum(["illegal-transition", "reason-code-mismatch", "claimant-mismatch", "run-state-mismatch"]),
+    code: z.enum([
+      "illegal-transition",
+      "reason-code-mismatch",
+      "claimant-mismatch",
+      "run-state-mismatch",
+      "missing-acceptance-contract",
+    ]),
     task: gameTaskSchema,
   }),
   z.strictObject({
@@ -127,6 +138,21 @@ export const gameTaskTransitionResultSchema = z.discriminatedUnion("outcome", [
     outcome: z.literal("invalid"),
     code: z.literal("invalid-transition-request"),
     task: gameTaskSchema,
+  }),
+]);
+
+export const gameTaskAcceptanceCompileResultSchema = z.discriminatedUnion("outcome", [
+  z.strictObject({
+    schemaVersion: z.literal("1.0"),
+    outcome: z.literal("frozen"),
+    task: gameTaskSchema,
+    contract: taskAcceptanceContractSchema,
+  }),
+  z.strictObject({
+    schemaVersion: z.literal("1.0"),
+    outcome: z.literal("needs-info"),
+    task: gameTaskSchema,
+    issues: z.array(taskAcceptanceRequirementIssueSchema).min(1).max(100),
   }),
 ]);
 
@@ -144,6 +170,7 @@ export type GameTask = z.infer<typeof gameTaskSchema>;
 export type GameTaskReasonCode = z.infer<typeof gameTaskReasonCodeSchema>;
 export type GameTaskTransitionRequest = z.infer<typeof gameTaskTransitionRequestSchema>;
 export type GameTaskTransitionResult = z.infer<typeof gameTaskTransitionResultSchema>;
+export type GameTaskAcceptanceCompileResult = z.infer<typeof gameTaskAcceptanceCompileResultSchema>;
 export type CreateGameTaskResponse = z.infer<typeof createGameTaskResponseSchema>;
 
 export function gameTaskReasonCodeClassifiesStatus(

@@ -172,6 +172,7 @@ describe("local CodeArts workflow boundary", () => {
           },
         ],
       });
+      await callJson(firstClient, "freeze_task_acceptance_contract", taskAcceptanceInput(created.task.taskId));
       await callJson(firstClient, "transition_game_task", {
         taskId: created.task.taskId,
         status: "in-progress",
@@ -632,6 +633,7 @@ describe("local CodeArts workflow boundary", () => {
           durationMs: verification.durationMs,
         }],
       });
+      await callJson(mcpClient, "freeze_task_acceptance_contract", taskAcceptanceInput(created.task.taskId));
       await callJson(mcpClient, "transition_game_task", {
         taskId: created.task.taskId,
         status: "in-progress",
@@ -679,6 +681,20 @@ async function startRelay(): Promise<string> {
   });
   const address = server.address() as AddressInfo;
   return `http://127.0.0.1:${address.port}`;
+}
+
+function taskAcceptanceInput(taskId: string): Record<string, unknown> {
+  return {
+    taskId,
+    contractVersion: 1,
+    criteria: [{
+      criterionId: "win-state",
+      sourceRequirement: "The player can win the generated game.",
+      expected: "The public game state reports won.",
+      verification: { kind: "public-telemetry", path: "game.status" },
+    }],
+    requirementIssues: [],
+  };
 }
 
 async function callJson(client: Client, name: string, arguments_: Record<string, unknown>): Promise<unknown> {

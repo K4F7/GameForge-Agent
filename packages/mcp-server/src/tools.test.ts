@@ -231,6 +231,7 @@ describe("validation tool handlers", () => {
       async listTasks() { throw new Error("Unexpected list."); },
       async getTask() { throw new Error("Unexpected get."); },
       async claimTask() { throw new Error("Unexpected claim."); },
+      async compileTaskAcceptanceContract() { throw new Error("Unexpected acceptance compile."); },
       async transitionTask() { throw new Error("Unexpected transition."); },
     }, {
       runId: "run-task-create",

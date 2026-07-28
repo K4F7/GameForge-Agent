@@ -9,6 +9,7 @@ import {
   projectIdSchema,
   createGameTaskRequestSchema,
   claimGameTaskRequestSchema,
+  compileTaskAcceptanceContractInputSchema,
   gameTaskIdSchema,
   gameTaskTransitionRequestSchema,
   listGameTasksRequestSchema,
@@ -68,6 +69,7 @@ import {
   generateMusicAssetTool,
   stopGameRunTool,
   transitionGameTaskTool,
+  freezeTaskAcceptanceContractTool,
   startGamePreviewTool,
   stopGamePreviewTool,
   verifyGameProjectTool,
@@ -422,6 +424,19 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         inputSchema: { taskId: gameTaskIdSchema, ...claimGameTaskRequestSchema.shape },
       },
       async ({ taskId, agentId }) => claimGameTaskTool(taskRelayClient, taskId, { agentId }),
+    );
+    registerTool(
+      "freeze_task_acceptance_contract",
+      {
+        title: "Freeze one task acceptance contract",
+        description: "Freeze versioned, objectively verifiable completion criteria before implementation begins. Requirement issues move the Task to needs-info instead of allowing work to start.",
+        inputSchema: { taskId: gameTaskIdSchema, ...compileTaskAcceptanceContractInputSchema.shape },
+      },
+      async ({ taskId, contractVersion, criteria, requirementIssues }) => freezeTaskAcceptanceContractTool(
+        taskRelayClient,
+        taskId,
+        { contractVersion, criteria, requirementIssues },
+      ),
     );
     registerTool(
       "transition_game_task",
