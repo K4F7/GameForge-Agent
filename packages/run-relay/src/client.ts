@@ -1,9 +1,11 @@
 import {
   claimGameTaskRequestSchema,
+  compileTaskAcceptanceContractInputSchema,
   createGameTaskRequestSchema,
   createGameTaskResponseSchema,
   gameTaskIdSchema,
   gameTaskSchema,
+  gameTaskAcceptanceCompileResultSchema,
   gameTaskTransitionResultSchema,
   listGameTasksRequestSchema,
   listGameTasksResponseSchema,
@@ -14,9 +16,11 @@ import {
   type RunEventBatch,
   type ReplayRunEventsRequest,
   type ClaimGameTaskRequest,
+  type CompileTaskAcceptanceContractInput,
   type CreateGameTaskRequest,
   type CreateGameTaskResponse,
   type GameTask,
+  type GameTaskAcceptanceCompileResult,
   type GameTaskTransitionResult,
   type ListGameTasksRequest,
   type WireRunEvent,
@@ -199,6 +203,23 @@ export class RunRelayClient {
     const parsed = gameTaskTransitionResultSchema.safeParse(response);
     if (!parsed.success || parsed.data.task.taskId !== taskId) {
       throw new RunRelayClientError("protocol", "Run relay returned an invalid Task transition result.");
+    }
+    return parsed.data;
+  }
+
+  async compileTaskAcceptanceContract(
+    taskIdInput: string,
+    input: CompileTaskAcceptanceContractInput,
+  ): Promise<GameTaskAcceptanceCompileResult> {
+    const taskId = gameTaskIdSchema.parse(taskIdInput);
+    const request = compileTaskAcceptanceContractInputSchema.parse(input);
+    const response = await this.#request(`tasks/${encodeURIComponent(taskId)}/acceptance-contract`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+    const parsed = gameTaskAcceptanceCompileResultSchema.safeParse(response);
+    if (!parsed.success || parsed.data.task.taskId !== taskId) {
+      throw new RunRelayClientError("protocol", "Run relay returned an invalid acceptance contract result.");
     }
     return parsed.data;
   }

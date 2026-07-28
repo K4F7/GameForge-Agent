@@ -1,8 +1,10 @@
 import {
   claimGameTaskRequestSchema,
+  compileTaskAcceptanceContractInputSchema,
   createGameTaskRequestSchema,
   gameTaskIdSchema,
   gameTaskSchema,
+  gameTaskAcceptanceCompileResultSchema,
   gameTaskTransitionRequestSchema,
   gameTaskTransitionResultSchema,
   listGameTasksRequestSchema,
@@ -10,11 +12,13 @@ import {
   type CreateGameTaskRequest,
   type CreateGameTaskResponse,
   type GameTask,
+  type GameTaskAcceptanceCompileResult,
   type GameTaskTransitionResult,
   type ListGameTasksRequest,
+  type TaskAcceptanceContract,
   type WireRunEvent,
 } from "@gameforge/contracts";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { RunStore } from "./store.js";
 
 export class TaskInboxError extends Error {
@@ -90,6 +94,96 @@ export class TaskInbox {
       .filter((task) => request.status === undefined || task.status === request.status)
       .slice(0, request.limit)
       .map(clone);
+  }
+
+  acceptanceContract(taskIdInput: string): TaskAcceptanceContract | undefined {
+    const task = this.get(taskIdInput);
+    return task.acceptanceContract;
+  }
+
+  isAcceptanceFingerprintCurrent(taskIdInput: string, fingerprint: string): boolean {
+    return this.acceptanceContract(taskIdInput)?.fingerprint === fingerprint;
+  }
+
+  compileAcceptanceContract(
+    taskIdInput: string,
+    input: unknown,
+  ): GameTaskAcceptanceCompileResult {
+    const taskId = gameTaskIdSchema.parse(taskIdInput);
+    const current = this.#tasks.get(taskId);
+    if (current === undefined) throw new TaskInboxError(404, "task_not_found", `Unknown task: ${taskId}`);
+    const request = compileTaskAcceptanceContractInputSchema.parse(input);
+    const preWork = current.status === "queued" || current.status === "needs-info";
+    const inFlightUpdate = (current.status === "claimed" || current.status === "in-progress") &&
+      current.acceptanceContract !== undefined;
+    if (!preWork && !inFlightUpdate) {
+      throw new TaskInboxError(409, "task_acceptance_locked", "Acceptance can only be compiled before implementation.");
+    }
+    const requirementIssues = request.criteria.length === 0 && request.requirementIssues.length === 0
+      ? [{ code: "missing" as const, detail: "At least one acceptance criterion is required." }]
+      : request.requirementIssues;
+    if (requirementIssues.length > 0) {
+      if (!preWork) {
+        throw new TaskInboxError(
+          409,
+          "task_acceptance_locked",
+          "Ambiguous requirements must be resolved before implementation.",
+        );
+      }
+      const task = gameTaskSchema.parse({
+        ...current,
+        status: "needs-info",
+        reasonCode: { schemaVersion: "1.0", code: "requirements-ambiguous" },
+        acceptanceContract: undefined,
+      });
+      this.#tasks.set(taskId, task);
+      return gameTaskAcceptanceCompileResultSchema.parse({
+        schemaVersion: "1.0",
+        outcome: "needs-info",
+        task: clone(task),
+        issues: requirementIssues,
+      });
+    }
+    const fingerprintSource = {
+      schemaVersion: "1.0" as const,
+      contractVersion: request.contractVersion,
+      criteria: request.criteria,
+    };
+    const contract = {
+      ...fingerprintSource,
+      fingerprint: createHash("sha256").update(JSON.stringify(fingerprintSource), "utf8").digest("hex"),
+    };
+    const frozen = current.acceptanceContract;
+    if (frozen !== undefined && (
+      request.contractVersion < frozen.contractVersion ||
+      (request.contractVersion === frozen.contractVersion && contract.fingerprint !== frozen.fingerprint)
+    )) {
+      throw new TaskInboxError(
+        409,
+        "task_acceptance_version_conflict",
+        "Changed acceptance criteria require a higher contract version.",
+      );
+    }
+    if (frozen?.fingerprint === contract.fingerprint) {
+      return gameTaskAcceptanceCompileResultSchema.parse({
+        schemaVersion: "1.0",
+        outcome: "frozen",
+        task: clone(current),
+        contract: frozen,
+      });
+    }
+    const task = gameTaskSchema.parse({
+      ...current,
+      ...(preWork ? { status: "queued", reasonCode: undefined } : {}),
+      acceptanceContract: contract,
+    });
+    this.#tasks.set(taskId, task);
+    return gameTaskAcceptanceCompileResultSchema.parse({
+      schemaVersion: "1.0",
+      outcome: "frozen",
+      task: clone(task),
+      contract,
+    });
   }
 
   claim(taskIdInput: string, input: ClaimGameTaskRequest): GameTask {
@@ -224,6 +318,15 @@ function clone(task: GameTask): GameTask {
   return {
     ...task,
     ...(task.reasonCode === undefined ? {} : { reasonCode: { ...task.reasonCode } }),
+    ...(task.acceptanceContract === undefined ? {} : {
+      acceptanceContract: {
+        ...task.acceptanceContract,
+        criteria: task.acceptanceContract.criteria.map((criterion) => ({
+          ...criterion,
+          verification: { ...criterion.verification },
+        })),
+      },
+    }),
   };
 }
 

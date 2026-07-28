@@ -136,6 +136,134 @@ describe("run relay HTTP server", () => {
     });
   });
 
+  it("freezes directly traceable acceptance criteria through the public Authority operation", async () => {
+    const baseUrl = await startServer();
+    const client = new RunRelayClient({ baseUrl });
+    const created = await client.createTask({
+      runId: "run-freeze-acceptance",
+      prompt: "Create a collection game with visible progress and a reviewed final appearance.",
+      language: "en-US",
+    });
+
+    const result = await client.compileTaskAcceptanceContract(created.task.taskId, {
+      contractVersion: 1,
+      criteria: [
+        {
+          criterionId: "movement",
+          sourceRequirement: "The player moves with the arrow keys.",
+          expected: "Pressing ArrowRight moves the player to the right.",
+          verification: { kind: "browser-action", action: "press ArrowRight" },
+        },
+        {
+          criterionId: "score",
+          sourceRequirement: "The score is publicly observable.",
+          expected: "The collected count becomes 3.",
+          verification: { kind: "public-telemetry", path: "$.collectedCount" },
+        },
+        {
+          criterionId: "status",
+          sourceRequirement: "The current objective is visible.",
+          expected: "The objective text says Collect 3 stars.",
+          verification: { kind: "dom-output", selector: "[data-game-status]" },
+        },
+        {
+          criterionId: "final-frame",
+          sourceRequirement: "The completed board is captured.",
+          expected: "The player and all three collected stars are visible.",
+          verification: { kind: "screenshot", checkpoint: "completed-board" },
+        },
+        {
+          criterionId: "visual-review",
+          sourceRequirement: "A human confirms the requested visual style.",
+          expected: "The reviewer confirms the high-contrast arcade style.",
+          verification: { kind: "human-review", prompt: "Review the completed game appearance." },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      schemaVersion: "1.0",
+      outcome: "frozen",
+      task: { taskId: created.task.taskId, status: "queued" },
+      contract: { schemaVersion: "1.0", contractVersion: 1 },
+    });
+    if (result.outcome !== "frozen") throw new Error("Expected a frozen acceptance contract.");
+    expect(result.contract.criteria).toHaveLength(5);
+    expect(result.contract.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    await expect(client.getTask(created.task.taskId)).resolves.toMatchObject({
+      acceptanceContract: { fingerprint: result.contract.fingerprint },
+    });
+  });
+
+  it.each([
+    "missing",
+    "conflicting",
+    "unverifiable",
+    "assumption-dependent",
+  ] as const)("moves %s requirements to needs-info before implementation", async (code) => {
+    const baseUrl = await startServer();
+    const client = new RunRelayClient({ baseUrl });
+    const created = await client.createTask({
+      runId: `run-needs-info-${code}`,
+      prompt: "Create a browser game only after every requirement is safe to implement.",
+      language: "en-US",
+    });
+
+    const result = await client.compileTaskAcceptanceContract(created.task.taskId, {
+      contractVersion: 1,
+      criteria: [],
+      requirementIssues: code === "missing" ? [] : [{ code, detail: `Requirement is ${code}.` }],
+    });
+
+    expect(result).toMatchObject({
+      schemaVersion: "1.0",
+      outcome: "needs-info",
+      issues: [{ code }],
+      task: {
+        status: "needs-info",
+        reasonCode: { schemaVersion: "1.0", code: "requirements-ambiguous" },
+      },
+    });
+    await expect(client.claimTask(created.task.taskId, { agentId: "codearts" }))
+      .rejects.toMatchObject({ relayCode: "task_not_queued" });
+  });
+
+  it.each([1, 2])("rejects changed acceptance content at non-advancing version %s", async (contractVersion) => {
+    const baseUrl = await startServer();
+    const client = new RunRelayClient({ baseUrl });
+    const created = await client.createTask({
+      runId: `run-contract-version-${contractVersion}`,
+      prompt: "Create a game whose frozen acceptance versions advance monotonically.",
+      language: "en-US",
+    });
+    const frozen = await client.compileTaskAcceptanceContract(created.task.taskId, {
+      contractVersion: 2,
+      criteria: [{
+        criterionId: "goal",
+        sourceRequirement: "Collect 3 stars.",
+        expected: "The collected count becomes 3.",
+        verification: { kind: "public-telemetry", path: "$.collectedStars" },
+      }],
+    });
+    if (frozen.outcome !== "frozen") throw new Error("Expected version two to freeze.");
+
+    await expect(client.compileTaskAcceptanceContract(created.task.taskId, {
+      contractVersion,
+      criteria: [{
+        criterionId: "goal",
+        sourceRequirement: "Collect 5 stars.",
+        expected: "The collected count becomes 5.",
+        verification: { kind: "public-telemetry", path: "$.collectedStars" },
+      }],
+    })).rejects.toMatchObject({ relayCode: "task_acceptance_version_conflict" });
+    await expect(client.getTask(created.task.taskId)).resolves.toMatchObject({
+      acceptanceContract: {
+        contractVersion: 2,
+        fingerprint: frozen.contract.fingerprint,
+      },
+    });
+  });
+
   it("returns a stable invalid result for an unknown reason without changing the public Task bytes", async () => {
     const baseUrl = await startServer();
     const client = new RunRelayClient({ baseUrl });

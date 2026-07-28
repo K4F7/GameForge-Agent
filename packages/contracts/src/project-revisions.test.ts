@@ -34,19 +34,27 @@ describe("Project contracts", () => {
 
 describe("candidate Revision contracts", () => {
   it("parses an immutable candidate with its own identity", () => {
-    expect(createCandidateRevisionInputSchema.parse({ projectId: "stable-project" })).toEqual({
+    expect(createCandidateRevisionInputSchema.parse({
       projectId: "stable-project",
+      taskId: "task-00000000-0000-0000-0000-000000000000",
+    })).toEqual({
+      projectId: "stable-project",
+      taskId: "task-00000000-0000-0000-0000-000000000000",
     });
 
     const revision = candidateRevisionSchema.parse({
       projectId: "stable-project",
+      taskId: "task-00000000-0000-0000-0000-000000000000",
       revisionId: "revision-22222222-2222-4222-8222-222222222222",
       state: "candidate",
+      acceptanceContractFingerprint: "a".repeat(64),
     });
     expect(revision).toEqual({
       projectId: "stable-project",
+      taskId: "task-00000000-0000-0000-0000-000000000000",
       revisionId: "revision-22222222-2222-4222-8222-222222222222",
       state: "candidate",
+      acceptanceContractFingerprint: "a".repeat(64),
     });
     expect(Object.isFrozen(revision)).toBe(true);
   });
@@ -58,13 +66,17 @@ describe("candidate Revision contracts", () => {
     })).toThrow();
     expect(() => candidateRevisionSchema.parse({
       projectId: "stable-project",
+      taskId: "task-00000000-0000-0000-0000-000000000000",
       revisionId: "revision-22222222-2222-4222-8222-222222222222",
       state: "accepted",
+      acceptanceContractFingerprint: "a".repeat(64),
     })).toThrow();
     expect(() => candidateRevisionSchema.parse({
       projectId: "stable-project",
+      taskId: "task-00000000-0000-0000-0000-000000000000",
       revisionId: "revision-------------------------------------",
       state: "candidate",
+      acceptanceContractFingerprint: "a".repeat(64),
     })).toThrow();
   });
 });

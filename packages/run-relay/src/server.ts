@@ -107,6 +107,12 @@ export function createRunRelayServer(options: RunRelayServerOptions = {}): Serve
         writeJson(response, 200, result);
         return;
       }
+      if (taskRoute?.command === "acceptance-contract" && request.method === "POST") {
+        const result = taskInbox.compileAcceptanceContract(taskRoute.taskId, await readJson(request));
+        await options.persistState?.();
+        writeJson(response, 200, result);
+        return;
+      }
 
       if (request.method === "POST" && url.pathname === "/runs") {
         const input = createRunSchema.parse(await readJson(request));
@@ -188,12 +194,17 @@ export function createRunRelayServer(options: RunRelayServerOptions = {}): Serve
   });
 }
 
-function matchTaskRoute(pathname: string): { taskId: string; command?: "claim" | "transition" } | undefined {
-  const match = /^\/tasks\/([^/]+)(?:\/(claim|transition))?$/.exec(pathname);
+function matchTaskRoute(pathname: string): {
+  taskId: string;
+  command?: "claim" | "transition" | "acceptance-contract";
+} | undefined {
+  const match = /^\/tasks\/([^/]+)(?:\/(claim|transition|acceptance-contract))?$/.exec(pathname);
   if (match?.[1] === undefined) return undefined;
   try {
     const taskId = gameTaskIdSchema.parse(decodeURIComponent(match[1]));
-    return match[2] === "claim" || match[2] === "transition" ? { taskId, command: match[2] } : { taskId };
+    return match[2] === "claim" || match[2] === "transition" || match[2] === "acceptance-contract"
+      ? { taskId, command: match[2] }
+      : { taskId };
   } catch {
     throw new HttpError(400, "invalid_task_id", "Task ID is invalid.");
   }
