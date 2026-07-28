@@ -75,18 +75,25 @@ jobs:
               return;
             }
 
-            const requiredChecks = ["PR Gate"];
-            const checkRuns = await github.paginate(github.rest.checks.listForRef, {
-              owner,
-              repo,
-              ref: pr.head.sha,
-              filter: "latest",
-              per_page: 100,
+            const { pathToFileURL } = require("node:url");
+            const gateUrl = pathToFileURL(`${process.env.GITHUB_WORKSPACE}/.github/scripts/auto-merge-gate.js`).href;
+            const { selectLatestReviewerRun, waitForRequiredChecks } = await import(gateUrl);
+            const checkResult = await waitForRequiredChecks({
+              requiredChecks: ["PR Gate"],
+              maxAttempts: 4,
+              delayMs: 10_000,
+              listCheckRuns: () =>
+                github.paginate(github.rest.checks.listForRef, {
+                  owner,
+                  repo,
+                  ref: pr.head.sha,
+                  filter: "latest",
+                  per_page: 100,
+                }),
+              sleep: (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
             });
-            const conclusions = new Map(checkRuns.map((check) => [check.name, check.conclusion]));
-            const missingChecks = requiredChecks.filter((name) => conclusions.get(name) !== "success");
-            if (missingChecks.length > 0) {
-              core.notice("Required checks are not successful: " + missingChecks.join(", "));
+            if (checkResult.kind !== "ready") {
+              core.notice("Required checks are not successful: " + checkResult.missingChecks.join(", "));
               return;
             }
 
@@ -258,12 +265,7 @@ jobs:
                   head_sha: pr.head.sha,
                   per_page: 100,
                 });
-                const reviewerRun = workflowRuns.find(
-                  (workflowRun) =>
-                    workflowRun.name === "GameForge PR Reviewer" &&
-                    workflowRun.head_sha === pr.head.sha &&
-                    workflowRun.status === "completed",
-                );
+                const reviewerRun = selectLatestReviewerRun(workflowRuns, pr.head.sha);
                 if (reviewerRun) {
                   await github.rest.actions.reRunWorkflow({ owner, repo, run_id: reviewerRun.id });
                   core.notice("Re-ran GameForge PR Reviewer after CI passed for PR #" + pull_number + ".");
@@ -313,7 +315,6 @@ jobs:
               return;
             }
 
-            const { pathToFileURL } = require("node:url");
             const policyUrl = pathToFileURL(`${process.env.GITHUB_WORKSPACE}/.github/scripts/auto-merge-policy.js`).href;
             const { decideMergeAction } = await import(policyUrl);
             const decision = decideMergeAction({
