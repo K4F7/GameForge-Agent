@@ -189,6 +189,22 @@ describe("ProjectAuthority Attempts", () => {
     expect(authority.getAttempt(first.attemptId)).toEqual(first);
   });
 
+  it("starts a fresh immutable Attempt after Authority invalidates the previous contract", () => {
+    const { authority, project, taskId, tasks } = candidateFixture();
+    const first = authority.startAttempt({ taskId, projectId: project.projectId });
+    const versionTwo = tasks.compileAcceptanceContract(taskId, acceptanceInput(2, "Reach the harder goal."));
+    if (versionTwo.outcome !== "frozen") throw new Error("Expected version two to freeze.");
+
+    const fresh = authority.startAttempt({ taskId, projectId: project.projectId });
+
+    expect(fresh.attemptId).not.toBe(first.attemptId);
+    expect(fresh.revisionId).not.toBe(first.revisionId);
+    expect(fresh.acceptanceContractFingerprint).toBe(versionTwo.contract.fingerprint);
+    expect(authority.getAttempt(first.attemptId)).toEqual(first);
+    expect(() => authority.startAttempt({ taskId, projectId: project.projectId }))
+      .toThrow(expect.objectContaining({ code: "attempt_already_started" }));
+  });
+
   it("requires the explicit retry operation for a Task that already has an Attempt", () => {
     const { authority, project, taskId } = candidateFixture();
     const input = { taskId, projectId: project.projectId } as const;

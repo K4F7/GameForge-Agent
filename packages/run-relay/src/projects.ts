@@ -45,7 +45,6 @@ export class ProjectAuthority {
   readonly #projects = new Map<string, Project>();
   readonly #revisions = new Map<string, CandidateRevision>();
   readonly #attempts = new Map<string, Attempt>();
-  readonly #startedTaskIds = new Set<string>();
 
   constructor(
     readonly taskAuthority: Pick<
@@ -125,20 +124,22 @@ export class ProjectAuthority {
 
   startAttempt(input: StartAttemptInput): Attempt {
     const request = startAttemptInputSchema.parse(input);
-    if (this.#startedTaskIds.has(request.taskId)) {
+    const project = this.getProject(request.projectId);
+    const contract = this.#currentTaskContract(request.taskId, request.projectId);
+    const previous = this.#attemptForTask(request.taskId);
+    if (previous !== undefined &&
+      project.currentRevisionId === (previous.baseRevisionId ?? null) &&
+      contract.fingerprint === previous.acceptanceContractFingerprint) {
       throw new ProjectAuthorityError(
         "attempt_already_started",
         `Task ${request.taskId} already has an Attempt; use explicit retry.`,
       );
     }
-    const project = this.getProject(request.projectId);
-    const contract = this.#currentTaskContract(request.taskId, request.projectId);
     const attempt = this.#createAttempt({
       ...request,
       ...(project.currentRevisionId === null ? {} : { baseRevisionId: project.currentRevisionId }),
       acceptanceContractFingerprint: contract.fingerprint,
     });
-    this.#startedTaskIds.add(request.taskId);
     return attempt;
   }
 
@@ -217,5 +218,13 @@ export class ProjectAuthority {
       );
     }
     return contract;
+  }
+
+  #attemptForTask(taskId: string): Attempt | undefined {
+    let latest: Attempt | undefined;
+    for (const attempt of this.#attempts.values()) {
+      if (attempt.taskId === taskId) latest = attempt;
+    }
+    return latest;
   }
 }
