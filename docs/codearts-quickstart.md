@@ -170,7 +170,7 @@ Task 到达终态后，先准备严格 `definition.json` 与人工核验的 `met
 bun run benchmark -- capture definition.json metadata.json --task-id <Task-ID> --mcp-audit <会话审计.json> --out codearts.record.json
 ```
 
-命令从配置的 `GAMEFORGE_RUN_RELAY_URL`（默认 loopback 8787）分页读取完整保留期事件，校验定义、sequence 和终态。客户端版本、模型和人工干预只能写入 metadata；缺失工具历史时必须使用 `count: null`/`errors: null`，不得从 RunEvent 数量推断。选择已由 `bind_mcp_audit_context` 绑定的 MCP 会话 audit 后，capture 会将其 Task/Run 与 Relay 权威 Task 交叉核验，再机械计算工具总数、唯一名称与错误数；未绑定、错绑定或截断文件都会被拒绝。浏览器完成证据来自 `verification.ready`；小游戏定义还必须显式写入 `platform` 和 `runtimeGenre`，并由同项目、同 target、同规格参数且顺序正确的 `gameplay.verified` 与 `build.ready` 共同证明。record 保存绑定 ID、session ID 与内容 SHA-256，采用 allowlist 摘要，不包含 Task Prompt、调用参数/结果、日志正文、素材提示、URL、绝对路径、模板哈希或 TTS job handle，并拒绝覆盖已有 record。
+命令从配置的 `GAMEFORGE_RUN_RELAY_URL`（默认 loopback 8787）分页读取完整保留期事件，校验定义、sequence 和终态。客户端版本、模型和人工干预只能写入 metadata；缺失工具历史时必须使用 `count: null`/`errors: null`，不得从 RunEvent 数量推断。选择已由 `bind_mcp_audit_context` 绑定的 MCP 会话 audit 后，capture 会将其 Task/Run 与 Relay 权威 Task 交叉核验，再机械计算工具总数、唯一名称与错误数；未绑定、错绑定或截断文件都会被拒绝。Web 定义的 `target` 写入受支持的 `genre`，可选 `platform` 只能是 `web`；浏览器完成证据仅来自 `verification.ready`。record 保存绑定 ID、session ID 与内容 SHA-256，采用 allowlist 摘要，不包含 Task Prompt、调用参数/结果、日志正文、素材提示、URL、绝对路径、模板哈希或 TTS job handle，并拒绝覆盖已有 record。
 
 ## 官方文档
 

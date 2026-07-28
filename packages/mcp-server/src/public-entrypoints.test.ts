@@ -81,6 +81,22 @@ describe("GameForge public discovery", () => {
     }
   });
 
+  it("documents benchmark capture with the current Web-only contract", async () => {
+    const quickstart = await readFile(
+      path.join(repositoryRoot, "docs", "codearts-quickstart.md"),
+      "utf8",
+    );
+    const benchmarkGuidance = quickstart
+      .split("## 7. 第一次基准实验")[1]
+      ?.split("## 官方文档")[0];
+
+    expect(benchmarkGuidance).toBeDefined();
+    expect(benchmarkGuidance).toMatch(/Web/);
+    expect(benchmarkGuidance).toContain("verification.ready");
+    expect(benchmarkGuidance).not.toMatch(retiredTargetPattern);
+    expect(benchmarkGuidance).not.toMatch(/runtimeGenre|gameplay\.verified|build\.ready/);
+  });
+
   it("labels retained mini-game research as historical instead of current guidance", async () => {
     for (const relativePath of historicalMiniGameDocumentation) {
       const content = await readFile(path.join(repositoryRoot, relativePath), "utf8");
