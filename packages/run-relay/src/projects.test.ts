@@ -176,6 +176,8 @@ describe("ProjectAuthority Attempts", () => {
     expect(retry.revisionId).not.toBe(first.revisionId);
     expect(authority.getAttempt(first.attemptId)).toEqual(previousSnapshot);
     expect(Object.isFrozen(authority.getAttempt(first.attemptId))).toBe(true);
+    expect(() => authority.retryAttempt({ attemptId: first.attemptId }))
+      .toThrow(expect.objectContaining({ code: "attempt_already_retried" }));
   });
 
   it("rejects a retry after Authority advances the frozen acceptance contract", () => {

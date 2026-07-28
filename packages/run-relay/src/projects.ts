@@ -33,7 +33,8 @@ export class ProjectAuthorityError extends Error {
       | "attempt_not_found"
       | "stale_base_revision"
       | "acceptance_contract_changed"
-      | "attempt_already_started",
+      | "attempt_already_started"
+      | "attempt_already_retried",
     message: string,
   ) {
     super(message);
@@ -45,6 +46,7 @@ export class ProjectAuthority {
   readonly #projects = new Map<string, Project>();
   readonly #revisions = new Map<string, CandidateRevision>();
   readonly #attempts = new Map<string, Attempt>();
+  readonly #retriedAttemptIds = new Set<string>();
 
   constructor(
     readonly taskAuthority: Pick<
@@ -180,6 +182,12 @@ export class ProjectAuthority {
   retryAttempt(input: RetryAttemptInput): Attempt {
     const request = retryAttemptInputSchema.parse(input);
     const previous = this.getAttempt(request.attemptId);
+    if (this.#retriedAttemptIds.has(previous.attemptId)) {
+      throw new ProjectAuthorityError(
+        "attempt_already_retried",
+        `Attempt ${previous.attemptId} already has an explicit retry.`,
+      );
+    }
     const project = this.getProject(previous.projectId);
     if (project.currentRevisionId !== (previous.baseRevisionId ?? null)) {
       throw new ProjectAuthorityError(
@@ -194,12 +202,14 @@ export class ProjectAuthority {
         `Attempt ${previous.attemptId} is not bound to the current acceptance contract.`,
       );
     }
-    return this.#createAttempt({
+    const retry = this.#createAttempt({
       taskId: previous.taskId,
       projectId: previous.projectId,
       ...(previous.baseRevisionId === undefined ? {} : { baseRevisionId: previous.baseRevisionId }),
       acceptanceContractFingerprint: previous.acceptanceContractFingerprint,
     });
+    this.#retriedAttemptIds.add(previous.attemptId);
+    return retry;
   }
 
   #currentTaskContract(taskId: string, projectId: string) {
