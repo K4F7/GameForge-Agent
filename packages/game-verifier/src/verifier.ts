@@ -1,7 +1,7 @@
-import { projectIdSchema } from "@gameforge/contracts";
-import { randomUUID } from "node:crypto";
+import { attemptIdSchema, candidateContentManifestSchema, projectIdSchema, revisionIdSchema } from "@gameforge/contracts";
+import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { access, lstat, mkdir, readFile, realpath } from "node:fs/promises";
+import { access, lstat, mkdir, readFile, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { createServer, type ViteDevServer } from "vite";
@@ -9,6 +9,8 @@ import { z } from "zod";
 
 const MAX_DIAGNOSTICS = 100;
 const MAX_MESSAGE_LENGTH = 1_000;
+const MAX_CANDIDATE_BYTES = 20 * 1024 * 1024;
+const MAX_CANDIDATE_FILES = 4_096;
 const PHASER_PACKAGE = createRequire(import.meta.url).resolve("phaser/package.json");
 const PHASER_ENTRY = path.join(path.dirname(PHASER_PACKAGE), "dist", "phaser.esm.js");
 
@@ -38,6 +40,8 @@ export const verificationScenarioPlanSchema = z.strictObject({
 
 export const verifyGameRequestSchema = z.strictObject({
   projectId: projectIdSchema,
+  attemptId: attemptIdSchema.optional(),
+  revisionId: revisionIdSchema.optional(),
   actions: z.array(verificationActionSchema).max(100).default([]),
   scenario: verificationScenarioSchema.optional(),
   expectedOutcome: z.enum(["running", "won", "lost"]).optional(),
@@ -116,8 +120,13 @@ export class GameVerifier {
 
   async verify(request: VerifyGameRequest): Promise<VerificationReport> {
     const input = verifyGameRequestSchema.parse(request);
+    if ((input.attemptId === undefined) !== (input.revisionId === undefined)) {
+      throw new Error("Verifier candidate selection requires both Attempt and Revision identity.");
+    }
     const startedAt = Date.now();
-    const projectPath = await verifiedManagedProject(this.#projectsRoot, input.projectId);
+    const projectPath = input.attemptId === undefined
+      ? await verifiedManagedProject(this.#projectsRoot, input.projectId)
+      : await verifiedCandidateProject(this.#projectsRoot, input.projectId, input.attemptId, input.revisionId!);
     if (input.scenario !== undefined && input.actions.length > 0) {
       throw new Error("Verifier scenario and inline actions are mutually exclusive.");
     }
@@ -404,6 +413,75 @@ export async function verifiedManagedProject(projectsRoot: string, projectIdInpu
   ) as unknown);
   if (managed.projectId !== projectId) throw new Error("Verifier project manifest ID does not match.");
   return realProject;
+}
+
+export async function verifiedCandidateProject(
+  projectsRoot: string,
+  projectIdInput: string,
+  attemptIdInput: string,
+  revisionIdInput: string,
+): Promise<string> {
+  const projectId = projectIdSchema.parse(projectIdInput);
+  const attemptId = attemptIdSchema.parse(attemptIdInput);
+  const revisionId = revisionIdSchema.parse(revisionIdInput);
+  const root = await verifiedDirectory(projectsRoot, "Verifier projects root");
+  const metadata = await verifiedChildDirectory(root, ".gameforge", "Verifier metadata directory");
+  const candidates = await verifiedChildDirectory(metadata, "candidates", "Verifier candidates directory");
+  const candidateRoot = await verifiedChildDirectory(candidates, attemptId, "Verifier Attempt candidate");
+  const project = await verifiedChildDirectory(candidateRoot, projectId, "Verifier candidate project");
+  const manifestPath = path.join(project, ".gameforge", "candidate.json");
+  const manifestInfo = await lstat(manifestPath).catch(() => undefined);
+  if (manifestInfo === undefined || !manifestInfo.isFile() || manifestInfo.isSymbolicLink() || manifestInfo.size > 2 * 1024 * 1024) {
+    throw new Error("Verifier candidate manifest must be a bounded regular file.");
+  }
+  const manifest = candidateContentManifestSchema.parse(JSON.parse(await readFile(manifestPath, "utf8")) as unknown);
+  if (manifest.projectId !== projectId || manifest.attemptId !== attemptId || manifest.revisionId !== revisionId) {
+    throw new Error("Verifier candidate manifest identity does not match the request.");
+  }
+  const files = await collectCandidateFiles(project);
+  const totalBytes = files.reduce((total, file) => total + file.bytes, 0);
+  const aggregateSha256 = createHash("sha256").update(JSON.stringify(files), "utf8").digest("hex");
+  if (
+    totalBytes !== manifest.totalBytes || aggregateSha256 !== manifest.aggregateSha256 ||
+    JSON.stringify(files) !== JSON.stringify(manifest.files)
+  ) throw new Error("Verifier candidate content does not match its manifest.");
+  return project;
+}
+
+async function verifiedChildDirectory(parent: string, name: string, label: string): Promise<string> {
+  const target = path.resolve(parent, name);
+  if (path.dirname(target).toLowerCase() !== parent.toLowerCase()) throw new Error(`${label} escaped its parent.`);
+  const child = await verifiedDirectory(target, label);
+  if (path.dirname(child).toLowerCase() !== parent.toLowerCase()) throw new Error(`${label} escaped its parent.`);
+  return child;
+}
+
+async function collectCandidateFiles(root: string): Promise<Array<{ path: string; bytes: number; sha256: string }>> {
+  const files: Array<{ path: string; bytes: number; sha256: string }> = [];
+  let totalBytes = 0;
+  const visit = async (directory: string, relativeDirectory: string): Promise<void> => {
+    const entries = await readdir(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const relative = relativeDirectory === "" ? entry.name : `${relativeDirectory}/${entry.name}`;
+      if (relative === ".gameforge/candidate.json" || relative.startsWith(".gameforge/verification/")) continue;
+      const target = path.join(root, ...relative.split("/"));
+      const info = await lstat(target);
+      if (info.isSymbolicLink()) throw new Error(`Verifier candidate contains a symbolic link: ${relative}`);
+      if (info.isDirectory()) {
+        await visit(target, relative);
+        continue;
+      }
+      if (!info.isFile()) throw new Error(`Verifier candidate contains a non-file entry: ${relative}`);
+      if (files.length >= MAX_CANDIDATE_FILES) throw new Error("Verifier candidate exceeds the maximum file count.");
+      totalBytes += info.size;
+      if (totalBytes > MAX_CANDIDATE_BYTES) throw new Error("Verifier candidate exceeds the maximum content size.");
+      const content = await readFile(target);
+      files.push({ path: relative, bytes: content.byteLength, sha256: createHash("sha256").update(content).digest("hex") });
+    }
+  };
+  await visit(root, "");
+  return files;
 }
 
 async function verifiedDirectory(target: string, label: string): Promise<string> {

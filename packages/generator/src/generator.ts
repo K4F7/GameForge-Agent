@@ -1,5 +1,6 @@
 import {
   generatedProjectPlanSchema,
+  candidateContentManifestSchema,
   generatedProjectFileSchema,
   managedGeneratedProjectManifestSchema,
   projectUpdateSummarySchema,
@@ -13,9 +14,10 @@ import {
   type ProjectGenerationResult,
   type ManagedGeneratedProjectManifest,
   type ProjectUpdateSummary,
+  type CandidateContentManifest,
 } from "@gameforge/contracts";
 import { createHash, randomUUID } from "node:crypto";
-import { link, mkdir, lstat, open, readFile, realpath, rename, rm, unlink } from "node:fs/promises";
+import { cp, link, mkdir, lstat, open, readFile, readdir, realpath, rename, rm, unlink } from "node:fs/promises";
 import { hostname as systemHostname } from "node:os";
 import path from "node:path";
 import { z } from "zod";
@@ -23,6 +25,8 @@ import { createIndexHtml, loaderSource, runtimeSource } from "./template.js";
 
 export const GAMEFORGE_GENERATOR_VERSION = "0.13.0";
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
+const MAX_CANDIDATE_BYTES = 20 * 1024 * 1024;
+const MAX_CANDIDATE_FILES = 4_096;
 
 type GeneratedFile = { path: string; content: string; bytes: number; sha256: string };
 type UpdateInspection = {
@@ -98,27 +102,49 @@ export class GameProjectGenerator {
       })),
     });
 
+    if (input.mode === "apply" && (input.attemptId === undefined || input.revisionId === undefined)) {
+      throw new Error("Project generation apply requires Attempt and Revision identity.");
+    }
+    if (input.mode === "dry-run" && (input.attemptId !== undefined || input.revisionId !== undefined)) {
+      throw new Error("Attempt and Revision identity are only valid when applying a candidate.");
+    }
+
     if (input.operation === "update") {
-      const inspection = await this.#inspectUpdate(input.projectId, input.target, generated.files);
+      const inspection = await this.#inspectUpdate(this.#outputRoot, input.projectId, input.target, generated.files);
       if (input.mode === "dry-run") {
         return projectGenerationResultSchema.parse({ mode: "dry-run", operation: "update", plan, update: inspection.summary });
       }
       if (input.expectedPlanSha256 === undefined) {
         throw new Error("Project update apply requires expectedPlanSha256 from the latest dry-run.");
       }
-      const applied = await this.#applyUpdate(
-        input.projectId,
-        input.target,
-        generated.files,
-        input.expectedPlanSha256,
-      );
-      return projectGenerationResultSchema.parse({
-        mode: "apply",
-        operation: "update",
-        plan,
-        outputPath: applied.outputPath,
-        update: applied.update,
-      });
+      const candidateRoot = await this.#prepareCandidateRoot(input.attemptId!);
+      try {
+        const accepted = await verifiedManagedProject(await verifiedRoot(this.#outputRoot), input.projectId);
+        await copyCandidateSource(accepted, safeChild(candidateRoot, input.projectId));
+        const applied = await this.#applyUpdate(
+          candidateRoot,
+          input.projectId,
+          input.target,
+          generated.files,
+          input.expectedPlanSha256,
+        );
+        const candidate = await writeCandidateManifest(applied.outputPath, {
+          projectId: input.projectId,
+          attemptId: input.attemptId!,
+          revisionId: input.revisionId!,
+        });
+        return projectGenerationResultSchema.parse({
+          mode: "apply",
+          operation: "update",
+          plan,
+          outputPath: applied.outputPath,
+          update: applied.update,
+          candidate,
+        });
+      } catch (error) {
+        await rm(candidateRoot, { recursive: true, force: true });
+        throw error;
+      }
     }
 
     if (input.expectedPlanSha256 !== undefined) {
@@ -128,8 +154,30 @@ export class GameProjectGenerator {
       return projectGenerationResultSchema.parse({ mode: "dry-run", operation: "create", plan });
     }
 
-    const outputPath = await this.#apply(input.projectId, generated.files);
-    return projectGenerationResultSchema.parse({ mode: "apply", operation: "create", plan, outputPath });
+    const candidateRoot = await this.#prepareCandidateRoot(input.attemptId!);
+    try {
+      const outputPath = await this.#apply(candidateRoot, input.projectId, generated.files);
+      const candidate = await writeCandidateManifest(outputPath, {
+        projectId: input.projectId,
+        attemptId: input.attemptId!,
+        revisionId: input.revisionId!,
+      });
+      return projectGenerationResultSchema.parse({ mode: "apply", operation: "create", plan, outputPath, candidate });
+    } catch (error) {
+      await rm(candidateRoot, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  async #prepareCandidateRoot(attemptId: string): Promise<string> {
+    const root = await verifiedRoot(this.#outputRoot);
+    const metadata = safeChild(root, ".gameforge");
+    await mkdir(metadata, { recursive: true });
+    const candidates = safeChild(metadata, "candidates");
+    await mkdir(candidates, { recursive: true });
+    const candidateRoot = safeChild(candidates, attemptId);
+    await mkdir(candidateRoot);
+    return realpath(candidateRoot);
   }
 
   async recover(projectIdInput: string): Promise<ProjectUpdateRecoveryResult> {
@@ -149,13 +197,13 @@ export class GameProjectGenerator {
     }
   }
 
-  async #apply(projectId: string, files: ReadonlyArray<GeneratedFile>): Promise<string> {
-    await mkdir(this.#outputRoot, { recursive: true });
-    const rootInfo = await lstat(this.#outputRoot);
+  async #apply(outputRoot: string, projectId: string, files: ReadonlyArray<GeneratedFile>): Promise<string> {
+    await mkdir(outputRoot, { recursive: true });
+    const rootInfo = await lstat(outputRoot);
     if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) {
       throw new Error("Game project output root must be a real directory, not a symbolic link.");
     }
-    const root = await realpath(this.#outputRoot);
+    const root = await realpath(outputRoot);
     const target = safeChild(root, projectId);
     if (await exists(target)) {
       throw new Error(`Generated project already exists: ${projectId}`);
@@ -185,8 +233,8 @@ export class GameProjectGenerator {
     }
   }
 
-  async #inspectUpdate(projectId: string, platformTarget: GamePlatformTarget, files: ReadonlyArray<GeneratedFile>): Promise<UpdateInspection> {
-    const root = await verifiedRoot(this.#outputRoot);
+  async #inspectUpdate(outputRoot: string, projectId: string, platformTarget: GamePlatformTarget, files: ReadonlyArray<GeneratedFile>): Promise<UpdateInspection> {
+    const root = await verifiedRoot(outputRoot);
     const target = safeChild(root, projectId);
     const targetInfo = await lstat(target).catch(() => undefined);
     if (targetInfo === undefined || !targetInfo.isDirectory() || targetInfo.isSymbolicLink()) {
@@ -245,16 +293,17 @@ export class GameProjectGenerator {
   }
 
   async #applyUpdate(
+    outputRoot: string,
     projectId: string,
     platformTarget: GamePlatformTarget,
     files: ReadonlyArray<GeneratedFile>,
     expectedPlanSha256: string,
   ): Promise<{ outputPath: string; update: ProjectUpdateSummary }> {
-    const initial = await this.#inspectUpdate(projectId, platformTarget, files);
+    const initial = await this.#inspectUpdate(outputRoot, projectId, platformTarget, files);
     const lockPath = safeRelativeFile(initial.target, ".gameforge/update.lock");
     const lock = await acquireUpdateLock(lockPath);
     try {
-      const inspection = await this.#inspectUpdate(projectId, platformTarget, files);
+      const inspection = await this.#inspectUpdate(outputRoot, projectId, platformTarget, files);
       if (inspection.manifest.planSha256 !== expectedPlanSha256) {
         throw new Error(`Generated project plan conflict: expected ${expectedPlanSha256}, found ${inspection.manifest.planSha256}.`);
       }
@@ -380,6 +429,65 @@ export class GameProjectGenerator {
       await releaseUpdateLock(lockPath, lock);
     }
   }
+}
+
+async function copyCandidateSource(source: string, target: string): Promise<void> {
+  await collectCandidateFiles(source);
+  await cp(source, target, { recursive: true, errorOnExist: true, force: false });
+  await rm(safeRelativeFile(target, ".gameforge/candidate.json"), { force: true });
+}
+
+async function writeCandidateManifest(
+  candidatePath: string,
+  ownership: { projectId: string; attemptId: string; revisionId: string },
+): Promise<CandidateContentManifest> {
+  const files = await collectCandidateFiles(candidatePath);
+  const totalBytes = files.reduce((total, current) => total + current.bytes, 0);
+  const aggregateSha256 = createHash("sha256").update(JSON.stringify(files), "utf8").digest("hex");
+  const manifest = candidateContentManifestSchema.parse({
+    schemaVersion: 1,
+    ...ownership,
+    totalBytes,
+    aggregateSha256,
+    files,
+  });
+  await writeSynced(
+    safeRelativeFile(candidatePath, ".gameforge/candidate.json"),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+  );
+  return manifest;
+}
+
+async function collectCandidateFiles(root: string): Promise<Array<{ path: string; bytes: number; sha256: string }>> {
+  const files: Array<{ path: string; bytes: number; sha256: string }> = [];
+  let totalBytes = 0;
+  const visit = async (directory: string, relativeDirectory: string): Promise<void> => {
+    const entries = await readdir(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const relative = relativeDirectory === "" ? entry.name : `${relativeDirectory}/${entry.name}`;
+      if (relative === ".gameforge/candidate.json" || relative.startsWith(".gameforge/verification/")) continue;
+      const target = safeRelativeFile(root, relative);
+      const info = await lstat(target);
+      if (info.isSymbolicLink()) throw new Error(`Candidate content cannot contain symbolic links: ${relative}`);
+      if (info.isDirectory()) {
+        await visit(target, relative);
+        continue;
+      }
+      if (!info.isFile()) throw new Error(`Candidate content must contain only regular files: ${relative}`);
+      if (files.length >= MAX_CANDIDATE_FILES) throw new Error("Candidate exceeds the maximum file count.");
+      totalBytes += info.size;
+      if (totalBytes > MAX_CANDIDATE_BYTES) throw new Error("Candidate exceeds the maximum content size.");
+      const content = await readFile(target);
+      files.push({
+        path: relative.replaceAll(path.sep, "/"),
+        bytes: content.byteLength,
+        sha256: createHash("sha256").update(content).digest("hex"),
+      });
+    }
+  };
+  await visit(root, "");
+  return files;
 }
 
 function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePlatformTarget): {
