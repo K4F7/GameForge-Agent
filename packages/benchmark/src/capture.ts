@@ -85,7 +85,7 @@ export async function captureBenchmarkEvidence(input: {
   }
   const events = await replayAll(input.relay, task.runId);
   validateSequence(events, task.runId);
-  validateCompletedTaskEvidence(task, events);
+  validateTerminalTaskEvidence(task, events);
   const verificationEvent = [...events].reverse().find((event) => event.type === "verification.ready");
   const evidence = [...new Set([
     ...metadata.evidence,
@@ -162,8 +162,15 @@ function validateSequence(events: ReadonlyArray<WireRunEvent>, runId: string): v
   }
 }
 
-function validateCompletedTaskEvidence(task: GameTask, events: ReadonlyArray<WireRunEvent>): void {
-  if (task.status === "completed" && events.at(-1)?.type !== "run.completed") {
+function validateTerminalTaskEvidence(task: GameTask, events: ReadonlyArray<WireRunEvent>): void {
+  const last = events.at(-1);
+  if (task.status === "completed" && last?.type !== "run.completed") {
     throw new Error("Completed Task evidence must end with run.completed.");
+  }
+  if (task.status === "failed" && (last?.type !== "phase.failed" || last.repairable)) {
+    throw new Error("Failed Task evidence must end with a terminal phase.failed.");
+  }
+  if ((task.status === "canceled" || task.status === "conflicted") && last?.type !== "run.stopped") {
+    throw new Error(`${task.status === "canceled" ? "Canceled" : "Conflicted"} Task evidence must end with run.stopped.`);
   }
 }
