@@ -144,6 +144,15 @@ export class TaskInbox {
         task: clone(current),
       });
     }
+    const requiredRunStatus = REQUIRED_RUN_STATUS[request.data.status];
+    if (requiredRunStatus !== undefined && this.#runStore.status(current.runId) !== requiredRunStatus) {
+      return gameTaskTransitionResultSchema.parse({
+        schemaVersion: "1.0",
+        outcome: "rejected",
+        code: "run-state-mismatch",
+        task: clone(current),
+      });
+    }
     const candidate = gameTaskSchema.safeParse({
       ...current,
       status: request.data.status,
@@ -233,4 +242,11 @@ const TASK_TRANSITIONS: Record<GameTask["status"], ReadonlyArray<GameTask["statu
   failed: [],
   canceled: [],
   conflicted: [],
+};
+
+const REQUIRED_RUN_STATUS: Partial<Record<GameTask["status"], "succeeded" | "failed" | "stopped">> = {
+  completed: "succeeded",
+  failed: "failed",
+  canceled: "stopped",
+  conflicted: "stopped",
 };

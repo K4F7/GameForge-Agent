@@ -149,6 +149,28 @@ describe("TaskInbox", () => {
       .toMatchObject({ outcome: "accepted", task: { status: "in-progress" } });
   });
 
+  it.each(["completed", "failed", "canceled", "conflicted"] as const)(
+    "requires the transport Run to finish before accepting a %s Task transition",
+    (status) => {
+      const runs = new RunStore();
+      const inbox = new TaskInbox(runs);
+      const taskId = inbox.create({
+        runId: `run-terminal-order-${status}`,
+        prompt: "Create a browser game with consistent terminal authority.",
+        language: "en-US",
+      }).task.taskId;
+      inbox.claim(taskId, { agentId: "codearts" });
+      inbox.transition(taskId, { status: "in-progress", agentId: "codearts" });
+      const transition = transitionTo(status, "codearts");
+
+      expect(inbox.transition(taskId, transition))
+        .toMatchObject({ outcome: "rejected", code: "run-state-mismatch", task: { status: "in-progress" } });
+      prepareRunForTransition(inbox, taskId, status);
+      expect(inbox.transition(taskId, transition))
+        .toMatchObject({ outcome: "accepted", task: { status } });
+    },
+  );
+
   it("accepts only the conservative public Task transition matrix", () => {
     const statuses = [
       "queued",
@@ -183,6 +205,7 @@ describe("TaskInbox", () => {
       for (const to of statuses) {
         sequence += 1;
         const { inbox, taskId } = taskAt(from, sequence);
+        if (accepted.has(`${from}>${to}`)) prepareRunForTransition(inbox, taskId, to);
         const outcome = from === "queued" && to === "claimed"
           ? (inbox.claim(taskId, { agentId: "matrix-agent" }), "accepted")
           : inbox.transition(taskId, transitionTo(to, "source-agent")).outcome;
@@ -224,6 +247,7 @@ function taskAt(status: GameTask["status"], sequence: number): { inbox: TaskInbo
     return { inbox, taskId };
   }
   if (status === "canceled") {
+    inbox.finishRun(`run-matrix-${sequence}`, "run.stopped");
     inbox.transition(taskId, transitionTo("canceled"));
     return { inbox, taskId };
   }
@@ -231,8 +255,32 @@ function taskAt(status: GameTask["status"], sequence: number): { inbox: TaskInbo
   if (status === "claimed") return { inbox, taskId };
   inbox.transition(taskId, transitionTo("in-progress", "source-agent"));
   if (status === "in-progress") return { inbox, taskId };
+  prepareRunForTransition(inbox, taskId, status);
   inbox.transition(taskId, transitionTo(status, "source-agent"));
   return { inbox, taskId };
+}
+
+function prepareRunForTransition(inbox: TaskInbox, taskId: string, status: GameTask["status"]): void {
+  const runId = inbox.get(taskId).runId;
+  if (status === "completed") {
+    inbox.finishRun(runId, "run.completed");
+  } else if (status === "canceled" || status === "conflicted") {
+    inbox.finishRun(runId, "run.stopped");
+  } else if (status === "failed") {
+    inbox.appendRun(runId, {
+      runId,
+      after: 1,
+      events: [{
+        type: "phase.failed",
+        runId,
+        sequence: 2,
+        emittedAt: "2026-07-16T08:00:00Z",
+        phase: "build",
+        message: "Build failed terminally.",
+        repairable: false,
+      }],
+    });
+  }
 }
 
 function transitionTo(status: GameTask["status"], agentId?: string): Record<string, unknown> {

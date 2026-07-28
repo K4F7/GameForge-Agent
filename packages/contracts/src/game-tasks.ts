@@ -119,7 +119,7 @@ export const gameTaskTransitionResultSchema = z.discriminatedUnion("outcome", [
   z.strictObject({
     schemaVersion: z.literal("1.0"),
     outcome: z.literal("rejected"),
-    code: z.enum(["illegal-transition", "reason-code-mismatch", "claimant-mismatch"]),
+    code: z.enum(["illegal-transition", "reason-code-mismatch", "claimant-mismatch", "run-state-mismatch"]),
     task: gameTaskSchema,
   }),
   z.strictObject({

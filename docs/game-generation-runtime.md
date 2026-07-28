@@ -181,7 +181,7 @@ Workbench 不依赖原生 `EventSource` 用旧 URL 盲目重连。SSE `error` �
 - `list_game_tasks`：读取一次有界任务快照，不轮询；
 - `get_game_task`：按 Task ID 读取权威 Prompt 与 Run ID；
 - `claim_game_task`：以 CodeArts agent ID 原子认领，冲突时返回稳定错误码。
-- `transition_game_task`：显式推进 Authority 生命周期；认领后的调用必须携带 claimant agent ID，需分类的状态使用版本化 reasonCode。
+- `transition_game_task`：显式推进 Authority 生命周期；认领后的调用必须携带 claimant agent ID，需分类的状态使用版本化 reasonCode。Task 进入终态前，关联 Run 必须已进入对应终态：completed 对应 succeeded、failed 对应 failed、canceled/conflicted 对应 stopped。
 
 这些工具只做状态协调。`create_game_task` 复用 Relay 的严格请求 Schema 与单次 HTTP 创建，不生成 Prompt、不选择项目、不自动重试；它的 MCP annotations 标记 `readOnlyHint: false`、`destructiveHint: false`、`idempotentHint: true`、`openWorldHint: false`。这些字段只是客户端提示，不能替代 `ask` 权限。CodeArts 认领 Task 后先从 `after: 0` 回放，以恢复已存在的结构化产物和权威 sequence；若恰好返回 1000 项，由 CodeArts 决定是否用最后 sequence 读取下一页。游标冲突时同样只读取一次当前页，再决定如何继续。工具不等待新事件、不自动重试。何时创建、读取、选择哪个任务、如何生成与修复仍由 CodeArts 决定。
 

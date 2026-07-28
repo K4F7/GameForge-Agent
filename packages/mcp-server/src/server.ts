@@ -428,7 +428,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       {
         title: "Transition one game build task",
         description:
-          "Apply one explicit Authority Task transition with its versioned reason code when required. The tool never retries or infers lifecycle state from messages.",
+          "Apply one explicit Authority Task transition with its versioned reason code when required. Terminal Task transitions require the linked Run to already have the corresponding terminal status. The tool never retries or infers lifecycle state from messages.",
         inputSchema: { taskId: gameTaskIdSchema, ...gameTaskTransitionRequestSchema.shape },
       },
       async ({ taskId, status, reasonCode, agentId }) => transitionGameTaskTool(taskRelayClient, taskId, {
