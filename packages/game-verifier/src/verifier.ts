@@ -1,4 +1,10 @@
-import { attemptIdSchema, candidateContentManifestSchema, projectIdSchema, revisionIdSchema } from "@gameforge/contracts";
+import {
+  attemptIdSchema,
+  candidateContentManifestSchema,
+  projectIdSchema,
+  revisionIdSchema,
+  taskAcceptanceContractSchema,
+} from "@gameforge/contracts";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { access, lstat, mkdir, readFile, readdir, realpath } from "node:fs/promises";
@@ -45,10 +51,12 @@ export const verifyGameRequestSchema = z.strictObject({
   actions: z.array(verificationActionSchema).max(100).default([]),
   scenario: verificationScenarioSchema.optional(),
   expectedOutcome: z.enum(["running", "won", "lost"]).optional(),
+  acceptanceContract: taskAcceptanceContractSchema.optional(),
   timeoutMs: z.number().int().min(1_000).max(120_000).default(30_000),
 });
 
 const verificationStateSchema = z.strictObject({
+  schemaVersion: z.literal(1).optional(),
   status: z.enum(["running", "won", "lost"]),
   score: z.number().int().nonnegative(),
   lives: z.number().int(),
@@ -80,6 +88,18 @@ export type VerificationReport = {
   failedRequests: ReadonlyArray<string>;
   actionsExecuted: number;
   durationMs: number;
+  criteria?: ReadonlyArray<VerificationCriterionResult>;
+};
+
+export type VerificationCriterionResult = {
+  criterionId: string;
+  passed: boolean;
+  proof: {
+    kind: "browser-action" | "public-telemetry" | "dom-output" | "screenshot" | "human-review";
+    value?: unknown;
+    evidencePath?: string;
+    detail?: string;
+  };
 };
 
 export type VerificationSession = {
@@ -91,6 +111,7 @@ export type VerificationSession = {
   perform(action: VerificationAction): Promise<void>;
   readState(): Promise<unknown>;
   readCanvas(): Promise<{ width: number; height: number } | null>;
+  readDom?(selector: string): Promise<string | null>;
   screenshot(target: string): Promise<void>;
   close(): Promise<void>;
 };
@@ -169,13 +190,21 @@ export class GameVerifier {
         await withTimeout(session.perform(action), remaining("actions"), "Verifier actions exceeded the total timeout.");
       }
       const state = verificationStateSchema.parse(await withTimeout(session.readState(), remaining("state read"), "Verifier state read timed out."));
+      if (state.schemaVersion !== 1) throw new Error("Generated game must expose versioned public verification state.");
       const canvas = await withTimeout(session.readCanvas(), remaining("canvas read"), "Verifier canvas read timed out.");
       if (canvas === null || canvas.width < 1 || canvas.height < 1) {
         throw new Error("Generated game did not expose a visible canvas.");
       }
       await withTimeout(session.screenshot(screenshotPath), remaining("screenshot"), "Verifier screenshot timed out.");
+      const criteria = await evaluateCriteria(input.acceptanceContract, {
+        actions,
+        state,
+        screenshotPath,
+        session,
+        remaining,
+      });
       const passed = consoleErrors.length === 0 && pageErrors.length === 0 && failedRequests.length === 0 &&
-        (expectedOutcome === undefined || state.status === expectedOutcome);
+        (expectedOutcome === undefined || state.status === expectedOutcome) && criteria.every((criterion) => criterion.passed);
       return {
         projectId: input.projectId,
         passed,
@@ -188,6 +217,7 @@ export class GameVerifier {
         failedRequests,
         actionsExecuted: actions.length,
         durationMs: Date.now() - startedAt,
+        criteria,
       };
     } catch (error) {
       throw new Error(verificationFailureMessage(error, { consoleErrors, pageErrors, failedRequests }));
@@ -384,6 +414,10 @@ class PlaywrightSession implements VerificationSession {
     });
   }
 
+  readDom(selector: string): Promise<string | null> {
+    return this.#page.locator(selector).first().textContent();
+  }
+
   async screenshot(target: string): Promise<void> {
     await this.#page.screenshot({ path: target, type: "png", fullPage: true });
   }
@@ -391,6 +425,63 @@ class PlaywrightSession implements VerificationSession {
   async close(): Promise<void> {
     await this.#browser.close();
   }
+}
+
+type CriterionContext = {
+  actions: ReadonlyArray<VerificationAction>;
+  state: VerificationState;
+  screenshotPath: string;
+  session: VerificationSession;
+  remaining(stage: string): number;
+};
+
+async function evaluateCriteria(
+  contract: z.infer<typeof taskAcceptanceContractSchema> | undefined,
+  context: CriterionContext,
+): Promise<ReadonlyArray<VerificationCriterionResult>> {
+  if (contract === undefined) return [];
+  return Promise.all(contract.criteria.map(async (criterion) => {
+    const verification = criterion.verification;
+    if (verification.kind === "browser-action") {
+      const passed = context.actions.some((action) => describeAction(action) === verification.action.trim());
+      return { criterionId: criterion.criterionId, passed, proof: { kind: verification.kind, value: passed ? verification.action : undefined, detail: passed ? "Action executed." : "Required action was not executed." } };
+    }
+    if (verification.kind === "public-telemetry") {
+      const value = readPublicPath(context.state, verification.path);
+      const passed = value !== undefined && String(value) === criterion.expected;
+      return { criterionId: criterion.criterionId, passed, proof: { kind: verification.kind, value, detail: passed ? "Public telemetry matched expected value." : "Public telemetry did not match expected value." } };
+    }
+    if (verification.kind === "dom-output") {
+      if (!/^\[(?:data-|aria-)|^#gameforge-|^\.gameforge-/.test(verification.selector)) {
+        return { criterionId: criterion.criterionId, passed: false, proof: { kind: verification.kind, detail: "DOM selector is outside the public output seam." } };
+      }
+      if (context.session.readDom === undefined) return { criterionId: criterion.criterionId, passed: false, proof: { kind: verification.kind, detail: "Session does not expose the public DOM seam." } };
+      const value = await withTimeout(context.session.readDom(verification.selector), context.remaining("criterion DOM read"), "Verifier criterion DOM read timed out.");
+      const passed = value !== null && value.includes(criterion.expected);
+      return { criterionId: criterion.criterionId, passed, proof: { kind: verification.kind, value, detail: passed ? "DOM output matched expected text." : "DOM output did not match expected text." } };
+    }
+    if (verification.kind === "screenshot") {
+      return { criterionId: criterion.criterionId, passed: true, proof: { kind: verification.kind, evidencePath: `.gameforge/verification/${path.basename(context.screenshotPath)}`, detail: `Checkpoint captured: ${verification.checkpoint}` } };
+    }
+    return { criterionId: criterion.criterionId, passed: false, proof: { kind: verification.kind, detail: "Human review is required." } };
+  }));
+}
+
+function describeAction(action: VerificationAction): string {
+  if (action.type === "press") return `press ${action.key}`;
+  if (action.type === "hold") return `hold ${action.key} ${action.durationMs}ms`;
+  if (action.type === "click") return `click ${action.x},${action.y}`;
+  return `wait ${action.durationMs}ms`;
+}
+
+function readPublicPath(value: unknown, input: string): unknown {
+  const pathParts = input.replace(/^\$\.?/, "").split(".").filter(Boolean);
+  let current: unknown = value;
+  for (const part of pathParts) {
+    if (typeof current !== "object" || current === null || !Object.prototype.hasOwnProperty.call(current, part)) return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
 }
 
 async function closeVite(server: ViteDevServer): Promise<void> {

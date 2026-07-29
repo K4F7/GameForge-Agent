@@ -33,6 +33,7 @@ class FakeSession implements VerificationSession {
   pageErrorListener: (message: string) => void = () => undefined;
   requestFailedListener: (message: string) => void = () => undefined;
   state: unknown = {
+    schemaVersion: 1,
     status: "won",
     score: 5,
     lives: 3,
@@ -53,6 +54,7 @@ class FakeSession implements VerificationSession {
   async perform(action: VerificationAction): Promise<void> { this.actions.push(action); }
   async readState(): Promise<unknown> { return this.state; }
   async readCanvas(): Promise<{ width: number; height: number } | null> { return this.canvas; }
+  async readDom(selector: string): Promise<string | null> { return selector === "[data-status]" ? "Victory achieved" : null; }
   async screenshot(): Promise<void> { return undefined; }
   async close(): Promise<void> { this.closed = true; }
 }
@@ -203,6 +205,62 @@ describe("GameVerifier", () => {
     expect(runtime.serverClosed).toBe(true);
   });
 
+  it("reports independent proof for each task acceptance criterion", async () => {
+    const { verifier } = await fixture();
+    const result = await verifier.verify({
+      projectId: "safety-sprint",
+      actions: [{ type: "press", key: "Space" }],
+      expectedOutcome: "won",
+      acceptanceContract: {
+        schemaVersion: "1.0",
+        contractVersion: 1,
+        fingerprint: "a".repeat(64),
+        criteria: [
+          {
+            criterionId: "press-space",
+            sourceRequirement: "Press Space to activate the objective.",
+            expected: "press Space",
+            verification: { kind: "browser-action", action: "press Space" },
+          },
+          {
+            criterionId: "game-won",
+            sourceRequirement: "The game reports a win.",
+            expected: "won",
+            verification: { kind: "public-telemetry", path: "$.status" },
+          },
+        ],
+      },
+    });
+    expect(result.passed).toBe(true);
+    expect(result.criteria).toEqual([
+      expect.objectContaining({ criterionId: "press-space", passed: true }),
+      expect.objectContaining({ criterionId: "game-won", passed: true }),
+    ]);
+  });
+
+  it("evaluates DOM, screenshot, and human-review criteria without private game access", async () => {
+    const { verifier } = await fixture();
+    const result = await verifier.verify({
+      projectId: "safety-sprint",
+      acceptanceContract: {
+        schemaVersion: "1.0",
+        contractVersion: 1,
+        fingerprint: "b".repeat(64),
+        criteria: [
+          { criterionId: "dom-status", sourceRequirement: "Show the victory status.", expected: "Victory", verification: { kind: "dom-output", selector: "[data-status]" } },
+          { criterionId: "visual-checkpoint", sourceRequirement: "Capture the completed board.", expected: "completed board", verification: { kind: "screenshot", checkpoint: "completed-board" } },
+          { criterionId: "human-art-review", sourceRequirement: "Review the completed appearance.", expected: "review", verification: { kind: "human-review", prompt: "Review the completed appearance." } },
+        ],
+      },
+    });
+    expect(result.criteria).toEqual([
+      expect.objectContaining({ criterionId: "dom-status", passed: true, proof: expect.objectContaining({ kind: "dom-output" }) }),
+      expect.objectContaining({ criterionId: "visual-checkpoint", passed: true, proof: expect.objectContaining({ kind: "screenshot" }) }),
+      expect.objectContaining({ criterionId: "human-art-review", passed: false, proof: expect.objectContaining({ kind: "human-review" }) }),
+    ]);
+    expect(result.passed).toBe(false);
+  });
+
   it("supports concurrent first verification of the same project", async () => {
     const { verifier } = await fixture();
 
@@ -243,7 +301,7 @@ describe("GameVerifier", () => {
 
   it("fails the report on browser diagnostics or outcome mismatch", async () => {
     const { runtime, verifier } = await fixture();
-    runtime.session.state = { status: "running", score: 0, lives: 3, remainingSeconds: 90 };
+    runtime.session.state = { schemaVersion: 1, status: "running", score: 0, lives: 3, remainingSeconds: 90 };
     const originalWait = runtime.session.waitUntilReady.bind(runtime.session);
     runtime.session.waitUntilReady = async (timeoutMs: number) => {
       await originalWait(timeoutMs);

@@ -50,6 +50,7 @@ const ui = locale === "en-US" ? {
 type RuntimeAssetRole = "player" | "collectible" | "hazard" | "background" | "collect-sound" | "hit-sound" | "voice" | "bgm";
 type RuntimeAsset = { role: RuntimeAssetRole; path: string; mimeType: string };
 type VerificationState = {
+  schemaVersion: 1;
   status: "running" | "won" | "lost";
   score: number;
   lives: number;
@@ -99,6 +100,7 @@ const hazardCount = spec.gameplay?.hazardCount ?? (spec.genre === "platformer" ?
 const startingLives = spec.gameplay?.startingLives ?? 3;
 const movementSpeed = spec.gameplay?.movementSpeed ?? (spec.genre === "strategy" ? 150 : spec.genre === "platformer" ? 210 : 220);
 window.__GAMEFORGE_TEST__ = {
+  schemaVersion: 1,
   status: "running",
   score: 0,
   lives: startingLives,
