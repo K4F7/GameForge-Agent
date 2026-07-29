@@ -253,6 +253,7 @@ function completeEvents(): WireRunEvent[] {
     lives: 3,
     remainingSeconds: 12,
     evidencePath: ".gameforge/verification/capture.png",
+    evidenceSha256: "e".repeat(64),
     canvas: { width: 960, height: 540 },
     diagnostics: { consoleErrors: 0, pageErrors: 0, failedRequests: 0 },
     actionsExecuted: 6,

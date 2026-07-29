@@ -112,10 +112,11 @@ describe("RelayAuthorityDriver", () => {
     });
     await client.transitionTask(created.task.taskId, { status: "in-progress", agentId: "codearts" });
     await client.completeRun(created.task.runId);
-    await client.transitionTask(created.task.taskId, { status: "completed", agentId: "codearts" });
+    await expect(client.transitionTask(created.task.taskId, { status: "completed", agentId: "codearts" }))
+      .resolves.toMatchObject({ outcome: "rejected", code: "missing-passed-attempt" });
 
     const authority = new RelayAuthorityDriver({ baseUrl, taskId: created.task.taskId, runId: created.task.runId, projectId: "pagination-game" });
-    await expect(authority.snapshot()).resolves.toMatchObject({ taskStatus: "completed", runStatus: "completed", eventSequence: 1_002, lastEventType: "run.completed" });
+    await expect(authority.snapshot()).resolves.toMatchObject({ taskStatus: "in-progress", runStatus: "completed", eventSequence: 1_002, lastEventType: "run.completed" });
   });
 
   it("does not regress when concurrent snapshots receive event pages out of order", async () => {

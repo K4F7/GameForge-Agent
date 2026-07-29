@@ -130,6 +130,7 @@ export const gameTaskTransitionResultSchema = z.discriminatedUnion("outcome", [
       "claimant-mismatch",
       "run-state-mismatch",
       "missing-acceptance-contract",
+      "missing-passed-attempt",
     ]),
     task: gameTaskSchema,
   }),

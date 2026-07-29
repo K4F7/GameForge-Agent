@@ -172,6 +172,8 @@ describe("run event contracts", () => {
       runId: "run-1",
       sequence: 4,
       emittedAt,
+      attemptId: "attempt-11111111-1111-4111-8111-111111111111",
+      revisionId: "revision-22222222-2222-4222-8222-222222222222",
       mode: "apply",
       operation: "update",
       plan: {
@@ -190,6 +192,15 @@ describe("run event contracts", () => {
         deletedPaths: [],
         conflicts: [],
       },
+      candidate: {
+        schemaVersion: 1,
+        projectId: "safety-sprint",
+        attemptId: "attempt-11111111-1111-4111-8111-111111111111",
+        revisionId: "revision-22222222-2222-4222-8222-222222222222",
+        totalBytes: 128,
+        aggregateSha256: "e".repeat(64),
+        files: [{ path: "src/main.ts", bytes: 128, sha256: "c".repeat(64) }],
+      },
     } as const;
     expect(runEventSchema.safeParse(generationEvent).success).toBe(true);
     expect(runEventSchema.safeParse({ ...generationEvent, outputPath: "D:/generated/safety-sprint" }).success).toBe(false);
@@ -199,6 +210,8 @@ describe("run event contracts", () => {
       runId: "run-1",
       sequence: 5,
       emittedAt,
+      attemptId: "attempt-11111111-1111-4111-8111-111111111111",
+      auditDigest: "a".repeat(64),
       truncated: false,
       totalCalls: 2,
       calls: [
@@ -207,6 +220,7 @@ describe("run event contracts", () => {
       ],
     } as const;
     expect(runEventSchema.safeParse(auditEvent).success).toBe(true);
+    expect(runEventSchema.safeParse({ ...auditEvent, auditDigest: "invalid" }).success).toBe(false);
     expect(runEventSchema.safeParse({ ...auditEvent, sessionId: "00000000-0000-0000-0000-000000000000" }).success).toBe(false);
     expect(runEventSchema.safeParse({ ...auditEvent, calls: [{ ...auditEvent.calls[0], arguments: { secret: true } }] }).success).toBe(false);
   });
@@ -248,22 +262,88 @@ describe("run event contracts", () => {
       lives: 2,
       remainingSeconds: 31.5,
       evidencePath: ".gameforge/verification/proof-1.png",
+      evidenceSha256: "e".repeat(64),
       canvas: { width: 960, height: 540 },
       diagnostics: { consoleErrors: 0, pageErrors: 0, failedRequests: 0 },
       actionsExecuted: 12,
       durationMs: 2_500,
+      actions: ["press ArrowRight"],
+      diagnosticMessages: [],
+      evidencePaths: [".gameforge/verification/proof-1.png"],
+      attemptId: "attempt-11111111-1111-4111-8111-111111111111",
+      revisionId: "revision-22222222-2222-4222-8222-222222222222",
+      criteria: [{ criterionId: "goal", passed: true }],
     } as const;
     expect(runEventSchema.safeParse(event).success).toBe(true);
     expect(runEventSchema.safeParse({
       ...event,
       evidencePath: "D:/projects/safety-sprint/.gameforge/verification/proof.png",
     }).success).toBe(false);
+    expect(runEventSchema.safeParse({ ...event, evidenceSha256: "invalid" }).success).toBe(false);
+  });
+
+  it("rejects duplicate verification criterion IDs", () => {
+    const result = runEventSchema.safeParse({
+      type: "verification.ready",
+      runId: "run-1",
+      sequence: 4,
+      emittedAt,
+      projectId: "safety-sprint",
+      passed: true,
+      outcome: "won",
+      score: 5,
+      lives: 2,
+      remainingSeconds: 31.5,
+      evidencePath: ".gameforge/verification/proof-1.png",
+      evidenceSha256: "e".repeat(64),
+      canvas: { width: 960, height: 540 },
+      diagnostics: { consoleErrors: 0, pageErrors: 0, failedRequests: 0 },
+      actionsExecuted: 12,
+      durationMs: 2_500,
+      criteria: [
+        { criterionId: "goal", passed: true },
+        { criterionId: "goal", passed: false },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects successful verification events that report diagnostic failures", () => {
+    const successful = {
+      type: "verification.ready",
+      runId: "run-1",
+      sequence: 4,
+      emittedAt,
+      projectId: "safety-sprint",
+      passed: true,
+      outcome: "won",
+      score: 5,
+      lives: 2,
+      remainingSeconds: 31.5,
+      evidencePath: ".gameforge/verification/proof-1.png",
+      evidenceSha256: "e".repeat(64),
+      canvas: { width: 960, height: 540 },
+      diagnostics: { consoleErrors: 0, pageErrors: 0, failedRequests: 0 },
+      actionsExecuted: 12,
+      durationMs: 2_500,
+      diagnosticMessages: [],
+    } as const;
+
+    expect(runEventSchema.safeParse({
+      ...successful,
+      diagnostics: { ...successful.diagnostics, consoleErrors: 1 },
+    }).success).toBe(false);
+    expect(runEventSchema.safeParse({
+      ...successful,
+      diagnosticMessages: ["console exploded"],
+    }).success).toBe(false);
   });
 
   it("does not expose retired platform-only event variants", () => {
-    const eventTypes = runEventSchema.options.map((schema) => schema.shape.type.value);
-    expect(eventTypes).not.toContain("build.ready");
-    expect(eventTypes).not.toContain("gameplay.verified");
+    for (const type of ["build.ready", "gameplay.verified"]) {
+      expect(runEventSchema.safeParse({ type, runId: "run-1", sequence: 2, emittedAt }).success).toBe(false);
+    }
   });
 
   it("accepts a secret-free MCP capability snapshot event", () => {

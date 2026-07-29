@@ -1,10 +1,13 @@
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { gameTaskIdSchema } from "./game-tasks.js";
+import { attemptIdSchema } from "./project-identifiers.js";
 import { runIdSchema } from "./run-events.js";
 
 export const mcpToolAuditContextSchema = z.strictObject({
   taskId: gameTaskIdSchema,
   runId: runIdSchema,
+  attemptId: attemptIdSchema.optional(),
   boundAt: z.string().datetime({ offset: true }),
 });
 
@@ -35,3 +38,8 @@ export const mcpToolAuditSchema = z.strictObject({
 export type McpToolAudit = z.infer<typeof mcpToolAuditSchema>;
 export type McpToolAuditCall = z.infer<typeof mcpToolAuditCallSchema>;
 export type McpToolAuditContext = z.infer<typeof mcpToolAuditContextSchema>;
+
+export function mcpToolAuditDigest(input: McpToolAudit): string {
+  const audit = mcpToolAuditSchema.parse(input);
+  return createHash("sha256").update(JSON.stringify(audit), "utf8").digest("hex");
+}

@@ -3,10 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": "./dist/budget.js",
+  "types": "./dist/budget.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit",
     "test": "vitest run src"
+  },
+  "dependencies": {
+    "@gameforge/contracts": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "22.20.1",

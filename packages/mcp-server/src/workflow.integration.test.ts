@@ -1,17 +1,27 @@
 import {
   createGameTaskResponseSchema,
+  attemptSchema,
+  evidenceSealResultSchema,
+  mcpToolAuditDigest,
+  projectSchema,
   runEventBatchSchema,
   runtimeAssetManifestSchema,
 } from "@gameforge/contracts";
 import { ProjectAssetStore } from "@gameforge/asset-store";
-import { GamePreviewManager } from "@gameforge/game-verifier";
+import {
+  GamePreviewManager,
+  GameVerifier,
+  type VerificationAction,
+  type VerificationRuntime,
+  type VerificationSession,
+} from "@gameforge/game-verifier";
 import { GameProjectGenerator } from "@gameforge/generator";
 import { createRunRelayServer } from "@gameforge/run-relay";
 import { RunRelayClient } from "@gameforge/run-relay/client";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rename, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
@@ -109,6 +119,295 @@ describe("local CodeArts workflow boundary", () => {
         message: "Run relay operation failed.",
       });
       await expect(relayClient.listTasks({ limit: 20 })).resolves.toHaveLength(1);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("persists an incomplete Attempt through the real Relay and MCP Authority tools", async () => {
+    const relayBaseUrl = await startRelay();
+    const relayClient = new RunRelayClient({ baseUrl: relayBaseUrl });
+    const pair = InMemoryTransport.createLinkedPair();
+    const server = createServer({
+      runRelayClient: relayClient,
+      taskRelayClient: relayClient,
+      projectRelayClient: relayClient,
+    });
+    const client = new Client({ name: "codearts-attempt-evidence", version: "1.0.0" });
+    await server.connect(pair[1]);
+    await client.connect(pair[0]);
+    try {
+      const project = projectSchema.parse((await callJson(
+        client,
+        "create_game_project_record",
+        {},
+      ) as { project: unknown }).project);
+      const prompt = "Create a Web game with a publicly observable winning state.";
+      const created = createGameTaskResponseSchema.parse(await callJson(client, "create_game_task", {
+        runId: "run-codearts-attempt-evidence",
+        prompt,
+        language: "en-US",
+        projectId: project.projectId,
+      }));
+      await callJson(client, "freeze_task_acceptance_contract", taskAcceptanceInput(created.task.taskId));
+      await callJson(client, "claim_game_task", {
+        taskId: created.task.taskId,
+        agentId: "codearts",
+      });
+      const attempt = attemptSchema.parse((await callJson(client, "start_game_attempt", {
+        taskId: created.task.taskId,
+        projectId: project.projectId,
+      }) as { attempt: unknown }).attempt);
+
+      const submission = await client.callTool({ name: "submit_game_attempt_evidence", arguments: {
+        attemptId: attempt.attemptId,
+        taskId: attempt.taskId,
+        runId: created.task.runId,
+        projectId: attempt.projectId,
+        baseRevisionId: attempt.baseRevisionId ?? null,
+        revisionId: attempt.revisionId,
+        acceptanceContractFingerprint: attempt.acceptanceContractFingerprint,
+        request: {
+          normalized: prompt,
+          fingerprint: createHash("sha256").update(prompt, "utf8").digest("hex"),
+        },
+      } });
+      expect(submission.isError, JSON.stringify(submission.content)).not.toBe(true);
+      if (!Array.isArray(submission.content) || submission.content[0]?.type !== "text") {
+        throw new Error("Evidence submission did not return text content.");
+      }
+      const result = evidenceSealResultSchema.parse(JSON.parse(submission.content[0].text));
+      expect(result).toEqual({
+        status: "incomplete",
+        reasonCode: "evidence.missing-required-proof.v1",
+        attemptId: attempt.attemptId,
+      });
+      const stored = attemptSchema.parse((await callJson(client, "get_game_attempt", {
+        attemptId: attempt.attemptId,
+      }) as { attempt: unknown }).attempt);
+      expect(stored).toMatchObject({
+        attemptId: attempt.attemptId,
+        state: "incomplete",
+        incompleteReasonCode: "evidence.missing-required-proof.v1",
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("seals complete Evidence with criteria evaluated by the default production verification flow", async () => {
+    const relayBaseUrl = await startRelay();
+    const relayClient = new RunRelayClient({ baseUrl: relayBaseUrl });
+    const pair = InMemoryTransport.createLinkedPair();
+    const prompt = "Create a Web game with a publicly observable winning state.";
+    const temporaryRoot = await mkdtemp(path.join(tmpdir(), "gameforge-sealed-evidence-"));
+    temporaryRoots.push(temporaryRoot);
+    const projectsRoot = path.join(temporaryRoot, "projects");
+    const screenshotBytes = "authoritative screenshot bytes";
+    const screenshotSha256 = createHash("sha256").update(screenshotBytes).digest("hex");
+    const session: VerificationSession = {
+      onConsoleError() {},
+      onPageError() {},
+      onRequestFailed() {},
+      async goto() {},
+      async waitUntilReady() {},
+      async perform(_action: VerificationAction) {},
+      async readState() {
+        return { status: "won", score: 10, lives: 1, remainingSeconds: 5 };
+      },
+      async readCanvas() { return { width: 960, height: 540 }; },
+      async screenshot(target) { await writeFile(target, screenshotBytes); },
+      async close() {},
+    };
+    const runtime: VerificationRuntime = {
+      async startServer() {
+        return { url: "http://127.0.0.1:4173/", async close() {} };
+      },
+      async startSession() { return session; },
+    };
+    const audit = {
+      schemaVersion: 1 as const,
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      startedAt: "2026-07-30T00:00:00.000Z",
+      truncated: false,
+      context: undefined as undefined | {
+        taskId: string;
+        runId: string;
+        attemptId: string;
+        boundAt: string;
+      },
+      calls: [{
+        sequence: 1,
+        tool: "verify_game_project",
+        startedAt: "2026-07-30T00:00:01.000Z",
+        durationMs: 1,
+        outcome: "success" as const,
+      }],
+    };
+    const server = createServer({
+      runRelayClient: relayClient,
+      taskRelayClient: relayClient,
+      projectRelayClient: relayClient,
+      projectVerifier: new GameVerifier({ projectsRoot, runtime }),
+    });
+    const client = new Client({ name: "codearts-sealed-evidence", version: "1.0.0" });
+    await server.connect(pair[1]);
+    await client.connect(pair[0]);
+    try {
+      const project = projectSchema.parse((await callJson(client, "create_game_project_record", {}) as { project: unknown }).project);
+      const created = createGameTaskResponseSchema.parse(await callJson(client, "create_game_task", {
+        runId: "run-codearts-sealed-evidence",
+        prompt,
+        language: "en-US",
+        projectId: project.projectId,
+      }));
+      await callJson(client, "freeze_task_acceptance_contract", {
+        taskId: created.task.taskId,
+        contractVersion: 1,
+        criteria: [{
+          criterionId: "win-state",
+          sourceRequirement: "The player can win the generated game.",
+          expected: "The public game state reports won.",
+          verification: {
+            kind: "public-telemetry",
+            path: "game.status",
+            assertion: { schemaVersion: 1, comparator: "equals", value: "won" },
+          },
+        }],
+        requirementIssues: [],
+      });
+      await callJson(client, "claim_game_task", { taskId: created.task.taskId, agentId: "codearts" });
+      const attempt = attemptSchema.parse((await callJson(client, "start_game_attempt", {
+        taskId: created.task.taskId,
+        projectId: project.projectId,
+      }) as { attempt: unknown }).attempt);
+      const generated = await new GameProjectGenerator({ outputRoot: projectsRoot }).execute({
+        projectId: project.projectId,
+        spec: {
+          title: "Authority Proof",
+          genre: "arcade",
+          objective: "Reach the public winning state.",
+          controls: ["ArrowRight"],
+          winCondition: "Reach the goal.",
+          loseCondition: "Run out of time.",
+          targetDurationSeconds: 30,
+        },
+        mode: "apply",
+        attemptId: attempt.attemptId,
+        revisionId: attempt.revisionId,
+      });
+      if (generated.candidate === undefined) throw new Error("Generated candidate evidence is unavailable.");
+      audit.context = {
+        taskId: created.task.taskId,
+        runId: created.task.runId,
+        attemptId: attempt.attemptId,
+        boundAt: "2026-07-30T00:00:00.000Z",
+      };
+      await callJson(client, "publish_run_events", {
+        runId: created.task.runId,
+        after: 1,
+        events: [{
+          type: "project.generated",
+          runId: created.task.runId,
+          sequence: 2,
+          emittedAt: "2026-07-30T00:00:01.000Z",
+          attemptId: attempt.attemptId,
+          revisionId: attempt.revisionId,
+          mode: generated.mode,
+          operation: generated.operation,
+          plan: generated.plan,
+          candidate: generated.candidate,
+        }, {
+          type: "mcp.audit.ready",
+          runId: created.task.runId,
+          sequence: 3,
+          emittedAt: "2026-07-30T00:00:01.000Z",
+          attemptId: attempt.attemptId,
+          auditDigest: mcpToolAuditDigest(audit),
+          truncated: false,
+          totalCalls: 1,
+          calls: [{ sequence: 1, tool: "verify_game_project", durationMs: 1, outcome: "success" }],
+        }],
+      });
+      const verified = await callJson(client, "verify_game_project", {
+        projectId: project.projectId,
+        attemptId: attempt.attemptId,
+        revisionId: attempt.revisionId,
+        contractVersion: 1,
+        actions: [{ type: "press", key: "ArrowRight" }],
+        expectedOutcome: "won",
+      }) as {
+        verificationEvent: Record<string, unknown>;
+        build: Record<string, unknown>;
+        versions: Record<string, unknown>;
+        actions: string[];
+        evidencePath: string;
+        evidenceSha256: string;
+      };
+      expect(verified.verificationEvent).toMatchObject({
+        criteria: [{ criterionId: "win-state", passed: true }],
+      });
+      expect(verified.evidenceSha256).toBe(screenshotSha256);
+      await callJson(client, "publish_run_events", {
+        runId: created.task.runId,
+        after: 3,
+        events: [{
+          ...verified.verificationEvent,
+          runId: created.task.runId,
+          sequence: 4,
+          emittedAt: "2026-07-30T00:00:02.000Z",
+        }],
+      });
+      const authorityEvents = runEventBatchSchema.parse(await callJson(client, "replay_game_run", {
+        runId: created.task.runId,
+        after: 0,
+      })).events.map((event) => ({ attemptId: attempt.attemptId, event }));
+      const result = evidenceSealResultSchema.parse(await callJson(client, "submit_game_attempt_evidence", {
+        attemptId: attempt.attemptId,
+        taskId: created.task.taskId,
+        runId: created.task.runId,
+        projectId: project.projectId,
+        baseRevisionId: attempt.baseRevisionId ?? null,
+        revisionId: attempt.revisionId,
+        acceptanceContractFingerprint: attempt.acceptanceContractFingerprint,
+        criterionResults: [{ criterionId: "win-state", passed: true }],
+        request: {
+          normalized: prompt,
+          fingerprint: createHash("sha256").update(prompt, "utf8").digest("hex"),
+        },
+        codeArts: {
+          attemptId: attempt.attemptId,
+          target: "GLM",
+          clientVersion: "1.0.0",
+          durationMs: 1,
+          interventions: [],
+        },
+        mcpAudit: { attemptId: attempt.attemptId, ...audit },
+        artifacts: generated.candidate,
+        build: verified.build,
+        browserProof: {
+          attemptId: attempt.attemptId,
+          projectId: project.projectId,
+          revisionId: attempt.revisionId,
+          passed: true,
+          actions: verified.actions,
+          outcome: "won",
+          diagnostics: [],
+          screenshots: [verified.evidencePath],
+          screenshotSha256: verified.evidenceSha256,
+        },
+        authorityEvents,
+        versions: verified.versions,
+      }));
+      expect(result).toMatchObject({
+        status: "sealed",
+        evidence: {
+          attemptId: attempt.attemptId,
+          criterionResults: [{ criterionId: "win-state", passed: true }],
+        },
+      });
     } finally {
       await client.close();
       await server.close();
@@ -224,19 +523,19 @@ describe("local CodeArts workflow boundary", () => {
         jobHandle: recoveredJob?.type === "voice.job.updated" ? recoveredJob.jobHandle : "missing",
       })).resolves.toMatchObject({ jobHandle: recoveryJobHandle, status: "succeeded" });
       await callJson(secondClient, "complete_game_run", { runId: created.task.runId });
-      await callJson(secondClient, "transition_game_task", {
+      await expect(callJson(secondClient, "transition_game_task", {
         taskId: created.task.taskId,
         status: "completed",
         agentId: "codearts",
-      });
-      await expect(relayClient.getTask(created.task.taskId)).resolves.toMatchObject({ status: "completed" });
+      })).resolves.toMatchObject({ outcome: "rejected", code: "missing-passed-attempt" });
+      await expect(relayClient.getTask(created.task.taskId)).resolves.toMatchObject({ status: "in-progress" });
     } finally {
       await secondClient.close();
       await secondServer.close();
     }
   });
 
-  it("carries one GameForge task through claim, replay, generation, preview, and completion", async () => {
+  it("carries one GameForge task through verification and refuses completion without sealed Evidence", async () => {
     const relayBaseUrl = await startRelay();
     const projectsRoot = await mkdtemp(path.join(tmpdir(), "gameforge-workflow-"));
     temporaryRoots.push(projectsRoot);
@@ -325,6 +624,7 @@ describe("local CodeArts workflow boundary", () => {
             state: { status: "won", score: 5, lives: 2, remainingSeconds: 21 },
             screenshotPath: path.join(projectsRoot, request.projectId, ".gameforge", "verification", "proof.png"),
             evidencePath: ".gameforge/verification/proof.png",
+            evidenceSha256: "e".repeat(64),
             canvas: { width: 960, height: 540 },
             consoleErrors: [],
             pageErrors: [],
@@ -609,6 +909,7 @@ describe("local CodeArts workflow boundary", () => {
         passed: boolean;
         state: { status: "running" | "won" | "lost"; score: number; lives: number; remainingSeconds: number };
         evidencePath: string;
+        evidenceSha256: string;
         canvas: { width: number; height: number };
         consoleErrors: string[];
         pageErrors: string[];
@@ -631,6 +932,7 @@ describe("local CodeArts workflow boundary", () => {
           lives: verification.state.lives,
           remainingSeconds: verification.state.remainingSeconds,
           evidencePath: verification.evidencePath,
+          evidenceSha256: verification.evidenceSha256,
           canvas: verification.canvas,
           diagnostics: {
             consoleErrors: verification.consoleErrors.length,
@@ -648,11 +950,11 @@ describe("local CodeArts workflow boundary", () => {
         agentId: "codearts",
       });
       await callJson(mcpClient, "complete_game_run", { runId: "run-local-e2e" });
-      await callJson(mcpClient, "transition_game_task", {
+      await expect(callJson(mcpClient, "transition_game_task", {
         taskId: created.task.taskId,
         status: "completed",
         agentId: "codearts",
-      });
+      })).resolves.toMatchObject({ outcome: "rejected", code: "missing-passed-attempt" });
 
       const finalReplay = runEventBatchSchema.parse(await callJson(mcpClient, "replay_game_run", {
         runId: "run-local-e2e",
@@ -671,7 +973,7 @@ describe("local CodeArts workflow boundary", () => {
         "verification.ready",
         "run.completed",
       ]);
-      await expect(relayClient.getTask(created.task.taskId)).resolves.toMatchObject({ status: "completed" });
+      await expect(relayClient.getTask(created.task.taskId)).resolves.toMatchObject({ status: "in-progress" });
     } finally {
       await previewManager.closeAll();
       await mcpClient.close();

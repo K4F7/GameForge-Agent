@@ -22,10 +22,14 @@ const restored = persistence === undefined ? undefined : await persistence.load(
 const server = createRunRelayServer({
   ...(authToken === undefined ? {} : { authToken }),
   ...(allowedOrigins === undefined ? {} : { allowedOrigins }),
-  ...(restored === undefined ? {} : { store: restored.store, taskInbox: restored.taskInbox }),
+  ...(restored === undefined ? {} : {
+    store: restored.store,
+    taskInbox: restored.taskInbox,
+    projectAuthority: restored.projectAuthority,
+  }),
   ...(persistence === undefined || restored === undefined
     ? {}
-    : { persistState: () => persistence.save(restored.store, restored.taskInbox) }),
+    : { persistState: () => persistence.save(restored.store, restored.taskInbox, restored.projectAuthority) }),
 });
 server.listen(port, host, () => {
   process.stderr.write(`GameForge run relay listening on http://${host}:${port}\n`);

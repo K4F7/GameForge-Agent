@@ -36,6 +36,8 @@ export class TaskInbox {
   readonly #runStore: RunStore;
   readonly #runToTask = new Map<string, string>();
   readonly #tasks = new Map<string, GameTask>();
+  #runEventAppendGuard: ((batch: unknown) => void) | undefined;
+  #taskCompletionGuard: ((task: GameTask) => boolean) | undefined;
 
   constructor(runStore: RunStore, options: TaskInboxOptions = {}) {
     const maxTasks = options.maxTasks ?? 100;
@@ -103,6 +105,55 @@ export class TaskInbox {
 
   isAcceptanceFingerprintCurrent(taskIdInput: string, fingerprint: string): boolean {
     return this.acceptanceContract(taskIdInput)?.fingerprint === fingerprint;
+  }
+
+  authoritativeRunEvents(runId: string): ReadonlyArray<WireRunEvent> {
+    return this.#runStore.authoritativeEvents(runId);
+  }
+
+  registerRunEventAppendGuard(guard: (batch: unknown) => void): void {
+    if (this.#runEventAppendGuard !== undefined) {
+      throw new Error("Task inbox already has a Run event append guard.");
+    }
+    this.#runEventAppendGuard = guard;
+  }
+
+  registerTaskCompletionGuard(guard: (task: GameTask) => boolean): void {
+    if (this.#taskCompletionGuard !== undefined) {
+      throw new Error("Task inbox already has a Task completion guard.");
+    }
+    this.#taskCompletionGuard = guard;
+  }
+
+  prepareRetryRun(taskIdInput: string): string {
+    const taskId = gameTaskIdSchema.parse(taskIdInput);
+    const current = this.#tasks.get(taskId);
+    if (current === undefined) throw new TaskInboxError(404, "task_not_found", `Unknown task: ${taskId}`);
+    const participatesInOuterTransaction = this.#runStore.notificationsAreStaged();
+    const storeSnapshot = participatesInOuterTransaction ? undefined : this.#runStore.snapshot();
+    const taskSnapshot = participatesInOuterTransaction ? undefined : this.snapshot();
+    const notifications = participatesInOuterTransaction ? undefined : this.#runStore.stageNotifications();
+    const runId = `run-${randomUUID()}`;
+    try {
+      this.#runStore.create(runId, current.language);
+      const status = this.#runStore.status(current.runId);
+      if (status === "running" || status === "repair") {
+        this.#runStore.finish(current.runId, "run.stopped");
+      }
+      const task = gameTaskSchema.parse({ ...current, runId });
+      this.#tasks.set(taskId, task);
+      this.#runToTask.delete(current.runId);
+      this.#runToTask.set(runId, taskId);
+    } catch (error) {
+      notifications?.discard();
+      if (storeSnapshot !== undefined && taskSnapshot !== undefined) {
+        this.#runStore.replace(storeSnapshot);
+        this.replace(taskSnapshot);
+      }
+      throw error;
+    }
+    notifications?.commit();
+    return runId;
   }
 
   compileAcceptanceContract(
@@ -258,6 +309,14 @@ export class TaskInbox {
         task: clone(current),
       });
     }
+    if (request.data.status === "completed" && this.#taskCompletionGuard?.(clone(current)) === false) {
+      return gameTaskTransitionResultSchema.parse({
+        schemaVersion: "1.0",
+        outcome: "rejected",
+        code: "missing-passed-attempt",
+        task: clone(current),
+      });
+    }
     const candidate = gameTaskSchema.safeParse({
       ...current,
       status: request.data.status,
@@ -292,6 +351,7 @@ export class TaskInbox {
     if (current !== undefined && isUnclaimed(current.status)) {
       throw new TaskInboxError(409, "task_unclaimed", "A task must be claimed before events are published.");
     }
+    this.#runEventAppendGuard?.(batch);
     const events = this.#runStore.append(runId, batch);
     return events;
   }
@@ -321,6 +381,12 @@ export class TaskInbox {
       this.#tasks.set(task.taskId, clone(task));
       this.#runToTask.set(task.runId, task.taskId);
     }
+  }
+
+  replace(snapshot: TaskInboxSnapshot): void {
+    this.#tasks.clear();
+    this.#runToTask.clear();
+    this.restore(snapshot);
   }
 
 }

@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, open, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import {
+  attemptIdSchema,
   gameTaskIdSchema,
+  mcpToolAuditDigest,
   mcpToolAuditSchema,
   runIdSchema,
   type McpToolAudit,
@@ -26,11 +28,14 @@ export interface ToolAuditRecorder {
 }
 
 export interface ToolAuditContextBinder {
-  bindContext(taskId: string, runId: string): Promise<McpToolAuditContext>;
+  bindContext(taskId: string, runId: string, attemptId?: string): Promise<McpToolAuditContext>;
 }
 
 export type ToolAuditSummary = {
   runId: string;
+  attemptId: string;
+  audit: McpToolAudit;
+  auditDigest: string;
   truncated: boolean;
   totalCalls: number;
   calls: ReadonlyArray<Pick<McpToolAuditCall, "sequence" | "tool" | "durationMs" | "outcome">>;
@@ -42,11 +47,14 @@ export interface ToolAuditSummaryProvider {
 
 export class McpToolAuditRecorder implements ToolAuditRecorder, ToolAuditContextBinder, ToolAuditSummaryProvider {
   readonly #auditPath: string;
-  readonly #audit: McpToolAudit;
+  #audit: McpToolAudit;
   #nextSequence = 1;
   readonly #pending = new Map<number, McpToolAuditCall>();
+  readonly #activeSequences = new Set<string>();
+  readonly #tokenEpochs = new WeakMap<ToolAuditToken, string>();
   #queue: Promise<void> = Promise.resolve();
   #failed = false;
+  #finalized = false;
 
   private constructor(auditPath: string, audit: McpToolAudit) {
     this.#auditPath = auditPath;
@@ -84,16 +92,21 @@ export class McpToolAuditRecorder implements ToolAuditRecorder, ToolAuditContext
 
   begin(tool: string): ToolAuditToken {
     const validated = mcpToolAuditCallSchemaTool(tool);
-    return {
+    const token = {
       sequence: this.#nextSequence++,
       tool: validated,
       startedAt: new Date().toISOString(),
       monotonicStart: performance.now(),
     };
+    this.#tokenEpochs.set(token, this.#audit.sessionId);
+    if (!this.#finalized) this.#activeSequences.add(tokenKey(this.#audit.sessionId, token.sequence));
+    return token;
   }
 
   async finish(token: ToolAuditToken, outcome: "success" | "error"): Promise<void> {
-    if (this.#failed) return;
+    const tokenEpoch = this.#tokenEpochs.get(token);
+    if (tokenEpoch !== undefined) this.#activeSequences.delete(tokenKey(tokenEpoch, token.sequence));
+    if (this.#failed || this.#finalized || tokenEpoch !== this.#audit.sessionId) return;
     const call: McpToolAuditCall = {
       sequence: token.sequence,
       tool: token.tool,
@@ -121,20 +134,53 @@ export class McpToolAuditRecorder implements ToolAuditRecorder, ToolAuditContext
     await this.#queue;
   }
 
-  async bindContext(taskIdInput: string, runIdInput: string): Promise<McpToolAuditContext> {
+  async bindContext(taskIdInput: string, runIdInput: string, attemptIdInput?: string): Promise<McpToolAuditContext> {
     if (this.#failed) throw new Error("MCP tool audit is unavailable.");
     const taskId = gameTaskIdSchema.parse(taskIdInput);
     const runId = runIdSchema.parse(runIdInput);
+    const attemptId = attemptIdInput === undefined ? undefined : attemptIdSchema.parse(attemptIdInput);
     let conflict = false;
     let bound: McpToolAuditContext | undefined;
     this.#queue = this.#queue.then(async () => {
       const current = this.#audit.context;
       if (current !== undefined) {
-        if (current.taskId !== taskId || current.runId !== runId) conflict = true;
-        else bound = current;
+        const exactBinding = current.taskId === taskId && current.runId === runId &&
+          (attemptId === undefined || current.attemptId === undefined || current.attemptId === attemptId);
+        const retryEpoch = this.#finalized && this.#activeSequences.size === 0 &&
+          current.taskId === taskId && attemptId !== undefined && current.attemptId !== undefined &&
+          current.runId !== runId && current.attemptId !== attemptId;
+        if (retryEpoch) {
+          const boundAt = new Date().toISOString();
+          bound = { taskId, runId, attemptId, boundAt };
+          this.#audit = mcpToolAuditSchema.parse({
+            schemaVersion: 1,
+            sessionId: randomUUID(),
+            startedAt: boundAt,
+            truncated: false,
+            context: bound,
+            calls: [],
+          });
+          this.#nextSequence = 1;
+          this.#pending.clear();
+          this.#finalized = false;
+          await replaceAudit(this.#auditPath, this.#audit);
+        } else if (!exactBinding) {
+          conflict = true;
+        } else if (attemptId !== undefined && current.attemptId === undefined) {
+          current.attemptId = attemptId;
+          bound = current;
+          await replaceAudit(this.#auditPath, this.#audit);
+        } else {
+          bound = current;
+        }
         return;
       }
-      bound = { taskId, runId, boundAt: new Date().toISOString() };
+      bound = {
+        taskId,
+        runId,
+        ...(attemptId === undefined ? {} : { attemptId }),
+        boundAt: new Date().toISOString(),
+      };
       this.#audit.context = bound;
       await replaceAudit(this.#auditPath, this.#audit);
     }).catch(() => {
@@ -142,7 +188,7 @@ export class McpToolAuditRecorder implements ToolAuditRecorder, ToolAuditContext
       this.#failed = true;
     });
     await this.#queue;
-    if (conflict) throw new Error("MCP tool audit is already bound to another Task or Run.");
+    if (conflict) throw new Error("MCP tool audit is already bound to another Task, Run, or Attempt.");
     if (this.#failed || bound === undefined) throw new Error("MCP tool audit context could not be persisted.");
     return bound;
   }
@@ -150,15 +196,23 @@ export class McpToolAuditRecorder implements ToolAuditRecorder, ToolAuditContext
   async getSummary(): Promise<ToolAuditSummary> {
     await this.#queue;
     if (this.#failed) throw new Error("MCP tool audit is unavailable.");
-    if (this.#audit.context === undefined) throw new Error("MCP tool audit is not bound to a Task and Run.");
-    const calls = this.#audit.calls.slice(-200).map(({ sequence, tool, durationMs, outcome }) => ({
+    if (this.#audit.context?.attemptId === undefined) throw new Error("MCP tool audit is not bound to a Task, Run, and Attempt.");
+    if (this.#activeSequences.size > 1) {
+      throw new Error("MCP tool audit cannot finalize while another tool call is active.");
+    }
+    this.#finalized = true;
+    const calls = this.#audit.calls.slice(-10_000).map(({ sequence, tool, durationMs, outcome }) => ({
       sequence,
       tool,
       durationMs,
       outcome,
     }));
+    const audit = mcpToolAuditSchema.parse(structuredClone(this.#audit));
     return {
       runId: this.#audit.context.runId,
+      attemptId: this.#audit.context.attemptId,
+      audit,
+      auditDigest: mcpToolAuditDigest(audit),
       truncated: this.#audit.truncated || this.#audit.calls.length > calls.length,
       totalCalls: this.#audit.calls.length,
       calls,
@@ -168,6 +222,10 @@ export class McpToolAuditRecorder implements ToolAuditRecorder, ToolAuditContext
 
 function mcpToolAuditCallSchemaTool(tool: string): string {
   return mcpToolAuditSchema.shape.calls.element.shape.tool.parse(tool);
+}
+
+function tokenKey(epochId: string, sequence: number): string {
+  return `${epochId}:${sequence}`;
 }
 
 function validateAuditPath(value: string): string {

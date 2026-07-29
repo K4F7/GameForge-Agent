@@ -1,12 +1,16 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
+import {
+  bundleBudgetIssues,
+  type BundleLimits,
+  type BundleMetrics,
+} from "@gameforge/contracts";
 
 export type ManifestChunk = { file: string; isEntry?: boolean; imports?: string[]; dynamicImports?: string[]; css?: string[] };
 export type ViteManifest = Record<string, ManifestChunk>;
 export type Size = { raw: number; gzip: number };
-export type BundleMetrics = { initial: Size; async: Size; total: Size; files: Array<{ path: string; phase: "initial" | "async"; raw: number; gzip: number }> };
-export type BundleLimits = { initialRaw: number; initialGzip: number; asyncRaw: number; asyncGzip: number; totalRaw: number; totalGzip: number };
+export type { BundleLimits, BundleMetrics } from "@gameforge/contracts";
 
 export function classifyManifest(manifest: ViteManifest): Map<string, "initial" | "async"> {
   const phases = new Map<string, "initial" | "async">();
@@ -46,10 +50,5 @@ export async function measureBundle(dist: string, manifest: ViteManifest): Promi
 }
 
 export function budgetIssues(metrics: BundleMetrics, limits: BundleLimits): string[] {
-  const pairs: Array<[string, number, number]> = [
-    ["initial raw", metrics.initial.raw, limits.initialRaw], ["initial gzip", metrics.initial.gzip, limits.initialGzip],
-    ["async raw", metrics.async.raw, limits.asyncRaw], ["async gzip", metrics.async.gzip, limits.asyncGzip],
-    ["total raw", metrics.total.raw, limits.totalRaw], ["total gzip", metrics.total.gzip, limits.totalGzip],
-  ];
-  return pairs.filter(([, actual, limit]) => actual > limit).map(([name, actual, limit]) => `${name}: ${actual} > ${limit}`);
+  return bundleBudgetIssues(metrics, limits);
 }

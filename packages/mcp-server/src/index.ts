@@ -151,7 +151,7 @@ const server = createServer({
       }),
   ...(runRelayClient === undefined
     ? {}
-    : { runRelayClient, taskRelayClient: runRelayClient }),
+    : { runRelayClient, taskRelayClient: runRelayClient, projectRelayClient: runRelayClient }),
   ...(seedreamApiKey === undefined || seedreamApiKey.length === 0
     ? {}
     : {

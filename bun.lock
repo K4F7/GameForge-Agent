@@ -64,6 +64,9 @@
     "packages/bundle-budget": {
       "name": "@gameforge/bundle-budget",
       "version": "0.1.0",
+      "dependencies": {
+        "@gameforge/contracts": "0.1.0",
+      },
       "devDependencies": {
         "@types/node": "22.20.1",
         "typescript": "7.0.2",
@@ -85,6 +88,7 @@
       "name": "@gameforge/game-verifier",
       "version": "0.1.0",
       "dependencies": {
+        "@gameforge/bundle-budget": "0.1.0",
         "@gameforge/contracts": "*",
         "@gameforge/run-relay": "0.1.0",
         "phaser": "4.2.1",

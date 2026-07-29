@@ -8,6 +8,10 @@ import {
   gameTaskTransitionResultSchema,
   listGameTasksRequestSchema,
 } from "./game-tasks.js";
+import {
+  compileTaskAcceptanceContractInputSchema,
+  taskAcceptanceContractSchema,
+} from "./task-acceptance.js";
 
 describe("game task contracts", () => {
   it("normalizes a bounded Chinese task request", () => {
@@ -115,5 +119,25 @@ describe("game task contracts", () => {
       code: "illegal-transition",
       task,
     })).toMatchObject({ outcome: "rejected", task: { status: "retryable" } });
+  });
+
+  it("rejects duplicate criterion IDs in acceptance requests and frozen contracts", () => {
+    const criterion = {
+      criterionId: "win-game",
+      sourceRequirement: "Win the game.",
+      expected: "won",
+      verification: { kind: "public-telemetry" as const, path: "$.outcome" },
+    };
+
+    expect(compileTaskAcceptanceContractInputSchema.safeParse({
+      contractVersion: 1,
+      criteria: [criterion, criterion],
+    }).success).toBe(false);
+    expect(taskAcceptanceContractSchema.safeParse({
+      schemaVersion: "1.0",
+      contractVersion: 1,
+      criteria: [criterion, criterion],
+      fingerprint: "a".repeat(64),
+    }).success).toBe(false);
   });
 });
