@@ -32,6 +32,7 @@ async function fixture(lockRuntime?: AssetLockRuntime): Promise<{ root: string; 
     mode: "apply",
     attemptId: `attempt-${id}`,
     revisionId: `revision-${id}`,
+    acceptanceContractFingerprint: "a".repeat(64),
   });
   await rename(generated.outputPath!, path.join(root, "safety-sprint"));
   return { root, store: new ProjectAssetStore({ projectsRoot: root, ...(lockRuntime === undefined ? {} : { lockRuntime }) }) };

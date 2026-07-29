@@ -1,4 +1,10 @@
-import { attemptIdSchema, candidateContentManifestSchema, projectIdSchema, revisionIdSchema } from "@gameforge/contracts";
+import {
+  attemptIdSchema,
+  candidateContentManifestSchema,
+  projectIdSchema,
+  revisionIdSchema,
+  taskAcceptanceContractSchema,
+} from "@gameforge/contracts";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { access, lstat, mkdir, readFile, readdir, realpath } from "node:fs/promises";
@@ -45,10 +51,33 @@ export const verifyGameRequestSchema = z.strictObject({
   actions: z.array(verificationActionSchema).max(100).default([]),
   scenario: verificationScenarioSchema.optional(),
   expectedOutcome: z.enum(["running", "won", "lost"]).optional(),
+  acceptanceContract: taskAcceptanceContractSchema.optional(),
   timeoutMs: z.number().int().min(1_000).max(120_000).default(30_000),
+}).superRefine((request, context) => {
+  for (const [index, action] of request.actions.entries()) {
+    if (!isPublicPlayerAction(action)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["actions", index], message: "Only normal player input actions are allowed." });
+    }
+  }
+  if (request.acceptanceContract !== undefined) {
+    for (const [index, criterion] of request.acceptanceContract.criteria.entries()) {
+      const verification = criterion.verification;
+      if (verification.kind === "public-telemetry" && !isPublicTelemetryPath(verification.path)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["acceptanceContract", "criteria", index, "verification", "path"], message: "Telemetry path is outside the public verification state." });
+      }
+      if (verification.kind === "dom-output" && !isPublicDomSelector(verification.selector)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["acceptanceContract", "criteria", index, "verification", "selector"], message: "DOM selector is outside the public output seam." });
+      }
+      if (verification.kind === "browser-action" && !isPublicActionDescription(verification.action)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["acceptanceContract", "criteria", index, "verification", "action"], message: "Browser action is outside the normal player input seam." });
+      }
+    }
+  }
 });
 
+const publicStateScalarSchema = z.union([z.string().max(2_000), z.number().finite(), z.boolean(), z.null()]);
 const verificationStateSchema = z.strictObject({
+  schemaVersion: z.literal(1),
   status: z.enum(["running", "won", "lost"]),
   score: z.number().int().nonnegative(),
   lives: z.number().int(),
@@ -61,13 +90,41 @@ const verificationStateSchema = z.strictObject({
     boss: z.strictObject({ x: z.number().finite(), y: z.number().finite(), hp: z.number().finite(), maxHp: z.number().positive() }).optional(),
     exit: z.strictObject({ x: z.number().finite(), y: z.number().finite() }).optional(),
   }).optional(),
+}).catchall(publicStateScalarSchema).superRefine((state, context) => {
+  if (Object.keys(state).length > 32) {
+    context.addIssue({ code: "custom", message: "Public verification state has too many fields." });
+  }
+});
+const legacyVerificationStateSchema = z.strictObject({
+  schemaVersion: z.literal(1).optional(),
+  status: z.enum(["running", "won", "lost"]),
+  score: z.number().int().nonnegative(),
+  lives: z.number().int(),
+  remainingSeconds: z.number().nonnegative(),
+  detail: z.string().max(1_000).optional(),
+  telemetry: z.strictObject({
+    player: z.strictObject({ x: z.number().finite(), y: z.number().finite() }),
+    collectibles: z.array(z.strictObject({ x: z.number().finite(), y: z.number().finite() })).max(100),
+    hazards: z.array(z.strictObject({ x: z.number().finite(), y: z.number().finite() })).max(100),
+    boss: z.strictObject({ x: z.number().finite(), y: z.number().finite(), hp: z.number().finite(), maxHp: z.number().positive() }).optional(),
+    exit: z.strictObject({ x: z.number().finite(), y: z.number().finite() }).optional(),
+  }).optional(),
+}).catchall(publicStateScalarSchema).superRefine((state, context) => {
+  if (Object.keys(state).length > 32) {
+    context.addIssue({ code: "custom", message: "Public verification state has too many fields." });
+  }
 });
 
-const managedProjectSchema = z.object({ projectId: projectIdSchema });
+const managedProjectSchema = z.object({
+  projectId: projectIdSchema,
+  verificationStateSchemaVersion: z.literal(1).optional(),
+});
 
 export type VerificationAction = z.infer<typeof verificationActionSchema>;
 export type VerifyGameRequest = z.input<typeof verifyGameRequestSchema>;
-export type VerificationState = z.infer<typeof verificationStateSchema>;
+export type VerificationState = Omit<z.infer<typeof verificationStateSchema>, "schemaVersion"> & {
+  schemaVersion?: 1 | undefined;
+};
 export type VerificationReport = {
   projectId: string;
   passed: boolean;
@@ -80,6 +137,22 @@ export type VerificationReport = {
   failedRequests: ReadonlyArray<string>;
   actionsExecuted: number;
   durationMs: number;
+  criteria?: ReadonlyArray<VerificationCriterionResult>;
+  scenarioResults?: ReadonlyArray<Omit<VerificationReport, "scenarioResults"> & {
+    scenario: z.infer<typeof verificationScenarioSchema>;
+  }>;
+};
+
+export type VerificationCriterionResult = {
+  criterionId: string;
+  passed: boolean;
+  advisory?: boolean;
+  proof: {
+    kind: "browser-action" | "public-telemetry" | "dom-output" | "screenshot" | "human-review";
+    value?: unknown;
+    evidencePath?: string;
+    detail?: string;
+  };
 };
 
 export type VerificationSession = {
@@ -91,6 +164,7 @@ export type VerificationSession = {
   perform(action: VerificationAction): Promise<void>;
   readState(): Promise<unknown>;
   readCanvas(): Promise<{ width: number; height: number } | null>;
+  readDom?(selector: string): Promise<string | null>;
   screenshot(target: string): Promise<void>;
   close(): Promise<void>;
 };
@@ -119,14 +193,71 @@ export class GameVerifier {
   }
 
   async verify(request: VerifyGameRequest): Promise<VerificationReport> {
+    return this.#verifyRequest(request, false);
+  }
+
+  async #verifyRequest(request: VerifyGameRequest, internal: boolean, deadline?: number): Promise<VerificationReport> {
+    const callStartedAt = Date.now();
     const input = verifyGameRequestSchema.parse(request);
+    const requestDeadline = deadline ?? callStartedAt + input.timeoutMs;
     if ((input.attemptId === undefined) !== (input.revisionId === undefined)) {
       throw new Error("Verifier candidate selection requires both Attempt and Revision identity.");
     }
-    const startedAt = Date.now();
+    if (!internal && input.attemptId !== undefined) {
+      const candidatePath = await verifiedCandidateProject(this.#projectsRoot, input.projectId, input.attemptId, input.revisionId!);
+      if (input.acceptanceContract === undefined) {
+        throw new Error("Verifier candidate selection requires its frozen acceptance contract.");
+      }
+      const candidateManifest = candidateContentManifestSchema.parse(JSON.parse(
+        await readFile(path.join(candidatePath, ".gameforge", "candidate.json"), "utf8"),
+      ) as unknown);
+      const fingerprintSource = {
+        schemaVersion: input.acceptanceContract.schemaVersion,
+        contractVersion: input.acceptanceContract.contractVersion,
+        criteria: input.acceptanceContract.criteria,
+      };
+      const recomputedFingerprint = createHash("sha256")
+        .update(JSON.stringify(fingerprintSource), "utf8")
+        .digest("hex");
+      if (recomputedFingerprint !== input.acceptanceContract.fingerprint) {
+        throw new Error("Caller contract contents do not match its fingerprint.");
+      }
+      if (candidateManifest.acceptanceContractFingerprint !== input.acceptanceContract.fingerprint) {
+        throw new Error("Caller contract does not match the candidate acceptance fingerprint.");
+      }
+      try {
+        await readVerificationScenario(candidatePath, "won");
+        await readVerificationScenario(candidatePath, "lost");
+      } catch {
+        throw new Error("Verifier candidate must provide both won and lost scenarios through normal player input.");
+      }
+      const won = await this.#verifyRequest(
+        { ...input, actions: [], scenario: "won", expectedOutcome: "won" },
+        true,
+        requestDeadline,
+      );
+      const lost = await this.#verifyRequest(
+        { ...input, actions: [], scenario: "lost", expectedOutcome: "lost" },
+        true,
+        requestDeadline,
+      );
+      return {
+        ...won,
+        passed: won.passed && lost.passed,
+        actionsExecuted: won.actionsExecuted,
+        durationMs: Date.now() - callStartedAt,
+        criteria: [...(won.criteria ?? []), ...(lost.criteria ?? [])],
+        scenarioResults: [{ ...won, scenario: "won" }, { ...lost, scenario: "lost" }],
+      };
+    }
+    const startedAt = callStartedAt;
     const projectPath = input.attemptId === undefined
       ? await verifiedManagedProject(this.#projectsRoot, input.projectId)
       : await verifiedCandidateProject(this.#projectsRoot, input.projectId, input.attemptId, input.revisionId!);
+    const requiresVersionedState = input.attemptId !== undefined || await managedProjectUsesVersionedState(projectPath);
+    const parseState = (value: unknown): VerificationState => requiresVersionedState
+      ? verificationStateSchema.parse(value)
+      : verificationStateSchema.parse({ ...legacyVerificationStateSchema.parse(value), schemaVersion: 1 });
     if (input.scenario !== undefined && input.actions.length > 0) {
       throw new Error("Verifier scenario and inline actions are mutually exclusive.");
     }
@@ -140,7 +271,7 @@ export class GameVerifier {
     const pageErrors: string[] = [];
     const failedRequests: string[] = [];
     const remaining = (stage: string): number => {
-      const value = input.timeoutMs - (Date.now() - startedAt);
+      const value = requestDeadline - Date.now();
       if (value <= 0) throw new Error(`Verifier ${stage} exceeded the total timeout.`);
       return value;
     };
@@ -165,17 +296,36 @@ export class GameVerifier {
       session.onRequestFailed((message) => pushDiagnostic(failedRequests, message));
       await withTimeout(session.goto(server.url, remaining("navigation")), remaining("navigation"), "Verifier navigation timed out.");
       await withTimeout(session.waitUntilReady(remaining("readiness")), remaining("readiness"), "Verifier readiness timed out.");
+      const baselineState = parseState(await withTimeout(
+        session.readState(),
+        remaining("baseline state read"),
+        "Verifier baseline state read timed out.",
+      ));
+      const baselineDom = new Map<string, string | null>();
+      for (const selector of changedToDomSelectors(input.acceptanceContract)) {
+        baselineDom.set(selector, await readPublicDom(session, selector, remaining));
+      }
       for (const action of actions) {
         await withTimeout(session.perform(action), remaining("actions"), "Verifier actions exceeded the total timeout.");
       }
-      const state = verificationStateSchema.parse(await withTimeout(session.readState(), remaining("state read"), "Verifier state read timed out."));
+      const state = parseState(await withTimeout(session.readState(), remaining("state read"), "Verifier state read timed out."));
       const canvas = await withTimeout(session.readCanvas(), remaining("canvas read"), "Verifier canvas read timed out.");
       if (canvas === null || canvas.width < 1 || canvas.height < 1) {
         throw new Error("Generated game did not expose a visible canvas.");
       }
       await withTimeout(session.screenshot(screenshotPath), remaining("screenshot"), "Verifier screenshot timed out.");
+      const criteria = await evaluateCriteria(input.acceptanceContract, {
+        actions,
+        baselineState,
+        baselineDom,
+        state,
+        ...(input.scenario === undefined ? {} : { scenario: input.scenario }),
+        screenshotPath,
+        session,
+        remaining,
+      });
       const passed = consoleErrors.length === 0 && pageErrors.length === 0 && failedRequests.length === 0 &&
-        (expectedOutcome === undefined || state.status === expectedOutcome);
+        (expectedOutcome === undefined || state.status === expectedOutcome) && criteria.every((criterion) => criterion.passed || criterion.advisory === true);
       return {
         projectId: input.projectId,
         passed,
@@ -188,6 +338,7 @@ export class GameVerifier {
         failedRequests,
         actionsExecuted: actions.length,
         durationMs: Date.now() - startedAt,
+        criteria,
       };
     } catch (error) {
       throw new Error(verificationFailureMessage(error, { consoleErrors, pageErrors, failedRequests }));
@@ -384,6 +535,10 @@ class PlaywrightSession implements VerificationSession {
     });
   }
 
+  readDom(selector: string): Promise<string | null> {
+    return this.#page.locator(selector).first().getAttribute("data-status");
+  }
+
   async screenshot(target: string): Promise<void> {
     await this.#page.screenshot({ path: target, type: "png", fullPage: true });
   }
@@ -391,6 +546,151 @@ class PlaywrightSession implements VerificationSession {
   async close(): Promise<void> {
     await this.#browser.close();
   }
+}
+
+type CriterionContext = {
+  actions: ReadonlyArray<VerificationAction>;
+  baselineState: VerificationState;
+  baselineDom: ReadonlyMap<string, string | null>;
+  state: VerificationState;
+  scenario?: z.infer<typeof verificationScenarioSchema>;
+  screenshotPath: string;
+  session: VerificationSession;
+  remaining(stage: string): number;
+};
+
+async function evaluateCriteria(
+  contract: z.infer<typeof taskAcceptanceContractSchema> | undefined,
+  context: CriterionContext,
+): Promise<ReadonlyArray<VerificationCriterionResult>> {
+  if (contract === undefined) return [];
+  const applicable = contract.criteria.filter((criterion) =>
+    context.scenario === undefined ||
+    (criterion.applicableScenarios ?? ["won"]).includes(context.scenario)
+  );
+  return Promise.all(applicable.map(async (criterion) => {
+    const verification = criterion.verification;
+    if (verification.kind === "browser-action") {
+      const actionExecuted = context.actions.some((action) => describeAction(action) === verification.action.trim());
+      const effect = verification.observableEffect;
+      const value = effect.kind === "public-telemetry"
+        ? readPublicPath(context.state, normalizePublicTelemetryPath(effect.path))
+        : await readPublicDom(context.session, effect.selector, context.remaining);
+      const baselineValue = effect.kind === "public-telemetry"
+        ? readPublicPath(context.baselineState, normalizePublicTelemetryPath(effect.path))
+        : context.baselineDom.get(normalizePublicDomSelector(effect.selector));
+      const passed = actionExecuted && matchesAssertion(value, effect.assertion, baselineValue);
+      return { criterionId: criterion.criterionId, passed, proof: { kind: verification.kind, value, detail: passed ? "Action produced the required public effect." : "Action did not produce the required public effect." } };
+    }
+    if (verification.kind === "public-telemetry") {
+      const value = readPublicPath(context.state, normalizePublicTelemetryPath(verification.path));
+      const baselineValue = readPublicPath(context.baselineState, normalizePublicTelemetryPath(verification.path));
+      const passed = matchesAssertion(value, verification.assertion, baselineValue);
+      return { criterionId: criterion.criterionId, passed, proof: { kind: verification.kind, value, detail: passed ? "Public telemetry matched expected value." : "Public telemetry did not match expected value." } };
+    }
+    if (verification.kind === "dom-output") {
+      if (!isPublicDomSelector(verification.selector)) {
+        return { criterionId: criterion.criterionId, passed: false, proof: { kind: verification.kind, detail: "DOM selector is outside the public output seam." } };
+      }
+      const value = await readPublicDom(context.session, verification.selector, context.remaining);
+      const baselineValue = context.baselineDom.get(normalizePublicDomSelector(verification.selector));
+      const passed = matchesAssertion(value, verification.assertion, baselineValue);
+      return { criterionId: criterion.criterionId, passed, proof: { kind: verification.kind, value, detail: passed ? "DOM output matched expected text." : "DOM output did not match expected text." } };
+    }
+    if (verification.kind === "screenshot") {
+      return { criterionId: criterion.criterionId, passed: false, advisory: true, proof: { kind: verification.kind, evidencePath: `.gameforge/verification/${path.basename(context.screenshotPath)}`, detail: `Final-state screenshot recorded; checkpoint-aligned evidence for ${verification.checkpoint} was not produced. Human review is required.` } };
+    }
+    return { criterionId: criterion.criterionId, passed: false, advisory: true, proof: { kind: verification.kind, detail: "Human review is required." } };
+  }));
+}
+
+async function readPublicDom(
+  session: VerificationSession,
+  selector: string,
+  remaining: (stage: string) => number,
+): Promise<string | null> {
+  if (!isPublicDomSelector(selector) || session.readDom === undefined) return null;
+  return withTimeout(
+    session.readDom(normalizePublicDomSelector(selector)),
+    remaining("criterion DOM read"),
+    "Verifier criterion DOM read timed out.",
+  );
+}
+
+function matchesAssertion(
+  actual: unknown,
+  assertion: { comparator: "equals" | "includes" | "changed-to"; value: string | number | boolean | null },
+  baseline: unknown,
+): boolean {
+  if (assertion.comparator === "includes") {
+    return typeof actual === "string" && typeof assertion.value === "string" && actual.includes(assertion.value);
+  }
+  if (assertion.comparator === "changed-to") {
+    return !Object.is(baseline, assertion.value) && Object.is(actual, assertion.value);
+  }
+  return Object.is(actual, assertion.value);
+}
+
+function changedToDomSelectors(
+  contract: z.infer<typeof taskAcceptanceContractSchema> | undefined,
+): ReadonlyArray<string> {
+  if (contract === undefined) return [];
+  const selectors = new Set<string>();
+  for (const criterion of contract.criteria) {
+    const verification = criterion.verification;
+    if (verification.kind === "dom-output" && verification.assertion.comparator === "changed-to") {
+      selectors.add(normalizePublicDomSelector(verification.selector));
+    }
+    if (verification.kind === "browser-action" &&
+      verification.observableEffect.kind === "dom-output" &&
+      verification.observableEffect.assertion.comparator === "changed-to") {
+      selectors.add(normalizePublicDomSelector(verification.observableEffect.selector));
+    }
+  }
+  return [...selectors];
+}
+
+function isPublicPlayerAction(action: unknown): action is VerificationAction {
+  return verificationActionSchema.safeParse(action).success;
+}
+
+function isPublicActionDescription(value: string): boolean {
+  return /^(?:press|hold|click|wait)\b/.test(value.trim()) && !/(?:evaluate|execute|set[-_ ]?state|call[-_ ]?outcome|skip|scene|private|__GAMEFORGE_TEST__)/i.test(value);
+}
+
+function isPublicTelemetryPath(value: string): boolean {
+  if (value.trim() === "game.status") return true;
+  if (!/^\$\.?[a-zA-Z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]*)*$/.test(value.trim())) return false;
+  return !/(?:^|\.)(?:scene|game|private|__|prototype|constructor|finish|outcome)(?:\.|$)/i.test(value);
+}
+
+function isPublicDomSelector(value: string): boolean {
+  return ["[data-status]", "[data-game-status]"].includes(value.trim());
+}
+
+function normalizePublicTelemetryPath(value: string): string {
+  return value.trim() === "game.status" ? "$.status" : value;
+}
+
+function normalizePublicDomSelector(value: string): string {
+  return value.trim() === "[data-game-status]" ? "[data-status]" : value;
+}
+
+function describeAction(action: VerificationAction): string {
+  if (action.type === "press") return `press ${action.key}`;
+  if (action.type === "hold") return `hold ${action.key} ${action.durationMs}ms`;
+  if (action.type === "click") return `click ${action.x},${action.y}`;
+  return `wait ${action.durationMs}ms`;
+}
+
+function readPublicPath(value: unknown, input: string): unknown {
+  const pathParts = input.replace(/^\$\.?/, "").split(".").filter(Boolean);
+  let current: unknown = value;
+  for (const part of pathParts) {
+    if (typeof current !== "object" || current === null || !Object.prototype.hasOwnProperty.call(current, part)) return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
 }
 
 async function closeVite(server: ViteDevServer): Promise<void> {
@@ -413,6 +713,13 @@ export async function verifiedManagedProject(projectsRoot: string, projectIdInpu
   ) as unknown);
   if (managed.projectId !== projectId) throw new Error("Verifier project manifest ID does not match.");
   return realProject;
+}
+
+async function managedProjectUsesVersionedState(projectPath: string): Promise<boolean> {
+  const managed = managedProjectSchema.parse(JSON.parse(
+    await readFile(path.join(projectPath, ".gameforge", "manifest.json"), "utf8"),
+  ) as unknown);
+  return managed.verificationStateSchemaVersion === 1;
 }
 
 export async function verifiedCandidateProject(

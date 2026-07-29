@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { gameSpecSchema } from "./game-spec.js";
 import { attemptIdSchema, projectIdSchema, revisionIdSchema } from "./project-identifiers.js";
+import { taskAcceptanceFingerprintSchema } from "./task-acceptance.js";
 
 export { projectIdSchema } from "./project-identifiers.js";
 
@@ -17,11 +18,12 @@ export const projectGenerationRequestSchema = z.strictObject({
   expectedPlanSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   attemptId: attemptIdSchema,
   revisionId: revisionIdSchema,
+  acceptanceContractFingerprint: taskAcceptanceFingerprintSchema,
 });
 
 export const generatedProjectFileSchema = z.strictObject({
   path: z.string().regex(
-    /^(?:\.npmrc|\.gameforge\/manifest\.json|(?:[a-z0-9][a-z0-9._-]*\/)*[a-z0-9][a-z0-9._-]*)$/i,
+    /^(?:\.npmrc|\.gameforge\/(?:manifest|verification-scenarios)\.json|(?:[a-z0-9][a-z0-9._-]*\/)*[a-z0-9][a-z0-9._-]*)$/i,
     "Generated file path must be normalized and relative.",
   ),
   bytes: z.number().int().nonnegative().max(2 * 1024 * 1024),
@@ -42,6 +44,7 @@ export const managedGeneratedProjectManifestSchema = z.strictObject({
   generatorVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
   projectId: projectIdSchema,
   target: gamePlatformTargetSchema.default("web"),
+  verificationStateSchemaVersion: z.literal(1).optional(),
   specSha256: z.string().regex(/^[a-f0-9]{64}$/),
   planSha256: z.string().regex(/^[a-f0-9]{64}$/),
   files: z.array(generatedProjectFileSchema).min(1).max(30),
@@ -61,6 +64,7 @@ export const candidateContentManifestSchema = z.strictObject({
   projectId: projectIdSchema,
   attemptId: attemptIdSchema,
   revisionId: revisionIdSchema,
+  acceptanceContractFingerprint: taskAcceptanceFingerprintSchema,
   totalBytes: z.number().int().nonnegative().max(20 * 1024 * 1024),
   aggregateSha256: z.string().regex(/^[a-f0-9]{64}$/),
   files: z.array(candidateContentFileSchema).min(1).max(4_096),

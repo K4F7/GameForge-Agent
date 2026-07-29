@@ -267,13 +267,18 @@ describe("GameForge MCP server", () => {
       expect(generationTool?.inputSchema).toMatchObject({
         properties: { target: { default: "web", enum: ["web"] } },
       });
-      expect(generationTool?.inputSchema.required).toEqual(expect.arrayContaining(["attemptId", "revisionId"]));
+      expect(generationTool?.inputSchema.required).toEqual(expect.arrayContaining([
+        "attemptId",
+        "revisionId",
+        "acceptanceContractFingerprint",
+      ]));
       const result = await client.callTool({
         name: "generate_game_project",
         arguments: {
           projectId: "safety-sprint",
           attemptId: "attempt-00000000-0000-4000-8000-000000000064",
           revisionId: "revision-00000000-0000-4000-8000-000000000064",
+          acceptanceContractFingerprint: "a".repeat(64),
           spec: {
             title: "Safety Sprint",
             genre: "arcade",
@@ -508,7 +513,7 @@ describe("GameForge MCP server", () => {
             criterionId: "win-state",
             sourceRequirement: "The player can win.",
             expected: "The public state reports won.",
-            verification: { kind: "public-telemetry", path: "game.status" },
+            verification: { kind: "public-telemetry", path: "game.status", assertion: { schemaVersion: 1, comparator: "equals", value: "won" } },
           }],
           requirementIssues: [],
         },

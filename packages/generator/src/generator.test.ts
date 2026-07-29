@@ -8,6 +8,7 @@ import { GameProjectGenerator } from "./generator.js";
 import type { GameSpec } from "@gameforge/contracts";
 
 const temporaryRoots: string[] = [];
+const acceptanceContractFingerprint = "a".repeat(64);
 const spec = {
   title: "Safety Sprint",
   genre: "arcade" as const,
@@ -27,7 +28,11 @@ async function createGenerator(): Promise<{ generator: GameProjectGenerator; roo
 
 function candidateIdentity() {
   const id = randomUUID();
-  return { attemptId: `attempt-${id}`, revisionId: `revision-${id}` } as const;
+  return {
+    attemptId: `attempt-${id}`,
+    revisionId: `revision-${id}`,
+    acceptanceContractFingerprint,
+  } as const;
 }
 
 async function createAccepted(
@@ -90,6 +95,121 @@ describe("GameProjectGenerator", () => {
     expect(manifest.planSha256).toBe(result.plan.planSha256);
     expect(manifest.target).toBe("web");
     expect(manifest.files).toHaveLength(result.plan.files.length - 1);
+  });
+
+  it("documents and exposes the public DOM verification markers", async () => {
+    const { generator } = await createGenerator();
+    const result = await generator.execute({ projectId: "public-seam", spec, mode: "apply", ...candidateIdentity() });
+    const index = await readFile(path.join(result.outputPath!, "index.html"), "utf8");
+    const runtime = await readFile(path.join(result.outputPath!, "src", "game.ts"), "utf8");
+    const documentation = await readFile(path.join(result.outputPath!, "VERIFICATION.md"), "utf8");
+    const scenarios = JSON.parse(await readFile(path.join(result.outputPath!, ".gameforge", "verification-scenarios.json"), "utf8")) as {
+      schemaVersion: number;
+      scenarios: { won: unknown[]; lost: unknown[] };
+    };
+    const candidate = JSON.parse(await readFile(path.join(result.outputPath!, ".gameforge", "candidate.json"), "utf8")) as {
+      files: Array<{ path: string }>;
+    };
+    expect(index).toContain('data-status="loading"');
+    expect(runtime).toContain("Public verification state is read-only.");
+    expect(runtime).toContain("publicStateHost.dataset.status = next.status");
+    expect(runtime).toContain('keyboard.on("keydown-E"');
+    expect(runtime).toContain("Phaser.Math.Distance.Between");
+    expect(runtime).toContain('keyboard.on("keydown-Q"');
+    expect(runtime).toContain("ui.objectiveControls");
+    expect(documentation).toContain("[data-status]");
+    expect(scenarios.schemaVersion).toBe(1);
+    expect(scenarios.scenarios.won).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "hold", key: expect.stringMatching(/^Arrow/) }),
+      { type: "press", key: "KeyE" },
+    ]));
+    expect(scenarios.scenarios.won).not.toEqual(Array.from({ length: 5 }, () => ({ type: "press", key: "KeyE" })));
+    expect(scenarios.scenarios.lost).toEqual([{ type: "press", key: "KeyQ" }]);
+    expect(candidate.files.map((entry) => entry.path)).toContain(".gameforge/verification-scenarios.json");
+  });
+
+  it("requires every generated Attempt candidate to bind its frozen acceptance contract", async () => {
+    const { generator } = await createGenerator();
+    const id = randomUUID();
+
+    await expect(generator.execute({
+      projectId: "unbound-candidate",
+      spec,
+      mode: "apply",
+      attemptId: `attempt-${id}`,
+      revisionId: `revision-${id}`,
+    } as never)).rejects.toThrow();
+  });
+
+  it("routes puzzle input into the collectible interaction radius", async () => {
+    const { generator } = await createGenerator();
+    const result = await generator.execute({
+      projectId: "reachable-puzzle",
+      spec: {
+        ...spec,
+        genre: "puzzle",
+        gameplay: { collectibleCount: 1, hazardCount: 0, startingLives: 3, movementSpeed: 220 },
+      },
+      mode: "apply",
+      ...candidateIdentity(),
+    });
+    const plan = JSON.parse(await readFile(
+      path.join(result.outputPath!, ".gameforge", "verification-scenarios.json"),
+      "utf8",
+    )) as { scenarios: { won: unknown[] } };
+
+    expect(plan.scenarios.won).toEqual([
+      { type: "hold", key: "ArrowRight", durationMs: 50 },
+      { type: "hold", key: "ArrowRight", durationMs: 50 },
+      { type: "hold", key: "ArrowRight", durationMs: 50 },
+      { type: "hold", key: "ArrowUp", durationMs: 50 },
+      { type: "hold", key: "ArrowUp", durationMs: 50 },
+      { type: "press", key: "KeyE" },
+    ]);
+  });
+
+  it("routes platformer input through the deterministic ground objective lane", async () => {
+    const { generator } = await createGenerator();
+    const result = await generator.execute({
+      projectId: "reachable-platformer",
+      spec: {
+        ...spec,
+        genre: "platformer",
+        gameplay: { collectibleCount: 1, hazardCount: 0, startingLives: 3, movementSpeed: 220 },
+      },
+      mode: "apply",
+      ...candidateIdentity(),
+    });
+    const plan = JSON.parse(await readFile(
+      path.join(result.outputPath!, ".gameforge", "verification-scenarios.json"),
+      "utf8",
+    )) as { scenarios: { won: unknown[] } };
+
+    expect(plan.scenarios.won).toEqual([
+      { type: "hold", key: "ArrowRight", durationMs: 591 },
+      { type: "press", key: "KeyE" },
+    ]);
+  });
+
+  it("keeps the worst-case generated win route inside game and verifier budgets", async () => {
+    const { generator } = await createGenerator();
+    const result = await generator.execute({
+      projectId: "bounded-win-route",
+      spec: {
+        ...spec,
+        targetDurationSeconds: 30,
+        gameplay: { collectibleCount: 10, hazardCount: 0, startingLives: 3, movementSpeed: 100 },
+      },
+      mode: "apply",
+      ...candidateIdentity(),
+    });
+    const plan = JSON.parse(await readFile(
+      path.join(result.outputPath!, ".gameforge", "verification-scenarios.json"),
+      "utf8",
+    )) as { scenarios: { won: Array<{ type: string; durationMs?: number }> } };
+    const inputDurationMs = plan.scenarios.won.reduce((total, action) => total + (action.durationMs ?? 0), 0);
+
+    expect(inputDurationMs).toBeLessThanOrEqual(20_000);
   });
 
   it("never overwrites an existing Attempt candidate", async () => {
@@ -156,6 +276,7 @@ describe("GameProjectGenerator", () => {
       expectedPlanSha256: created.plan.planSha256,
       attemptId: "attempt-00000000-0000-4000-8000-000000000064",
       revisionId: "revision-00000000-0000-4000-8000-000000000064",
+      acceptanceContractFingerprint,
     });
 
     expect(await readFile(acceptedSpecPath, "utf8")).toBe(acceptedSpec);

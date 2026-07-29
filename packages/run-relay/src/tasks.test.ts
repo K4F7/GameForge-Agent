@@ -366,7 +366,7 @@ function taskAcceptanceInput() {
       criterionId: "goal",
       sourceRequirement: "Reach the goal.",
       expected: "Reach the goal.",
-      verification: { kind: "public-telemetry" as const, path: "$.goalReached" },
+      verification: { kind: "public-telemetry" as const, path: "$.goalReached", assertion: { schemaVersion: 1 as const, comparator: "equals" as const, value: true } },
     }],
   };
 }

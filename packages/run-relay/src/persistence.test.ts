@@ -106,7 +106,7 @@ describe("RelayStatePersistence", () => {
         criterionId: "restart-goal",
         sourceRequirement: "Complete the game after restart.",
         expected: "Complete the game after restart.",
-        verification: { kind: "public-telemetry", path: "$.completed" },
+        verification: { kind: "public-telemetry", path: "$.completed", assertion: { schemaVersion: 1, comparator: "equals", value: true } },
       }],
     });
     second.taskInbox.transition(created.task.taskId, { status: "in-progress", agentId: "codearts" });
@@ -223,6 +223,54 @@ describe("RelayStatePersistence", () => {
       status: "failed",
       reasonCode: { schemaVersion: "1.0", code: "legacy-unclassified-failure" },
     });
+  });
+
+  it("loads schema 1.0 acceptance contracts that predate machine-readable effects", async () => {
+    const file = await stateFile();
+    const persistence = new RelayStatePersistence(file);
+    const state = await persistence.load();
+    const created = state.taskInbox.create({
+      runId: "run-legacy-acceptance",
+      prompt: "Restore a frozen acceptance contract created by the previous relay.",
+      language: "en-US",
+    });
+    await persistence.save(state.store, state.taskInbox);
+    const legacy = JSON.parse(await readFile(file, "utf8")) as { tasks: Array<Record<string, unknown>> };
+    const task = legacy.tasks[0];
+    if (task === undefined) throw new Error("Expected one persisted task.");
+    task.acceptanceContract = {
+      schemaVersion: "1.0",
+      contractVersion: 1,
+      fingerprint: "a".repeat(64),
+      criteria: [
+        {
+          criterionId: "legacy-status",
+          sourceRequirement: "Report the public outcome.",
+          expected: "The game reports won.",
+          verification: { kind: "public-telemetry", path: "game.status" },
+        },
+        {
+          criterionId: "legacy-action",
+          sourceRequirement: "Press Space to activate the objective.",
+          expected: "The objective becomes active.",
+          verification: { kind: "browser-action", action: "press Space" },
+        },
+      ],
+    };
+    await writeFile(file, JSON.stringify(legacy));
+
+    const restored = await new RelayStatePersistence(file).load();
+    const contract = restored.taskInbox.get(created.task.taskId).acceptanceContract;
+    expect(contract).toMatchObject({
+      schemaVersion: "1.0",
+      contractVersion: 1,
+      fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      criteria: [
+        { criterionId: "legacy-status", verification: { kind: "human-review" } },
+        { criterionId: "legacy-action", verification: { kind: "human-review" } },
+      ],
+    });
+    expect(contract?.fingerprint).not.toBe("a".repeat(64));
   });
 });
 

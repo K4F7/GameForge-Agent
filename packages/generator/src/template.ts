@@ -34,6 +34,7 @@ const ui = locale === "en-US" ? {
   puzzleControls: "Use arrow keys to move one grid cell and plan the route",
   strategyControls: "Use arrow keys for movement orders, Space to switch strategy",
   arcadeControls: "Arrow keys to move, collect targets, and avoid hazards",
+  objectiveControls: "E interact · Q forfeit",
 } : {
   progress: "进度",
   lives: "生命",
@@ -46,10 +47,12 @@ const ui = locale === "en-US" ? {
   puzzleControls: "方向键逐格移动并规划路线",
   strategyControls: "方向键下达移动指令，空格切换策略状态",
   arcadeControls: "方向键移动，收集目标并避开危险",
+  objectiveControls: "E 交互 · Q 放弃",
 };
 type RuntimeAssetRole = "player" | "collectible" | "hazard" | "background" | "collect-sound" | "hit-sound" | "voice" | "bgm";
 type RuntimeAsset = { role: RuntimeAssetRole; path: string; mimeType: string };
 type VerificationState = {
+  schemaVersion: 1;
   status: "running" | "won" | "lost";
   score: number;
   lives: number;
@@ -98,12 +101,33 @@ const collectibleCount = spec.gameplay?.collectibleCount ?? (spec.genre === "str
 const hazardCount = spec.gameplay?.hazardCount ?? (spec.genre === "platformer" ? 2 : 3);
 const startingLives = spec.gameplay?.startingLives ?? 3;
 const movementSpeed = spec.gameplay?.movementSpeed ?? (spec.genre === "strategy" ? 150 : spec.genre === "platformer" ? 210 : 220);
-window.__GAMEFORGE_TEST__ = {
+let publicState: VerificationState;
+const publicStateHost = document.querySelector<HTMLElement>("#game");
+Object.defineProperty(window, "__GAMEFORGE_TEST__", {
+  configurable: false,
+  enumerable: true,
+  get: () => publicState,
+  set: () => { throw new Error("Public verification state is read-only."); },
+});
+function publishState(next: VerificationState): void {
+  publicState = Object.freeze({
+    ...next,
+    telemetry: next.telemetry === undefined ? undefined : Object.freeze({
+      ...next.telemetry,
+      player: Object.freeze({ ...next.telemetry.player }),
+      collectibles: Object.freeze(next.telemetry.collectibles.map((point) => Object.freeze({ ...point }))),
+      hazards: Object.freeze(next.telemetry.hazards.map((point) => Object.freeze({ ...point }))),
+    }),
+  });
+  if (publicStateHost !== null) publicStateHost.dataset.status = next.status;
+}
+publishState({
+  schemaVersion: 1,
   status: "running",
   score: 0,
   lives: startingLives,
   remainingSeconds: spec.targetDurationSeconds,
-};
+});
 
 class GameScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite;
@@ -178,6 +202,22 @@ class GameScene extends Phaser.Scene {
     } else {
       this.createArenaWorld();
     }
+    keyboard.on("keydown-E", () => {
+      if (this.ended) return;
+      const target = this.collectibles.getChildren().find((item) => {
+        const positioned = item as Phaser.GameObjects.GameObject & { x: number; y: number };
+        return item.active && Phaser.Math.Distance.Between(
+          this.player.x,
+          this.player.y,
+          positioned.x,
+          positioned.y,
+        ) <= 56;
+      });
+      if (target !== undefined) this.collectItem(target);
+    });
+    keyboard.on("keydown-Q", () => {
+      if (!this.ended) this.finish(false, spec.loseCondition);
+    });
 
     this.physics.add.overlap(this.player, this.collectibles, (_player, item) => {
       this.collectItem(item as Phaser.GameObjects.GameObject);
@@ -270,7 +310,7 @@ class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.platforms);
     this.physics.add.collider(this.hazards, this.platforms);
 
-    const itemPositions: ReadonlyArray<readonly [number, number]> = [[230, 370], [500, 300], [750, 380], [620, 470], [860, 470], [320, 470], [420, 470], [580, 470], [700, 470], [810, 470]];
+    const itemPositions: ReadonlyArray<readonly [number, number]> = [[230, 470], [320, 470], [420, 470], [520, 470], [620, 470], [700, 470], [760, 470], [810, 470], [860, 470], [900, 470]];
     itemPositions.slice(0, collectibleCount).forEach(([x, y]) => {
       this.createCollectible(x, y);
     });
@@ -361,14 +401,15 @@ class GameScene extends Phaser.Scene {
   private finish(won: boolean, detail: string): void {
     this.ended = true;
     this.updateHud();
-    window.__GAMEFORGE_TEST__ = {
+    publishState({
+      schemaVersion: 1,
       status: won ? "won" : "lost",
       score: this.score,
       lives: this.lives,
       remainingSeconds: this.remainingSeconds,
       detail,
       telemetry: this.telemetry(),
-    };
+    });
     window.dispatchEvent(new CustomEvent("gameforge:outcome", { detail: window.__GAMEFORGE_TEST__ }));
     this.physics.pause();
     this.add.rectangle(width / 2, height / 2, 640, 220, 0x020617, 0.94).setStrokeStyle(2, won ? 0x22d3ee : 0xef4444).setDepth(20);
@@ -385,13 +426,14 @@ class GameScene extends Phaser.Scene {
 
   private updateHud(): void {
     if (!this.ended) {
-      window.__GAMEFORGE_TEST__ = {
+      publishState({
+        schemaVersion: 1,
         status: "running",
         score: this.score,
         lives: this.lives,
         remainingSeconds: this.remainingSeconds,
         telemetry: this.telemetry(),
-      };
+      });
     }
     this.scoreText.setText(ui.progress + " " + this.score + "/" + collectibleCount + "   " + ui.lives + " " + this.lives);
     this.timerText.setText(Math.ceil(this.remainingSeconds) + "s");
@@ -410,11 +452,12 @@ class GameScene extends Phaser.Scene {
   }
 
   private controlHint(): string {
-    if (spec.genre === "platformer") return ui.platformerControls;
-    if (spec.genre === "shooter") return ui.shooterControls;
-    if (spec.genre === "puzzle") return ui.puzzleControls;
-    if (spec.genre === "strategy") return ui.strategyControls;
-    return ui.arcadeControls;
+    const movement = spec.genre === "platformer" ? ui.platformerControls
+      : spec.genre === "shooter" ? ui.shooterControls
+      : spec.genre === "puzzle" ? ui.puzzleControls
+      : spec.genre === "strategy" ? ui.strategyControls
+      : ui.arcadeControls;
+    return movement + " · " + ui.objectiveControls;
   }
 
   private playSound(key: string): void {
@@ -491,7 +534,7 @@ export function createIndexHtml(locale: "zh-CN" | "en-US" = "zh-CN"): string {
     </style>
   </head>
   <body>
-    <main id="game" aria-label="${ariaLabel}"></main>
+    <main id="game" class="gameforge-output" data-status="loading" aria-label="${ariaLabel}"></main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

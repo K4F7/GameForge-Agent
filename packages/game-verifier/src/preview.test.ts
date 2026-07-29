@@ -46,6 +46,7 @@ async function fixture(maxSessions = 5): Promise<{
     mode: "apply",
     attemptId: `attempt-${id}`,
     revisionId: `revision-${id}`,
+    acceptanceContractFingerprint: "a".repeat(64),
   });
   await rename(generated.outputPath!, path.join(projects, "safety-sprint"));
   const runtime = new FakePreviewRuntime();

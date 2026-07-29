@@ -359,6 +359,17 @@ describe("local CodeArts workflow boundary", () => {
       });
       expect(claimed).toMatchObject({ task: { status: "claimed", runId: "run-local-e2e" } });
 
+      const frozen = await callJson(
+        mcpClient,
+        "freeze_task_acceptance_contract",
+        taskAcceptanceInput(created.task.taskId),
+      ) as { contract: { fingerprint: string } };
+      await callJson(mcpClient, "transition_game_task", {
+        taskId: created.task.taskId,
+        status: "in-progress",
+        agentId: "codearts",
+      });
+
       const initialReplay = runEventBatchSchema.parse(await callJson(mcpClient, "replay_game_run", {
         runId: "run-local-e2e",
         after: 0,
@@ -400,7 +411,13 @@ describe("local CodeArts workflow boundary", () => {
 
       const attemptId = "attempt-00000000-0000-4000-8000-000000000064";
       const revisionId = "revision-00000000-0000-4000-8000-000000000064";
-      const generationInput = { projectId: "local-e2e", spec, attemptId, revisionId };
+      const generationInput = {
+        projectId: "local-e2e",
+        spec,
+        attemptId,
+        revisionId,
+        acceptanceContractFingerprint: frozen.contract.fingerprint,
+      };
       const dryRun = await callJson(mcpClient, "generate_game_project", generationInput);
       expect(dryRun).toMatchObject({ mode: "dry-run", plan: { projectId: "local-e2e" } });
       const applied = await callJson(mcpClient, "generate_game_project", {
@@ -641,12 +658,6 @@ describe("local CodeArts workflow boundary", () => {
           durationMs: verification.durationMs,
         }],
       });
-      await callJson(mcpClient, "freeze_task_acceptance_contract", taskAcceptanceInput(created.task.taskId));
-      await callJson(mcpClient, "transition_game_task", {
-        taskId: created.task.taskId,
-        status: "in-progress",
-        agentId: "codearts",
-      });
       await callJson(mcpClient, "complete_game_run", { runId: "run-local-e2e" });
       await callJson(mcpClient, "transition_game_task", {
         taskId: created.task.taskId,
@@ -699,7 +710,7 @@ function taskAcceptanceInput(taskId: string): Record<string, unknown> {
       criterionId: "win-state",
       sourceRequirement: "The player can win the generated game.",
       expected: "The public game state reports won.",
-      verification: { kind: "public-telemetry", path: "game.status" },
+      verification: { kind: "public-telemetry", path: "game.status", assertion: { schemaVersion: 1, comparator: "equals", value: "won" } },
     }],
     requirementIssues: [],
   };

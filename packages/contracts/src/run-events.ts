@@ -65,6 +65,25 @@ const verificationDiagnosticCountsSchema = z.strictObject({
   failedRequests: z.number().int().min(0).max(100),
 });
 
+const verificationScenarioEvidenceShape = {
+  passed: z.boolean(),
+  evidencePath: verificationEvidencePathSchema,
+  actionsExecuted: z.number().int().min(0).max(100),
+};
+
+const verificationScenarioResultsSchema = z.tuple([
+  z.strictObject({
+    ...verificationScenarioEvidenceShape,
+    scenario: z.literal("won"),
+    outcome: z.literal("won"),
+  }),
+  z.strictObject({
+    ...verificationScenarioEvidenceShape,
+    scenario: z.literal("lost"),
+    outcome: z.literal("lost"),
+  }),
+]);
+
 const mcpAuditCallSummarySchema = z.strictObject({
   sequence: z.number().int().positive().max(10_000),
   tool: z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
@@ -141,6 +160,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
     diagnostics: verificationDiagnosticCountsSchema,
     actionsExecuted: z.number().int().min(0).max(100),
     durationMs: z.number().int().nonnegative().max(300_000),
+    scenarioResults: verificationScenarioResultsSchema.optional(),
   }),
   z.strictObject({
     ...eventBaseShape,

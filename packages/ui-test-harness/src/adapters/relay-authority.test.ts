@@ -106,7 +106,7 @@ describe("RelayAuthorityDriver", () => {
         criterionId: "terminal-run",
         sourceRequirement: "The run reaches a terminal state.",
         expected: "The public run status is completed.",
-        verification: { kind: "public-telemetry", path: "run.status" },
+        verification: { kind: "public-telemetry", path: "run.status", assertion: { schemaVersion: 1, comparator: "equals", value: "completed" } },
       }],
       requirementIssues: [],
     });
