@@ -152,19 +152,27 @@ describe("run relay HTTP server", () => {
           criterionId: "movement",
           sourceRequirement: "The player moves with the arrow keys.",
           expected: "Pressing ArrowRight moves the player to the right.",
-          verification: { kind: "browser-action", action: "press ArrowRight" },
+          verification: {
+            kind: "browser-action",
+            action: "press ArrowRight",
+            observableEffect: {
+              kind: "public-telemetry",
+              path: "$.telemetry.player.x",
+              assertion: { schemaVersion: 1, comparator: "changed-to", value: 240 },
+            },
+          },
         },
         {
           criterionId: "score",
           sourceRequirement: "The score is publicly observable.",
           expected: "The collected count becomes 3.",
-          verification: { kind: "public-telemetry", path: "$.collectedCount" },
+          verification: { kind: "public-telemetry", path: "$.collectedCount", assertion: { schemaVersion: 1, comparator: "equals", value: 3 } },
         },
         {
           criterionId: "status",
           sourceRequirement: "The current objective is visible.",
           expected: "The objective text says Collect 3 stars.",
-          verification: { kind: "dom-output", selector: "[data-game-status]" },
+          verification: { kind: "dom-output", selector: "[data-game-status]", assertion: { schemaVersion: 1, comparator: "includes", value: "Collect 3 stars" } },
         },
         {
           criterionId: "final-frame",
@@ -242,7 +250,7 @@ describe("run relay HTTP server", () => {
         criterionId: "goal",
         sourceRequirement: "Collect 3 stars.",
         expected: "The collected count becomes 3.",
-        verification: { kind: "public-telemetry", path: "$.collectedStars" },
+        verification: { kind: "public-telemetry", path: "$.collectedStars", assertion: { schemaVersion: 1, comparator: "equals", value: 3 } },
       }],
     });
     if (frozen.outcome !== "frozen") throw new Error("Expected version two to freeze.");
@@ -253,7 +261,7 @@ describe("run relay HTTP server", () => {
         criterionId: "goal",
         sourceRequirement: "Collect 5 stars.",
         expected: "The collected count becomes 5.",
-        verification: { kind: "public-telemetry", path: "$.collectedStars" },
+        verification: { kind: "public-telemetry", path: "$.collectedStars", assertion: { schemaVersion: 1, comparator: "equals", value: 5 } },
       }],
     })).rejects.toMatchObject({ relayCode: "task_acceptance_version_conflict" });
     await expect(client.getTask(created.task.taskId)).resolves.toMatchObject({

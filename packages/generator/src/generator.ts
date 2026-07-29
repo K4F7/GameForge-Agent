@@ -125,6 +125,7 @@ export class GameProjectGenerator {
           projectId: input.projectId,
           attemptId: input.attemptId!,
           revisionId: input.revisionId!,
+          acceptanceContractFingerprint: input.acceptanceContractFingerprint,
         });
         return projectGenerationResultSchema.parse({
           mode: "apply",
@@ -154,6 +155,7 @@ export class GameProjectGenerator {
         projectId: input.projectId,
         attemptId: input.attemptId!,
         revisionId: input.revisionId!,
+        acceptanceContractFingerprint: input.acceptanceContractFingerprint,
       });
       return projectGenerationResultSchema.parse({ mode: "apply", operation: "create", plan, outputPath, candidate });
     } catch (error) {
@@ -432,7 +434,12 @@ async function copyCandidateSource(source: string, target: string): Promise<void
 
 async function writeCandidateManifest(
   candidatePath: string,
-  ownership: { projectId: string; attemptId: string; revisionId: string },
+  ownership: {
+    projectId: string;
+    attemptId: string;
+    revisionId: string;
+    acceptanceContractFingerprint: string;
+  },
 ): Promise<CandidateContentManifest> {
   const files = await collectCandidateFiles(candidatePath);
   const totalBytes = files.reduce((total, current) => total + current.bytes, 0);
@@ -489,8 +496,16 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePla
   planSha256: string;
 } {
   const specContent = `${JSON.stringify(spec, null, 2)}\n`;
+  const collectibleCount = spec.gameplay?.collectibleCount ?? (spec.genre === "strategy" ? 6 : 5);
   const baseFiles = [
     file(".npmrc", "registry=https://registry.npmjs.org/\n"),
+    file(".gameforge/verification-scenarios.json", `${JSON.stringify({
+      schemaVersion: 1,
+      scenarios: {
+        won: generatedWinScenario(spec, collectibleCount),
+        lost: [{ type: "press", key: "KeyQ" }],
+      },
+    }, null, 2)}\n`),
     file("game-spec.json", specContent),
     file("index.html", createIndexHtml(spec.locale)),
     file("package.json", `${JSON.stringify({
@@ -503,6 +518,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePla
       dependencies: { phaser: "4.2.1" },
       devDependencies: { typescript: "7.0.2", vite: "8.1.4" },
     }, null, 2)}\n`),
+    file("VERIFICATION.md", "# Public verification seam\n\n- `[data-status]` on `#game` exposes `loading`, `running`, `won`, or `lost`.\n- `window.__GAMEFORGE_TEST__` is versioned read-only public state (`schemaVersion: 1`).\n- Drive the game only with keyboard, pointer, and bounded wait actions.\n- `E` interacts with the next objective and `Q` visibly forfeits the current run.\n"),
     file("public/assets/manifest.json", `${JSON.stringify({
       schemaVersion: "1.0",
       projectId,
@@ -544,6 +560,7 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePla
     generatorVersion: GAMEFORGE_GENERATOR_VERSION,
     projectId,
     target,
+    verificationStateSchemaVersion: 1,
     specSha256,
     planSha256,
     files: baseFiles.map(({ path: filePath, bytes, sha256: hash }) => ({
@@ -558,6 +575,97 @@ function createGeneratedFiles(projectId: string, spec: GameSpec, target: GamePla
     throw new Error("Generated project exceeds the maximum template size.");
   }
   return { files, specSha256, planSha256 };
+}
+
+function generatedWinScenario(
+  spec: GameSpec,
+  collectibleCount: number,
+): Array<
+  | { type: "press"; key: string }
+  | { type: "hold"; key: string; durationMs: number }
+  | { type: "wait"; durationMs: number }
+> {
+  const positions: ReadonlyArray<readonly [number, number]> = [
+    [250, 170], [440, 150], [690, 180], [310, 390], [650, 390],
+    [820, 300], [540, 410], [790, 150], [390, 220], [720, 330],
+  ];
+  if (spec.genre === "puzzle") {
+    const actions: Array<
+      | { type: "press"; key: string }
+      | { type: "hold"; key: string; durationMs: number }
+    > = [];
+    let currentX = 120;
+    let currentY = 270;
+    for (const [targetX, targetY] of positions.slice(0, collectibleCount)) {
+      const horizontalSteps = Math.round(Math.abs(targetX - currentX) / 48);
+      const horizontalKey = targetX >= currentX ? "ArrowRight" : "ArrowLeft";
+      for (let index = 0; index < horizontalSteps; index += 1) actions.push({ type: "hold", key: horizontalKey, durationMs: 50 });
+      currentX += (targetX >= currentX ? 1 : -1) * horizontalSteps * 48;
+      const verticalSteps = Math.round(Math.abs(targetY - currentY) / 48);
+      const verticalKey = targetY >= currentY ? "ArrowDown" : "ArrowUp";
+      for (let index = 0; index < verticalSteps; index += 1) actions.push({ type: "hold", key: verticalKey, durationMs: 50 });
+      currentY += (targetY >= currentY ? 1 : -1) * verticalSteps * 48;
+      actions.push({ type: "press", key: "KeyE" });
+    }
+    return actions;
+  }
+  if (spec.genre === "platformer") {
+    const platformerPositions = [230, 320, 420, 520, 620, 700, 760, 810, 860, 900];
+    const speed = spec.gameplay?.movementSpeed ?? 220;
+    let currentX = 100;
+    const actions: Array<
+      | { type: "hold"; key: string; durationMs: number }
+      | { type: "press"; key: string }
+    > = [];
+    for (const targetX of platformerPositions.slice(0, collectibleCount)) {
+      actions.push({
+        type: "hold",
+        key: targetX >= currentX ? "ArrowRight" : "ArrowLeft",
+        durationMs: Math.max(1, Math.ceil(Math.abs(targetX - currentX) / speed * 1_000)),
+      });
+      actions.push({ type: "press", key: "KeyE" });
+      currentX = targetX;
+    }
+    return actions;
+  }
+  const speed = spec.gameplay?.movementSpeed ?? (spec.genre === "strategy" ? 150 : 220);
+  let currentX = 120;
+  let currentY = 270;
+  const actions: Array<
+    | { type: "press"; key: string }
+    | { type: "hold"; key: string; durationMs: number }
+  > = [];
+  const remainingPositions = positions.slice(0, collectibleCount).map((position, index) => ({ position, index }));
+  while (remainingPositions.length > 0) {
+    remainingPositions.sort((left, right) => {
+      const leftDistance = Math.abs(left.position[0] - currentX) + Math.abs(left.position[1] - currentY);
+      const rightDistance = Math.abs(right.position[0] - currentX) + Math.abs(right.position[1] - currentY);
+      return leftDistance - rightDistance || left.index - right.index;
+    });
+    const next = remainingPositions.shift();
+    if (next === undefined) break;
+    const [targetX, targetY] = next.position;
+    const deltaY = targetY - currentY;
+    if (deltaY !== 0) {
+      actions.push({
+        type: "hold",
+        key: deltaY > 0 ? "ArrowDown" : "ArrowUp",
+        durationMs: Math.max(1, Math.ceil(Math.abs(deltaY) / speed * 1_000)),
+      });
+    }
+    const deltaX = targetX - currentX;
+    if (deltaX !== 0) {
+      actions.push({
+        type: "hold",
+        key: deltaX > 0 ? "ArrowRight" : "ArrowLeft",
+        durationMs: Math.max(1, Math.ceil(Math.abs(deltaX) / speed * 1_000)),
+      });
+    }
+    actions.push({ type: "press", key: "KeyE" });
+    currentX = targetX;
+    currentY = targetY;
+  }
+  return actions;
 }
 
 function file(filePath: string, content: string): GeneratedFile {

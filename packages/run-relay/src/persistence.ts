@@ -4,7 +4,7 @@ import {
   runIdSchema,
   runStatusSchema,
 } from "@gameforge/contracts";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -142,19 +142,47 @@ function migrateLegacyTasks(input: unknown): unknown {
     tasks: state.tasks.map((task) => {
       if (typeof task !== "object" || task === null || Array.isArray(task)) return task;
       const record = task as Record<string, unknown>;
-      if (record.reasonCode !== undefined) return task;
-      if (record.status === "failed") {
-        return {
-          ...record,
-          reasonCode: { schemaVersion: "1.0", code: "legacy-unclassified-failure" },
-        };
-      }
-      if (record.status !== "stopped") return task;
-      return {
-        ...record,
-        status: "canceled",
-        reasonCode: { schemaVersion: "1.0", code: "cancellation" },
-      };
+      const lifecycle = record.reasonCode !== undefined
+        ? record
+        : record.status === "failed"
+          ? { ...record, reasonCode: { schemaVersion: "1.0", code: "legacy-unclassified-failure" } }
+          : record.status === "stopped"
+            ? { ...record, status: "canceled", reasonCode: { schemaVersion: "1.0", code: "cancellation" } }
+            : record;
+      const acceptanceContract = migrateLegacyAcceptanceContract(lifecycle.acceptanceContract);
+      return acceptanceContract === lifecycle.acceptanceContract
+        ? lifecycle
+        : { ...lifecycle, acceptanceContract };
     }),
+  };
+}
+
+function migrateLegacyAcceptanceContract(input: unknown): unknown {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return input;
+  const contract = input as Record<string, unknown>;
+  if (contract.schemaVersion !== "1.0" || !Array.isArray(contract.criteria)) return input;
+  let changed = false;
+  const criteria = contract.criteria.map((criterion) => {
+    if (typeof criterion !== "object" || criterion === null || Array.isArray(criterion)) return criterion;
+    const record = criterion as Record<string, unknown>;
+    const verification = record.verification;
+    if (typeof verification !== "object" || verification === null || Array.isArray(verification)) return criterion;
+    const proof = verification as Record<string, unknown>;
+    const isLegacy = ((proof.kind === "public-telemetry" || proof.kind === "dom-output") && proof.assertion === undefined) ||
+      (proof.kind === "browser-action" && proof.observableEffect === undefined);
+    if (!isLegacy || typeof record.expected !== "string") return criterion;
+    changed = true;
+    return { ...record, verification: { kind: "human-review", prompt: record.expected } };
+  });
+  if (!changed) return input;
+  const fingerprintSource = {
+    schemaVersion: "1.0" as const,
+    contractVersion: contract.contractVersion,
+    criteria,
+  };
+  return {
+    ...contract,
+    criteria,
+    fingerprint: createHash("sha256").update(JSON.stringify(fingerprintSource), "utf8").digest("hex"),
   };
 }

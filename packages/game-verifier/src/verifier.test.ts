@@ -1,8 +1,9 @@
-import { mkdtemp, mkdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GameProjectGenerator } from "@gameforge/generator";
+import type { TaskAcceptanceContract } from "@gameforge/contracts";
 import type { Browser, chromium } from "playwright-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -16,6 +17,22 @@ import {
 } from "./verifier.js";
 
 const roots: string[] = [];
+const candidateAcceptanceContract: TaskAcceptanceContract = {
+  schemaVersion: "1.0",
+  contractVersion: 1,
+  fingerprint: "20b2123ccf0987194f72d75353e8aba67c95a5205a28f8ea188eb655c26fb199",
+  criteria: [{
+    criterionId: "candidate-outcome",
+    sourceRequirement: "The candidate exposes its winning outcome.",
+    expected: "The game reports won.",
+    applicableScenarios: ["won"],
+    verification: {
+      kind: "public-telemetry",
+      path: "$.status",
+      assertion: { schemaVersion: 1, comparator: "equals", value: "won" },
+    },
+  }],
+};
 const spec = {
   title: "Safety Sprint",
   genre: "arcade" as const,
@@ -51,10 +68,15 @@ class FakeSession implements VerificationSession {
   onRequestFailed(listener: (message: string) => void): void { this.requestFailedListener = listener; }
   async goto(): Promise<void> { return undefined; }
   async waitUntilReady(_timeoutMs: number): Promise<void> { return undefined; }
-  async perform(action: VerificationAction): Promise<void> { this.actions.push(action); }
+  async perform(action: VerificationAction): Promise<void> {
+    this.actions.push(action);
+    if (action.type === "press" && action.key === "KeyQ") {
+      this.state = { schemaVersion: 1, status: "lost", score: 0, lives: 0, remainingSeconds: 0 };
+    }
+  }
   async readState(): Promise<unknown> { return this.state; }
   async readCanvas(): Promise<{ width: number; height: number } | null> { return this.canvas; }
-  async readDom(selector: string): Promise<string | null> { return selector === "[data-status]" ? "Victory achieved" : null; }
+  async readDom(selector: string): Promise<string | null> { return selector === "[data-status]" ? "won" : null; }
   async screenshot(): Promise<void> { return undefined; }
   async close(): Promise<void> { this.closed = true; }
 }
@@ -84,6 +106,7 @@ async function fixture(): Promise<{ root: string; runtime: FakeRuntime; verifier
     mode: "apply",
     attemptId: `attempt-${id}`,
     revisionId: `revision-${id}`,
+    acceptanceContractFingerprint: candidateAcceptanceContract.fingerprint,
   });
   await rename(generated.outputPath!, path.join(root, "safety-sprint"));
   const canonicalRoot = await realpath(root);
@@ -115,14 +138,84 @@ describe("GameVerifier", () => {
       mode: "apply",
       attemptId: `attempt-${id}`,
       revisionId: `revision-${id}`,
+      acceptanceContractFingerprint: candidateAcceptanceContract.fingerprint,
     });
-
-    await expect(verifier.verify({
+    const report = await verifier.verify({
       projectId: "candidate-game",
       attemptId: `attempt-${id}`,
       revisionId: `revision-${id}`,
-    })).resolves.toMatchObject({ projectId: "candidate-game", passed: true });
+      acceptanceContract: candidateAcceptanceContract,
+    });
+    expect(report).toMatchObject({ projectId: "candidate-game", passed: true });
+    expect(report.scenarioResults).toEqual([
+      expect.objectContaining({ scenario: "won", evidencePath: expect.stringMatching(/\.png$/) }),
+      expect.objectContaining({ scenario: "lost", evidencePath: expect.stringMatching(/\.png$/) }),
+    ]);
     expect(runtime.serverPath).toContain(`${path.sep}.gameforge${path.sep}candidates${path.sep}attempt-${id}`);
+  });
+
+  it("rejects candidate verification without the frozen acceptance contract", async () => {
+    const { root, verifier } = await fixture();
+    const id = randomUUID();
+    await new GameProjectGenerator({ outputRoot: root }).execute({
+      projectId: "unbound-verification",
+      spec,
+      mode: "apply",
+      attemptId: `attempt-${id}`,
+      revisionId: `revision-${id}`,
+      acceptanceContractFingerprint: candidateAcceptanceContract.fingerprint,
+    });
+
+    await expect(verifier.verify({
+      projectId: "unbound-verification",
+      attemptId: `attempt-${id}`,
+      revisionId: `revision-${id}`,
+    })).rejects.toThrow("acceptance contract");
+  });
+
+  it("shares one total timeout across both candidate scenarios", async () => {
+    const { root, runtime, verifier } = await fixture();
+    const id = randomUUID();
+    await new GameProjectGenerator({ outputRoot: root }).execute({
+      projectId: "bounded-candidate",
+      spec: {
+        ...spec,
+        gameplay: { collectibleCount: 1, hazardCount: 1, startingLives: 3, movementSpeed: 220 },
+      },
+      mode: "apply",
+      attemptId: `attempt-${id}`,
+      revisionId: `revision-${id}`,
+      acceptanceContractFingerprint: candidateAcceptanceContract.fingerprint,
+    });
+    const originalPerform = runtime.session.perform.bind(runtime.session);
+    runtime.session.perform = async (action) => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await originalPerform(action);
+    };
+
+    await expect(verifier.verify({
+      projectId: "bounded-candidate",
+      attemptId: `attempt-${id}`,
+      revisionId: `revision-${id}`,
+      acceptanceContract: candidateAcceptanceContract,
+      timeoutMs: 1_000,
+    })).rejects.toThrow("total timeout");
+  });
+
+  it("rejects a candidate missing its manifested public scenario plan", async () => {
+    const { root, verifier } = await fixture();
+    const id = randomUUID();
+    await new GameProjectGenerator({ outputRoot: root }).execute({
+      projectId: "missing-plan",
+      spec,
+      mode: "apply",
+      attemptId: `attempt-${id}`,
+      revisionId: `revision-${id}`,
+      acceptanceContractFingerprint: candidateAcceptanceContract.fingerprint,
+    });
+    await rm(path.join(root, ".gameforge", "candidates", `attempt-${id}`, "missing-plan", ".gameforge", "verification-scenarios.json"));
+    await expect(verifier.verify({ projectId: "missing-plan", attemptId: `attempt-${id}`, revisionId: `revision-${id}` }))
+      .rejects.toThrow("content does not match its manifest");
   });
 
   it("rejects a candidate whose content no longer matches its bounded digest manifest", async () => {
@@ -134,6 +227,7 @@ describe("GameVerifier", () => {
       mode: "apply",
       attemptId: `attempt-${id}`,
       revisionId: `revision-${id}`,
+      acceptanceContractFingerprint: candidateAcceptanceContract.fingerprint,
     });
     await writeFile(path.join(generated.outputPath!, "game-spec.json"), "{}\n");
 
@@ -143,6 +237,89 @@ describe("GameVerifier", () => {
       revisionId: `revision-${id}`,
     })).rejects.toThrow("content does not match its manifest");
   });
+
+  it("rejects a candidate whose public scenario plan changed after manifesting", async () => {
+    const { root, verifier } = await fixture();
+    const id = randomUUID();
+    const generated = await new GameProjectGenerator({ outputRoot: root }).execute({
+      projectId: "tampered-plan",
+      spec,
+      mode: "apply",
+      attemptId: `attempt-${id}`,
+      revisionId: `revision-${id}`,
+      acceptanceContractFingerprint: candidateAcceptanceContract.fingerprint,
+    });
+    await writeFile(path.join(generated.outputPath!, ".gameforge", "verification-scenarios.json"), JSON.stringify({
+      schemaVersion: 1,
+      scenarios: { won: [{ type: "press", key: "Space" }], lost: [{ type: "wait", durationMs: 1_000 }] },
+    }), "utf8");
+
+    await expect(verifier.verify({
+      projectId: "tampered-plan",
+      attemptId: `attempt-${id}`,
+      revisionId: `revision-${id}`,
+    })).rejects.toThrow("content does not match its manifest");
+  });
+
+  it("rejects a caller contract that is easier than the authoritative Attempt contract", async () => {
+    const { root, runtime } = await fixture();
+    const id = randomUUID();
+    const attemptId = `attempt-${id}`;
+    const revisionId = `revision-${id}`;
+    const taskId = `task-${id}`;
+    const authoritativeContract: TaskAcceptanceContract = {
+      schemaVersion: "1.0",
+      contractVersion: 1,
+      fingerprint: "255a1883471eec2f550bd03f0760be2ed95c724b98e0e3cfc68b5f5902055003",
+      criteria: [{
+        criterionId: "high-score",
+        sourceRequirement: "Reach the authoritative target score.",
+        expected: "The score reaches 999.",
+        applicableScenarios: ["won"],
+        verification: {
+          kind: "public-telemetry",
+          path: "$.score",
+          assertion: { schemaVersion: 1, comparator: "equals", value: 999 },
+        },
+      }],
+    };
+    const generated = await new GameProjectGenerator({ outputRoot: root }).execute({
+      projectId: "authority-bound",
+      spec,
+      mode: "apply",
+      attemptId,
+      revisionId,
+      acceptanceContractFingerprint: authoritativeContract.fingerprint,
+    });
+    const manifestPath = path.join(generated.outputPath!, ".gameforge", "candidate.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+    await writeFile(manifestPath, JSON.stringify({
+      ...manifest,
+      acceptanceContractFingerprint: authoritativeContract.fingerprint,
+    }, null, 2));
+    const verifier = new GameVerifier({
+      projectsRoot: root,
+      runtime,
+    });
+
+    await expect(verifier.verify({
+      projectId: "authority-bound",
+      attemptId,
+      revisionId,
+      acceptanceContract: {
+        schemaVersion: "1.0",
+        contractVersion: 1,
+        fingerprint: authoritativeContract.fingerprint,
+        criteria: [{
+          criterionId: "advisory-only",
+          sourceRequirement: "Review the game.",
+          expected: "review",
+          verification: { kind: "human-review", prompt: "Review the game." },
+        }],
+      },
+    })).rejects.toThrow("contract contents do not match its fingerprint");
+  });
+
   it("rejects Bun before starting system Chrome", async () => {
     expect(() => assertSupportedPlaywrightRuntime({ bun: "1.3.14" })).toThrow("requires the Node runtime");
     const launch = vi.fn();
@@ -219,14 +396,22 @@ describe("GameVerifier", () => {
           {
             criterionId: "press-space",
             sourceRequirement: "Press Space to activate the objective.",
-            expected: "press Space",
-            verification: { kind: "browser-action", action: "press Space" },
+            expected: "The game reports a win after Space is pressed.",
+            verification: {
+              kind: "browser-action",
+              action: "press Space",
+              observableEffect: {
+                kind: "public-telemetry",
+                path: "$.status",
+                assertion: { schemaVersion: 1, comparator: "equals", value: "won" },
+              },
+            },
           },
           {
             criterionId: "game-won",
             sourceRequirement: "The game reports a win.",
-            expected: "won",
-            verification: { kind: "public-telemetry", path: "$.status" },
+            expected: "The game reports a win.",
+            verification: { kind: "public-telemetry", path: "$.status", assertion: { schemaVersion: 1, comparator: "equals", value: "won" } },
           },
         ],
       },
@@ -235,6 +420,97 @@ describe("GameVerifier", () => {
     expect(result.criteria).toEqual([
       expect.objectContaining({ criterionId: "press-space", passed: true }),
       expect.objectContaining({ criterionId: "game-won", passed: true }),
+    ]);
+  });
+
+  it("does not treat browser input dispatch as proof without its observable effect", async () => {
+    const { verifier } = await fixture();
+    const result = await verifier.verify({
+      projectId: "safety-sprint",
+      actions: [{ type: "press", key: "Enter" }],
+      acceptanceContract: {
+        schemaVersion: "1.0",
+        contractVersion: 1,
+        fingerprint: "f".repeat(64),
+        criteria: [{
+          criterionId: "activate-objective",
+          sourceRequirement: "Press Enter to activate the objective.",
+          expected: "The score changes to 6.",
+          verification: {
+            kind: "browser-action",
+            action: "press Enter",
+            observableEffect: {
+              kind: "public-telemetry",
+              path: "$.score",
+              assertion: { schemaVersion: 1, comparator: "changed-to", value: 6 },
+            },
+          },
+        }],
+      },
+    });
+    expect(result.criteria).toEqual([
+      expect.objectContaining({ criterionId: "activate-objective", passed: false }),
+    ]);
+    expect(result.passed).toBe(false);
+  });
+
+  it("requires changed-to proof to observe a transition from the public baseline", async () => {
+    const { runtime, verifier } = await fixture();
+    runtime.session.state = {
+      schemaVersion: 1,
+      status: "won",
+      score: 6,
+      lives: 3,
+      remainingSeconds: 42,
+    };
+    const result = await verifier.verify({
+      projectId: "safety-sprint",
+      actions: [{ type: "press", key: "Enter" }],
+      acceptanceContract: {
+        schemaVersion: "1.0",
+        contractVersion: 1,
+        fingerprint: "9".repeat(64),
+        criteria: [{
+          criterionId: "score-transition",
+          sourceRequirement: "Press Enter to change the score to 6.",
+          expected: "The score changes to 6.",
+          verification: {
+            kind: "browser-action",
+            action: "press Enter",
+            observableEffect: {
+              kind: "public-telemetry",
+              path: "$.score",
+              assertion: { schemaVersion: 1, comparator: "changed-to", value: 6 },
+            },
+          },
+        }],
+      },
+    });
+
+    expect(result.criteria).toEqual([
+      expect.objectContaining({ criterionId: "score-transition", passed: false }),
+    ]);
+    expect(result.passed).toBe(false);
+  });
+
+  it("normalizes existing public contract locators without exposing private state", async () => {
+    const { verifier } = await fixture();
+    const result = await verifier.verify({
+      projectId: "safety-sprint",
+      acceptanceContract: {
+        schemaVersion: "1.0",
+        contractVersion: 1,
+        fingerprint: "e".repeat(64),
+        criteria: [
+          { criterionId: "legacy-status", sourceRequirement: "Report the public outcome.", expected: "The game reports won.", verification: { kind: "public-telemetry", path: "game.status", assertion: { schemaVersion: 1, comparator: "equals", value: "won" } } },
+          { criterionId: "legacy-dom", sourceRequirement: "Expose the public status marker.", expected: "The status attribute reports won.", verification: { kind: "dom-output", selector: "[data-game-status]", assertion: { schemaVersion: 1, comparator: "equals", value: "won" } } },
+        ],
+      },
+    });
+    expect(result.passed).toBe(true);
+    expect(result.criteria).toEqual([
+      expect.objectContaining({ criterionId: "legacy-status", passed: true }),
+      expect.objectContaining({ criterionId: "legacy-dom", passed: true }),
     ]);
   });
 
@@ -247,7 +523,7 @@ describe("GameVerifier", () => {
         contractVersion: 1,
         fingerprint: "b".repeat(64),
         criteria: [
-          { criterionId: "dom-status", sourceRequirement: "Show the victory status.", expected: "Victory", verification: { kind: "dom-output", selector: "[data-status]" } },
+          { criterionId: "dom-status", sourceRequirement: "Show the victory status.", expected: "The status attribute reports won.", verification: { kind: "dom-output", selector: "[data-status]", assertion: { schemaVersion: 1, comparator: "equals", value: "won" } } },
           { criterionId: "visual-checkpoint", sourceRequirement: "Capture the completed board.", expected: "completed board", verification: { kind: "screenshot", checkpoint: "completed-board" } },
           { criterionId: "human-art-review", sourceRequirement: "Review the completed appearance.", expected: "review", verification: { kind: "human-review", prompt: "Review the completed appearance." } },
         ],
@@ -255,10 +531,70 @@ describe("GameVerifier", () => {
     });
     expect(result.criteria).toEqual([
       expect.objectContaining({ criterionId: "dom-status", passed: true, proof: expect.objectContaining({ kind: "dom-output" }) }),
-      expect.objectContaining({ criterionId: "visual-checkpoint", passed: true, proof: expect.objectContaining({ kind: "screenshot" }) }),
-      expect.objectContaining({ criterionId: "human-art-review", passed: false, proof: expect.objectContaining({ kind: "human-review" }) }),
+      expect.objectContaining({ criterionId: "visual-checkpoint", passed: false, advisory: true, proof: expect.objectContaining({ kind: "screenshot" }) }),
+      expect.objectContaining({ criterionId: "human-art-review", passed: false, advisory: true, proof: expect.objectContaining({ kind: "human-review" }) }),
     ]);
-    expect(result.passed).toBe(false);
+    expect(result.passed).toBe(true);
+  });
+
+  it("rejects non-player operations at the public request boundary", async () => {
+    const { verifier } = await fixture();
+    for (const action of [
+      { type: "set-state", path: "status", value: "won" },
+      { type: "call-outcome", outcome: "won" },
+      { type: "skip", durationMs: 1 },
+    ]) {
+      await expect(verifier.verify({ projectId: "safety-sprint", actions: [action as never] }))
+        .rejects.toThrow();
+    }
+    await expect(verifier.verify({
+      projectId: "safety-sprint",
+      acceptanceContract: {
+        schemaVersion: "1.0",
+        contractVersion: 1,
+        fingerprint: "c".repeat(64),
+        criteria: [{
+          criterionId: "private-scene",
+          sourceRequirement: "Inspect Phaser internals.",
+          expected: "x",
+          verification: { kind: "public-telemetry", path: "$.scene.player.x", assertion: { schemaVersion: 1, comparator: "equals", value: "x" } },
+        }],
+      },
+    })).rejects.toThrow();
+    await expect(verifier.verify({
+      projectId: "safety-sprint",
+      acceptanceContract: {
+        schemaVersion: "1.0",
+        contractVersion: 1,
+        fingerprint: "d".repeat(64),
+        criteria: [{
+          criterionId: "hidden-marker",
+          sourceRequirement: "Inspect an undocumented DOM marker.",
+          expected: "won",
+          verification: { kind: "dom-output", selector: "[data-internal-result]", assertion: { schemaVersion: 1, comparator: "equals", value: "won" } },
+        }],
+      },
+    })).rejects.toThrow("public output seam");
+  });
+
+  it("requires the public verification state schema version", async () => {
+    const { runtime, verifier } = await fixture();
+    runtime.session.state = { status: "won", score: 5, lives: 3, remainingSeconds: 42 };
+    await expect(verifier.verify({ projectId: "safety-sprint" })).rejects.toThrow();
+  });
+
+  it("accepts unversioned public state from a legacy generated project", async () => {
+    const { root, runtime, verifier } = await fixture();
+    const manifestPath = path.join(root, "safety-sprint", ".gameforge", "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+    delete manifest.verificationStateSchemaVersion;
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    runtime.session.state = { status: "won", score: 5, lives: 3, remainingSeconds: 42 };
+
+    await expect(verifier.verify({ projectId: "safety-sprint", expectedOutcome: "won" })).resolves.toMatchObject({
+      passed: true,
+      state: { schemaVersion: 1, status: "won", score: 5 },
+    });
   });
 
   it("supports concurrent first verification of the same project", async () => {

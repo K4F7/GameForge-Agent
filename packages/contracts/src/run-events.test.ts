@@ -260,6 +260,34 @@ describe("run event contracts", () => {
     }).success).toBe(false);
   });
 
+  it("preserves bounded won and lost evidence in one verification event", () => {
+    const event = {
+      type: "verification.ready",
+      runId: "run-1",
+      sequence: 4,
+      emittedAt,
+      projectId: "safety-sprint",
+      passed: true,
+      outcome: "won",
+      score: 5,
+      lives: 2,
+      remainingSeconds: 31.5,
+      evidencePath: ".gameforge/verification/won.png",
+      canvas: { width: 960, height: 540 },
+      diagnostics: { consoleErrors: 0, pageErrors: 0, failedRequests: 0 },
+      actionsExecuted: 12,
+      durationMs: 2_500,
+      scenarioResults: [
+        { scenario: "won", passed: true, outcome: "won", evidencePath: ".gameforge/verification/won.png", actionsExecuted: 12 },
+        { scenario: "lost", passed: true, outcome: "lost", evidencePath: ".gameforge/verification/lost.png", actionsExecuted: 1 },
+      ],
+    } as const;
+
+    expect(runEventSchema.parse(event)).toMatchObject({
+      scenarioResults: [{ scenario: "won" }, { scenario: "lost" }],
+    });
+  });
+
   it("does not expose retired platform-only event variants", () => {
     const eventTypes = runEventSchema.options.map((schema) => schema.shape.type.value);
     expect(eventTypes).not.toContain("build.ready");

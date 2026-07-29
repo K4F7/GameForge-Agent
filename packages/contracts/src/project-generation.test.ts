@@ -17,6 +17,7 @@ const spec = {
 const identity = {
   attemptId: "attempt-00000000-0000-4000-8000-000000000064",
   revisionId: "revision-00000000-0000-4000-8000-000000000064",
+  acceptanceContractFingerprint: "a".repeat(64),
 };
 
 describe("project generation contracts", () => {
@@ -42,6 +43,7 @@ describe("project generation contracts", () => {
       projectId: "safety-sprint", spec, operation: "update", mode: "apply", expectedPlanSha256: "a".repeat(64),
       attemptId: "attempt-00000000-0000-4000-8000-000000000064",
       revisionId: "revision-00000000-0000-4000-8000-000000000064",
+      acceptanceContractFingerprint: "a".repeat(64),
     })).toMatchObject({ operation: "update", expectedPlanSha256: "a".repeat(64) });
     expect(projectGenerationRequestSchema.safeParse({
       projectId: "safety-sprint", spec, mode: "apply",

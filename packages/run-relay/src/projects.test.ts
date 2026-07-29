@@ -236,7 +236,7 @@ function acceptanceInput(contractVersion: number, expected: string) {
       criterionId: "star-goal",
       sourceRequirement: expected,
       expected,
-      verification: { kind: "public-telemetry" as const, path: "$.collectedStars" },
+      verification: { kind: "public-telemetry" as const, path: "$.collectedStars", assertion: { schemaVersion: 1 as const, comparator: "equals" as const, value: 3 } },
     }],
   };
 }
