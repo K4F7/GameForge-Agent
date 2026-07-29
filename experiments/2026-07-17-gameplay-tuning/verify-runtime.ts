@@ -1,4 +1,6 @@
 import { GameProjectGenerator } from "../../packages/generator/src/index.js";
+import { randomUUID } from "node:crypto";
+import { rename } from "node:fs/promises";
 import path from "node:path";
 
 const outputRoot = path.resolve(".gameforge-validation/gameplay-tuning-20260717-v030");
@@ -15,5 +17,9 @@ const spec = {
 };
 
 const generator = new GameProjectGenerator({ outputRoot });
-await generator.execute({ projectId, spec, mode: "apply" });
+const id = randomUUID();
+const result = await generator.execute({
+  projectId, spec, mode: "apply", attemptId: `attempt-${id}`, revisionId: `revision-${id}`,
+});
+await rename(result.outputPath!, path.join(outputRoot, projectId));
 console.log(JSON.stringify({ outputRoot, projectId, spec }, null, 2));

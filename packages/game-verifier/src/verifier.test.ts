@@ -1,4 +1,5 @@
-import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GameProjectGenerator } from "@gameforge/generator";
@@ -58,8 +59,10 @@ class FakeSession implements VerificationSession {
 
 class FakeRuntime implements VerificationRuntime {
   readonly session = new FakeSession();
+  serverPath: string | undefined;
   serverClosed = false;
-  async startServer(): Promise<{ url: string; close(): Promise<void> }> {
+  async startServer(projectPath: string): Promise<{ url: string; close(): Promise<void> }> {
+    this.serverPath = projectPath;
     return {
       url: "http://127.0.0.1:4173/",
       close: async () => { this.serverClosed = true; },
@@ -72,7 +75,15 @@ async function fixture(): Promise<{ root: string; runtime: FakeRuntime; verifier
   const temporary = await mkdtemp(path.join(tmpdir(), "gameforge-verifier-test-"));
   roots.push(temporary);
   const root = path.join(temporary, "projects");
-  await new GameProjectGenerator({ outputRoot: root }).execute({ projectId: "safety-sprint", spec, mode: "apply" });
+  const id = randomUUID();
+  const generated = await new GameProjectGenerator({ outputRoot: root }).execute({
+    projectId: "safety-sprint",
+    spec,
+    mode: "apply",
+    attemptId: `attempt-${id}`,
+    revisionId: `revision-${id}`,
+  });
+  await rename(generated.outputPath!, path.join(root, "safety-sprint"));
   const canonicalRoot = await realpath(root);
   const runtime = new FakeRuntime();
   return { root: canonicalRoot, runtime, verifier: new GameVerifier({ projectsRoot: canonicalRoot, runtime }) };
@@ -91,6 +102,44 @@ describe("GameVerifier", () => {
     await expect(withTimeoutAndLateCleanup(operation, 1, "late resource", cleanup)).rejects.toThrow("late resource");
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it("verifies an Attempt-owned candidate instead of the accepted project", async () => {
+    const { root, runtime, verifier } = await fixture();
+    const id = randomUUID();
+    await new GameProjectGenerator({ outputRoot: root }).execute({
+      projectId: "candidate-game",
+      spec,
+      mode: "apply",
+      attemptId: `attempt-${id}`,
+      revisionId: `revision-${id}`,
+    });
+
+    await expect(verifier.verify({
+      projectId: "candidate-game",
+      attemptId: `attempt-${id}`,
+      revisionId: `revision-${id}`,
+    })).resolves.toMatchObject({ projectId: "candidate-game", passed: true });
+    expect(runtime.serverPath).toContain(`${path.sep}.gameforge${path.sep}candidates${path.sep}attempt-${id}`);
+  });
+
+  it("rejects a candidate whose content no longer matches its bounded digest manifest", async () => {
+    const { root, verifier } = await fixture();
+    const id = randomUUID();
+    const generated = await new GameProjectGenerator({ outputRoot: root }).execute({
+      projectId: "tampered-game",
+      spec,
+      mode: "apply",
+      attemptId: `attempt-${id}`,
+      revisionId: `revision-${id}`,
+    });
+    await writeFile(path.join(generated.outputPath!, "game-spec.json"), "{}\n");
+
+    await expect(verifier.verify({
+      projectId: "tampered-game",
+      attemptId: `attempt-${id}`,
+      revisionId: `revision-${id}`,
+    })).rejects.toThrow("content does not match its manifest");
   });
   it("rejects Bun before starting system Chrome", async () => {
     expect(() => assertSupportedPlaywrightRuntime({ bun: "1.3.14" })).toThrow("requires the Node runtime");

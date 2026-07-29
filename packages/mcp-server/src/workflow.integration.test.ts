@@ -11,7 +11,7 @@ import { RunRelayClient } from "@gameforge/run-relay/client";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
@@ -398,14 +398,22 @@ describe("local CodeArts workflow boundary", () => {
         ],
       });
 
-      const generationInput = { projectId: "local-e2e", spec };
+      const attemptId = "attempt-00000000-0000-4000-8000-000000000064";
+      const revisionId = "revision-00000000-0000-4000-8000-000000000064";
+      const generationInput = { projectId: "local-e2e", spec, attemptId, revisionId };
       const dryRun = await callJson(mcpClient, "generate_game_project", generationInput);
       expect(dryRun).toMatchObject({ mode: "dry-run", plan: { projectId: "local-e2e" } });
       const applied = await callJson(mcpClient, "generate_game_project", {
         ...generationInput,
         mode: "apply",
+        attemptId,
+        revisionId,
       });
       expect(applied).toMatchObject({ mode: "apply", plan: { projectId: "local-e2e" } });
+      await rename(
+        path.join(projectsRoot, ".gameforge", "candidates", attemptId, "local-e2e"),
+        path.join(projectsRoot, "local-e2e"),
+      );
 
       const storedAsset = await callJson(mcpClient, "request_image_asset", {
         projectId: "local-e2e",

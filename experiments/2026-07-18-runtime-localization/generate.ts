@@ -1,4 +1,5 @@
 import { GameProjectGenerator } from "../../packages/generator/src/index.js";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 const outputRoot = path.resolve(".gameforge-validation/runtime-localization-20260718-v2");
@@ -16,5 +17,8 @@ const spec = {
 };
 
 const generator = new GameProjectGenerator({ outputRoot });
-const result = await generator.execute({ projectId, spec, mode: "apply" });
+const id = randomUUID();
+const result = await generator.execute({
+  projectId, spec, mode: "apply", attemptId: `attempt-${id}`, revisionId: `revision-${id}`,
+});
 console.log(JSON.stringify({ outputRoot, projectId, result }, null, 2));

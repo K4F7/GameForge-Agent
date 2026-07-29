@@ -1,4 +1,5 @@
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rename, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GameProjectGenerator } from "@gameforge/generator";
@@ -38,11 +39,15 @@ async function fixture(maxSessions = 5): Promise<{
   const temporary = await mkdtemp(path.join(tmpdir(), "gameforge-preview-test-"));
   roots.push(temporary);
   const projects = path.join(temporary, "projects");
-  await new GameProjectGenerator({ outputRoot: projects }).execute({
+  const id = randomUUID();
+  const generated = await new GameProjectGenerator({ outputRoot: projects }).execute({
     projectId: "safety-sprint",
     spec,
     mode: "apply",
+    attemptId: `attempt-${id}`,
+    revisionId: `revision-${id}`,
   });
+  await rename(generated.outputPath!, path.join(projects, "safety-sprint"));
   const runtime = new FakePreviewRuntime();
   return { projects, runtime, manager: new GamePreviewManager({ projectsRoot: projects, maxSessions, runtime }) };
 }

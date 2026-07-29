@@ -173,6 +173,8 @@ describe("validation tool handlers", () => {
       { execute: async () => generated },
       {
         projectId: "safety-sprint",
+        attemptId: "attempt-00000000-0000-4000-8000-000000000064",
+        revisionId: "revision-00000000-0000-4000-8000-000000000064",
         spec: {
           title: "Safety Sprint",
           genre: "arcade",

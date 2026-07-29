@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -25,11 +25,15 @@ async function fixture(lockRuntime?: AssetLockRuntime): Promise<{ root: string; 
   const temporary = await mkdtemp(path.join(tmpdir(), "gameforge-assets-test-"));
   roots.push(temporary);
   const root = path.join(temporary, "projects");
-  await new GameProjectGenerator({ outputRoot: root }).execute({
+  const id = randomUUID();
+  const generated = await new GameProjectGenerator({ outputRoot: root }).execute({
     projectId: "safety-sprint",
     spec,
     mode: "apply",
+    attemptId: `attempt-${id}`,
+    revisionId: `revision-${id}`,
   });
+  await rename(generated.outputPath!, path.join(root, "safety-sprint"));
   return { root, store: new ProjectAssetStore({ projectsRoot: root, ...(lockRuntime === undefined ? {} : { lockRuntime }) }) };
 }
 

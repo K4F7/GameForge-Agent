@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -78,7 +78,19 @@ try {
     throw new Error("Media smoke requires qwen in --providers so the temporary project is generated from a real validated GameSpec.");
   }
   if (spec !== undefined && selected.some((provider) => provider !== "qwen")) {
-    await call("generate_game_project", { projectId, spec, mode: "apply" });
+    const id = crypto.randomUUID();
+    const attemptId = `attempt-${id}`;
+    await call("generate_game_project", {
+      projectId,
+      spec,
+      mode: "apply",
+      attemptId,
+      revisionId: `revision-${id}`,
+    });
+    await rename(
+      path.join(outputRoot, ".gameforge", "candidates", attemptId, projectId),
+      path.join(outputRoot, projectId),
+    );
   }
   if (selected.includes("seedream")) {
     await call("request_image_asset", { projectId, assetId: "smoke-player", prompt: "可爱简洁的蓝色太空探险者，单个角色，全身，纯色背景，2D游戏素材", size: "1K", watermark: false, role: "player" });

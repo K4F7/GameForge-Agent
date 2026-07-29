@@ -1,12 +1,8 @@
 import { z } from "zod";
 import { gameSpecSchema } from "./game-spec.js";
+import { attemptIdSchema, projectIdSchema, revisionIdSchema } from "./project-identifiers.js";
 
-export const projectIdSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(80)
-  .regex(/^[a-z0-9][a-z0-9._-]*$/, "Project ID contains unsupported characters.");
+export { projectIdSchema } from "./project-identifiers.js";
 
 export const projectGenerationModeSchema = z.enum(["dry-run", "apply"]);
 export const projectGenerationOperationSchema = z.enum(["create", "update"]);
@@ -19,6 +15,8 @@ export const projectGenerationRequestSchema = z.strictObject({
   operation: projectGenerationOperationSchema.default("create"),
   target: gamePlatformTargetSchema.default("web"),
   expectedPlanSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  attemptId: attemptIdSchema,
+  revisionId: revisionIdSchema,
 });
 
 export const generatedProjectFileSchema = z.strictObject({
@@ -49,6 +47,25 @@ export const managedGeneratedProjectManifestSchema = z.strictObject({
   files: z.array(generatedProjectFileSchema).min(1).max(30),
 });
 
+export const candidateContentFileSchema = z.strictObject({
+  path: z.string().min(1).max(512).refine(
+    (value) => !value.includes("\\") && value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== ".."),
+    "Candidate file path must be normalized and relative.",
+  ),
+  bytes: z.number().int().nonnegative().max(20 * 1024 * 1024),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+});
+
+export const candidateContentManifestSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  projectId: projectIdSchema,
+  attemptId: attemptIdSchema,
+  revisionId: revisionIdSchema,
+  totalBytes: z.number().int().nonnegative().max(20 * 1024 * 1024),
+  aggregateSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  files: z.array(candidateContentFileSchema).min(1).max(4_096),
+});
+
 export const projectUpdateSummarySchema = z.strictObject({
   currentPlanSha256: z.string().regex(/^[a-f0-9]{64}$/),
   updatedPaths: z.array(generatedProjectFileSchema.shape.path).max(30),
@@ -64,6 +81,7 @@ export const projectGenerationResultSchema = z.strictObject({
   plan: generatedProjectPlanSchema,
   outputPath: z.string().min(1).optional(),
   update: projectUpdateSummarySchema.optional(),
+  candidate: candidateContentManifestSchema.optional(),
 });
 
 export type ProjectGenerationRequest = z.input<typeof projectGenerationRequestSchema>;
@@ -72,3 +90,4 @@ export type GeneratedProjectPlan = z.infer<typeof generatedProjectPlanSchema>;
 export type ProjectGenerationResult = z.infer<typeof projectGenerationResultSchema>;
 export type ManagedGeneratedProjectManifest = z.infer<typeof managedGeneratedProjectManifestSchema>;
 export type ProjectUpdateSummary = z.infer<typeof projectUpdateSummarySchema>;
+export type CandidateContentManifest = z.infer<typeof candidateContentManifestSchema>;

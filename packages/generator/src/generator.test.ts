@@ -1,10 +1,11 @@
-import { mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { hostname } from "node:os";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { GameProjectGenerator } from "./generator.js";
+import type { GameSpec } from "@gameforge/contracts";
 
 const temporaryRoots: string[] = [];
 const spec = {
@@ -24,6 +25,28 @@ async function createGenerator(): Promise<{ generator: GameProjectGenerator; roo
   return { generator: new GameProjectGenerator({ outputRoot: root }), root };
 }
 
+function candidateIdentity() {
+  const id = randomUUID();
+  return { attemptId: `attempt-${id}`, revisionId: `revision-${id}` } as const;
+}
+
+async function createAccepted(
+  generator: GameProjectGenerator,
+  root: string,
+  projectId: string,
+  gameSpec: GameSpec = spec,
+) {
+  const result = await generator.execute({
+    projectId,
+    spec: gameSpec,
+    mode: "apply",
+    ...candidateIdentity(),
+  });
+  if (result.outputPath === undefined) throw new Error("Candidate generation did not return an output path.");
+  await rename(result.outputPath, path.join(root, projectId));
+  return result;
+}
+
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -31,9 +54,10 @@ afterEach(async () => {
 describe("GameProjectGenerator", () => {
   it("creates deterministic dry-run plans without writing files", async () => {
     const { generator, root } = await createGenerator();
+    const identity = candidateIdentity();
 
-    const first = await generator.execute({ projectId: "safety-sprint", spec });
-    const second = await generator.execute({ projectId: "safety-sprint", spec });
+    const first = await generator.execute({ projectId: "safety-sprint", spec, ...identity });
+    const second = await generator.execute({ projectId: "safety-sprint", spec, ...identity });
 
     expect(first).toEqual(second);
     expect(first.mode).toBe("dry-run");
@@ -48,19 +72,19 @@ describe("GameProjectGenerator", () => {
   it("atomically creates a new standalone Phaser project", async () => {
     const { generator, root } = await createGenerator();
 
-    const result = await generator.execute({ projectId: "safety-sprint", spec, mode: "apply" });
+    const result = await generator.execute({ projectId: "safety-sprint", spec, mode: "apply", ...candidateIdentity() });
 
-    expect(result.outputPath).toBe(await realpath(path.join(root, "safety-sprint")));
-    expect(JSON.parse(await readFile(path.join(root, "safety-sprint", "game-spec.json"), "utf8"))).toEqual(spec);
+    expect(result.outputPath).toContain(`${path.sep}.gameforge${path.sep}candidates${path.sep}`);
+    expect(JSON.parse(await readFile(path.join(result.outputPath!, "game-spec.json"), "utf8"))).toEqual(spec);
     const packageJson = JSON.parse(await readFile(
-      path.join(root, "safety-sprint", "package.json"),
+      path.join(result.outputPath!, "package.json"),
       "utf8",
     )) as { packageManager?: string };
     expect(packageJson.packageManager).toBe("bun@1.3.14");
-    expect(await readFile(path.join(root, "safety-sprint", ".npmrc"), "utf8"))
+    expect(await readFile(path.join(result.outputPath!, ".npmrc"), "utf8"))
       .toBe("registry=https://registry.npmjs.org/\n");
     const manifest = JSON.parse(await readFile(
-      path.join(root, "safety-sprint", ".gameforge", "manifest.json"),
+      path.join(result.outputPath!, ".gameforge", "manifest.json"),
       "utf8",
     )) as { planSha256: string; target: string; files: unknown[] };
     expect(manifest.planSha256).toBe(result.plan.planSha256);
@@ -68,18 +92,19 @@ describe("GameProjectGenerator", () => {
     expect(manifest.files).toHaveLength(result.plan.files.length - 1);
   });
 
-  it("never overwrites an existing project", async () => {
+  it("never overwrites an existing Attempt candidate", async () => {
     const { generator } = await createGenerator();
-    await generator.execute({ projectId: "safety-sprint", spec, mode: "apply" });
+    const identity = candidateIdentity();
+    await generator.execute({ projectId: "safety-sprint", spec, mode: "apply", ...identity });
 
     await expect(
-      generator.execute({ projectId: "safety-sprint", spec, mode: "apply" }),
-    ).rejects.toThrow("already exists");
+      generator.execute({ projectId: "safety-sprint", spec, mode: "apply", ...identity }),
+    ).rejects.toThrow();
   });
 
   it("updates only clean generator-owned files and preserves assets and unknown files", async () => {
     const { generator, root } = await createGenerator();
-    const created = await generator.execute({ projectId: "safety-sprint", spec, mode: "apply" });
+    const created = await createAccepted(generator, root, "safety-sprint");
     const project = path.join(root, "safety-sprint");
     const assetManifestPath = path.join(project, "public", "assets", "manifest.json");
     const assetManifest = { schemaVersion: "1.0", projectId: "safety-sprint", revision: 1, assets: [] };
@@ -91,6 +116,7 @@ describe("GameProjectGenerator", () => {
       projectId: "safety-sprint",
       spec: revised,
       operation: "update",
+      ...candidateIdentity(),
     });
     expect(preview.update).toMatchObject({
       currentPlanSha256: created.plan.planSha256,
@@ -107,30 +133,90 @@ describe("GameProjectGenerator", () => {
       operation: "update",
       mode: "apply",
       expectedPlanSha256: currentPlanSha256,
+      ...candidateIdentity(),
     });
     expect(applied.operation).toBe("update");
-    expect(JSON.parse(await readFile(path.join(project, "game-spec.json"), "utf8"))).toEqual(revised);
-    expect(JSON.parse(await readFile(assetManifestPath, "utf8"))).toEqual(assetManifest);
-    expect(await readFile(path.join(project, "NOTES.md"), "utf8")).toBe("user notes\n");
+    expect(JSON.parse(await readFile(path.join(applied.outputPath!, "game-spec.json"), "utf8"))).toEqual(revised);
+    expect(JSON.parse(await readFile(path.join(applied.outputPath!, "public", "assets", "manifest.json"), "utf8"))).toEqual(assetManifest);
+    expect(await readFile(path.join(applied.outputPath!, "NOTES.md"), "utf8")).toBe("user notes\n");
   });
 
-  it("refuses update when a managed file was modified or the plan CAS is stale", async () => {
+  it("writes a modification only to its Attempt candidate and returns its bounded digest manifest", async () => {
     const { generator, root } = await createGenerator();
-    const created = await generator.execute({ projectId: "safety-sprint", spec, mode: "apply" });
+    const created = await createAccepted(generator, root, "safety-sprint");
+    const acceptedSpecPath = path.join(root, "safety-sprint", "game-spec.json");
+    const acceptedSpec = await readFile(acceptedSpecPath, "utf8");
+    const revised = { ...spec, title: "Isolated Revision" };
+
+    const result = await generator.execute({
+      projectId: "safety-sprint",
+      spec: revised,
+      operation: "update",
+      mode: "apply",
+      expectedPlanSha256: created.plan.planSha256,
+      attemptId: "attempt-00000000-0000-4000-8000-000000000064",
+      revisionId: "revision-00000000-0000-4000-8000-000000000064",
+    });
+
+    expect(await readFile(acceptedSpecPath, "utf8")).toBe(acceptedSpec);
+    expect(result.outputPath).toBe(await realpath(path.join(
+      root,
+      ".gameforge",
+      "candidates",
+      "attempt-00000000-0000-4000-8000-000000000064",
+      "safety-sprint",
+    )));
+    expect(JSON.parse(await readFile(path.join(result.outputPath!, "game-spec.json"), "utf8")))
+      .toEqual(revised);
+    const candidate = JSON.parse(await readFile(
+      path.join(result.outputPath!, ".gameforge", "candidate.json"),
+      "utf8",
+    )) as {
+      attemptId: string;
+      revisionId: string;
+      files: Array<{ path: string; bytes: number; sha256: string }>;
+      aggregateSha256: string;
+    };
+    expect(candidate).toMatchObject({
+      attemptId: "attempt-00000000-0000-4000-8000-000000000064",
+      revisionId: "revision-00000000-0000-4000-8000-000000000064",
+    });
+    expect(candidate.files.length).toBeGreaterThan(0);
+    expect(candidate.files.length).toBeLessThanOrEqual(4_096);
+    expect(candidate.aggregateSha256).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("cleans a failed Attempt candidate without changing the accepted project", async () => {
+    const { generator, root } = await createGenerator();
+    const created = await createAccepted(generator, root, "safety-sprint");
     const project = path.join(root, "safety-sprint");
     const gameSourcePath = path.join(project, "src", "game.ts");
     const originalGameSource = await readFile(gameSourcePath, "utf8");
     await writeFile(gameSourcePath, "// user modification\n");
+    const acceptedBefore = await readFile(gameSourcePath, "utf8");
     const revised = { ...spec, title: "Revised" };
-    const preview = await generator.execute({ projectId: "safety-sprint", spec: revised, operation: "update" });
+    const preview = await generator.execute({
+      projectId: "safety-sprint", spec: revised, operation: "update", ...candidateIdentity(),
+    });
     expect(preview.update?.conflicts).toEqual(["src/game.ts"]);
+    const failedIdentity = candidateIdentity();
     await expect(generator.execute({
       projectId: "safety-sprint",
       spec: revised,
       operation: "update",
       mode: "apply",
       expectedPlanSha256: created.plan.planSha256,
+      ...failedIdentity,
     })).rejects.toThrow("modified managed files");
+    expect(await readFile(gameSourcePath, "utf8")).toBe(acceptedBefore);
+    await expect(readFile(path.join(
+      root,
+      ".gameforge",
+      "candidates",
+      failedIdentity.attemptId,
+      "safety-sprint",
+      "game-spec.json",
+    ))).rejects.toMatchObject({ code: "ENOENT" });
 
     await writeFile(gameSourcePath, originalGameSource);
     await expect(generator.execute({
@@ -139,13 +225,16 @@ describe("GameProjectGenerator", () => {
       operation: "update",
       mode: "apply",
       expectedPlanSha256: "0".repeat(64),
+      ...candidateIdentity(),
     })).rejects.toThrow("plan conflict");
   });
 
-  it("recovers only an old same-host update lock whose owner is dead", async () => {
+  it("does not reuse an existing Attempt candidate", async () => {
     const { generator, root } = await createGenerator();
-    const created = await generator.execute({ projectId: "safety-sprint", spec, mode: "apply" });
-    const lockPath = path.join(root, "safety-sprint", ".gameforge", "update.lock");
+    const created = await createAccepted(generator, root, "safety-sprint");
+    const identity = candidateIdentity();
+    const lockPath = path.join(root, ".gameforge", "candidates", identity.attemptId, "safety-sprint", ".gameforge", "update.lock");
+    await mkdir(path.dirname(lockPath), { recursive: true });
     await writeFile(lockPath, `${JSON.stringify({
       version: 1,
       token: "00000000-0000-4000-8000-000000000077",
@@ -159,8 +248,9 @@ describe("GameProjectGenerator", () => {
       operation: "update",
       mode: "apply",
       expectedPlanSha256: created.plan.planSha256,
-    })).resolves.toMatchObject({ operation: "update" });
-    await expect(readFile(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
+      ...identity,
+    })).rejects.toThrow("already exists");
+    await expect(readFile(lockPath)).resolves.toBeTruthy();
   });
 
   it("rolls back or finalizes a persisted managed update from the manifest commit point", async () => {
@@ -170,21 +260,23 @@ describe("GameProjectGenerator", () => {
       const project = path.join(root, projectId);
       const oldSpec = { ...spec, title: `Old ${state}` };
       const newSpec = { ...spec, title: `New ${state}` };
-      const created = await generator.execute({ projectId, spec: oldSpec, mode: "apply" });
+      const created = await createAccepted(generator, root, projectId, oldSpec);
       const manifestPath = path.join(project, ".gameforge", "manifest.json");
       const specPath = path.join(project, "game-spec.json");
       const oldManifestText = await readFile(manifestPath, "utf8");
       const oldManifest = JSON.parse(oldManifestText) as { planSha256: string; files: Array<{ path: string; bytes: number; sha256: string }> };
       const oldSpecText = await readFile(specPath, "utf8");
-      await generator.execute({
+      const updated = await generator.execute({
         projectId,
         spec: newSpec,
         operation: "update",
         mode: "apply",
         expectedPlanSha256: created.plan.planSha256,
+        ...candidateIdentity(),
       });
-      const newManifestText = await readFile(manifestPath, "utf8");
+      const newManifestText = await readFile(path.join(updated.outputPath!, ".gameforge", "manifest.json"), "utf8");
       const newManifest = JSON.parse(newManifestText) as { planSha256: string; files: Array<{ path: string; bytes: number; sha256: string }> };
+      const newSpecText = await readFile(path.join(updated.outputPath!, "game-spec.json"), "utf8");
       const transactionId = state === "old"
         ? "00000000-0000-4000-8000-000000000061"
         : "00000000-0000-4000-8000-000000000062";
@@ -192,7 +284,8 @@ describe("GameProjectGenerator", () => {
       const newFile = newManifest.files.find((file) => file.path === "game-spec.json");
       if (oldFile === undefined || newFile === undefined) throw new Error("Test manifest lacks game-spec metadata.");
       await writeFile(`${specPath}.${transactionId}.bak`, oldSpecText);
-      if (state === "old") await writeFile(manifestPath, oldManifestText);
+      await writeFile(specPath, newSpecText);
+      if (state === "new") await writeFile(manifestPath, newManifestText);
       const hash = (value: string) => createHash("sha256").update(value).digest("hex");
       await writeFile(path.join(project, ".gameforge", "update.transaction.json"), `${JSON.stringify({
         version: 1,
@@ -220,7 +313,7 @@ describe("GameProjectGenerator", () => {
       const { generator, root } = await createGenerator();
       const projectId = `delete-${state}`;
       const project = path.join(root, projectId);
-      await generator.execute({ projectId, spec, mode: "apply" });
+      await createAccepted(generator, root, projectId);
       await writeFile(path.join(project, "NOTES.md"), "keep me\n");
       const manifestPath = path.join(project, ".gameforge", "manifest.json");
       const oldManifestText = await readFile(manifestPath, "utf8");
@@ -262,7 +355,7 @@ describe("GameProjectGenerator", () => {
       objective: "Collect items. </script><script>globalThis.pwned=true</script>",
     };
 
-    await generator.execute({ projectId: "safe-output", spec: injected, mode: "apply" });
+    await createAccepted(generator, root, "safe-output", injected);
 
     const source = await readFile(path.join(root, "safe-output", "src", "game.ts"), "utf8");
     const loader = await readFile(path.join(root, "safe-output", "src", "main.ts"), "utf8");
@@ -282,6 +375,7 @@ describe("GameProjectGenerator", () => {
       const result = await generator.execute({
         projectId: `game-${genre}`,
         spec: { ...spec, genre },
+        ...candidateIdentity(),
       });
       expect(result.plan.files.some((file) => file.path === "src/main.ts")).toBe(true);
     }
@@ -293,7 +387,7 @@ describe("GameProjectGenerator", () => {
       ...spec,
       gameplay: { collectibleCount: 2, hazardCount: 0, startingLives: 1, movementSpeed: 300 },
     };
-    await generator.execute({ projectId: "tuned-game", spec: tuned, mode: "apply" });
+    await createAccepted(generator, root, "tuned-game", tuned);
     expect(JSON.parse(await readFile(path.join(root, "tuned-game", "game-spec.json"), "utf8")))
       .toMatchObject({ gameplay: tuned.gameplay });
     const source = await readFile(path.join(root, "tuned-game", "src", "game.ts"), "utf8");
@@ -304,7 +398,7 @@ describe("GameProjectGenerator", () => {
 
   it("validates runtime media bindings and starts background music after user input", async () => {
     const { generator, root } = await createGenerator();
-    await generator.execute({ projectId: "media-game", spec, mode: "apply" });
+    await createAccepted(generator, root, "media-game");
 
     const source = await readFile(path.join(root, "media-game", "src", "game.ts"), "utf8");
     expect(source).toContain("function parseRuntimeAssets(value: unknown)");
@@ -316,7 +410,7 @@ describe("GameProjectGenerator", () => {
 
   it("normalizes generated image dimensions for rendering and collision", async () => {
     const { generator, root } = await createGenerator();
-    await generator.execute({ projectId: "image-sizing", spec, mode: "apply" });
+    await createAccepted(generator, root, "image-sizing");
 
     const source = await readFile(path.join(root, "image-sizing", "src", "game.ts"), "utf8");
     expect(source).toContain('this.createSizedSprite(120, height / 2, "player", 32, 32)');
@@ -327,11 +421,7 @@ describe("GameProjectGenerator", () => {
 
   it("localizes generated runtime chrome while preserving legacy Chinese defaults", async () => {
     const { generator, root } = await createGenerator();
-    await generator.execute({
-      projectId: "english-game",
-      spec: { ...spec, locale: "en-US" },
-      mode: "apply",
-    });
+    await createAccepted(generator, root, "english-game", { ...spec, locale: "en-US" });
 
     const source = await readFile(path.join(root, "english-game", "src", "game.ts"), "utf8");
     const html = await readFile(path.join(root, "english-game", "index.html"), "utf8");
@@ -345,7 +435,7 @@ describe("GameProjectGenerator", () => {
     expect(html).toContain('aria-label="GameForge generated game"');
     expect(html).toContain('<link rel="icon" href="data:," />');
 
-    await generator.execute({ projectId: "legacy-game", spec, mode: "apply" });
+    await createAccepted(generator, root, "legacy-game");
     const legacyHtml = await readFile(path.join(root, "legacy-game", "index.html"), "utf8");
     expect(legacyHtml).toContain('<html lang="zh-CN">');
     expect(legacyHtml).toContain('aria-label="GameForge 生成的游戏"');
