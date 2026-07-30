@@ -49,7 +49,8 @@ export const managedGeneratedProjectManifestSchema = z.strictObject({
 
 export const candidateContentFileSchema = z.strictObject({
   path: z.string().min(1).max(512).refine(
-    (value) => !value.includes("\\") && value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== ".."),
+    (value) => !value.includes("\\") && !/^[a-z]:\//i.test(value) &&
+      value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== ".."),
     "Candidate file path must be normalized and relative.",
   ),
   bytes: z.number().int().nonnegative().max(20 * 1024 * 1024),

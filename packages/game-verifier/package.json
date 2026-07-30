@@ -12,6 +12,7 @@
     "test": "vitest run src --testTimeout=30000"
   },
   "dependencies": {
+    "@gameforge/bundle-budget": "0.1.0",
     "@gameforge/contracts": "*",
     "@gameforge/run-relay": "0.1.0",
     "phaser": "4.2.1",

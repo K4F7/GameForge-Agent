@@ -1,10 +1,18 @@
 import type { AddressInfo } from "node:net";
-import { createGameTaskResponseSchema } from "@gameforge/contracts";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createGameTaskResponseSchema, webGameBundleLimits } from "@gameforge/contracts";
 import { afterEach, describe, expect, it } from "vitest";
-import { createRunRelayServer } from "./server.js";
+import { createRunRelayServer, ProjectAuthority } from "./server.js";
 import { RunRelayClient } from "./client.js";
+import { RelayStatePersistence } from "./persistence.js";
+import { RunStore } from "./store.js";
+import { TaskInbox } from "./tasks.js";
 
 const servers: ReturnType<typeof createRunRelayServer>[] = [];
+const roots: string[] = [];
 
 async function startServer(
   options: Parameters<typeof createRunRelayServer>[0] = {},
@@ -24,6 +32,7 @@ afterEach(async () => {
     server.closeAllConnections();
     server.close(() => resolve());
   })));
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe("run relay HTTP server", () => {
@@ -66,6 +75,258 @@ describe("run relay HTTP server", () => {
     });
     expect(stopped.status).toBe(200);
     expect(saves).toBe(2);
+  });
+
+  it("does not copy rollback snapshots when persistence is disabled", async () => {
+    const store = new class extends RunStore {
+      override snapshot(): never {
+        throw new Error("Persistence-only snapshot must not run without persistence.");
+      }
+    }();
+    const taskInbox = new TaskInbox(store);
+    const projectAuthority = new ProjectAuthority(taskInbox);
+    const baseUrl = await startServer({ store, taskInbox, projectAuthority });
+
+    const response = await fetch(`${baseUrl}/runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runId: "run-without-persistence-snapshot" }),
+    });
+
+    expect(response.status).toBe(201);
+  });
+
+  it("does not expose an in-memory Run when persistence rejects the mutation", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "gameforge-relay-rollback-"));
+    roots.push(root);
+    const statePath = path.join(root, "relay-state.json");
+    await mkdir(statePath);
+    const store = new RunStore();
+    const taskInbox = new TaskInbox(store);
+    const projectAuthority = new ProjectAuthority(taskInbox);
+    const persistence = new RelayStatePersistence(statePath);
+    const baseUrl = await startServer({
+      store,
+      taskInbox,
+      projectAuthority,
+      persistState: () => persistence.save(store, taskInbox, projectAuthority),
+    });
+
+    const rejected = await fetch(`${baseUrl}/runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runId: "run-persistence-rejected" }),
+    });
+    expect(rejected.status).toBe(500);
+
+    const replay = await fetch(`${baseUrl}/runs/run-persistence-rejected/events?after=0`);
+    expect(replay.status).toBe(404);
+    await expect(replay.json()).resolves.toMatchObject({ error: "run_not_found" });
+  });
+
+  it("compensates durable state when persistence writes before rejecting", async () => {
+    const store = new RunStore();
+    const taskInbox = new TaskInbox(store);
+    const projectAuthority = new ProjectAuthority(taskInbox);
+    let saves = 0;
+    let durableRuns = store.snapshot();
+    const baseUrl = await startServer({
+      store,
+      taskInbox,
+      projectAuthority,
+      persistState: async () => {
+        saves += 1;
+        durableRuns = store.snapshot();
+        if (saves === 1) throw new Error("simulated post-write persistence failure");
+      },
+    });
+
+    const rejected = await fetch(`${baseUrl}/runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runId: "run-post-write-persistence-rejected" }),
+    });
+
+    expect(rejected.status).toBe(500);
+    expect(saves).toBe(2);
+    expect(durableRuns).toEqual({ schemaVersion: 2, runs: [] });
+    expect((await fetch(`${baseUrl}/runs/run-post-write-persistence-rejected/events?after=0`)).status).toBe(404);
+  });
+
+  it("does not publish an SSE event before its persistence commit succeeds", async () => {
+    let saves = 0;
+    const baseUrl = await startServer({
+      persistState: async () => {
+        saves += 1;
+        if (saves > 1) throw new Error("simulated persistence failure");
+      },
+    });
+    const created = await fetch(`${baseUrl}/runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runId: "run-sse-persistence-rejected" }),
+    });
+    expect(created.status).toBe(201);
+
+    const controller = new AbortController();
+    try {
+      const stream = await fetch(`${baseUrl}/runs/run-sse-persistence-rejected/stream?after=0`, {
+        signal: controller.signal,
+      });
+      const reader = stream.body?.getReader();
+      const initial = await reader?.read();
+      expect(new TextDecoder().decode(initial?.value)).toContain('"type":"run.started"');
+
+      const rejected = await fetch(`${baseUrl}/runs/run-sse-persistence-rejected/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          runId: "run-sse-persistence-rejected",
+          after: 1,
+          events: [{
+            type: "log.appended",
+            runId: "run-sse-persistence-rejected",
+            sequence: 2,
+            emittedAt: "2026-07-30T10:00:00+08:00",
+            source: "tool",
+            level: "success",
+            message: "Must not escape a failed persistence commit",
+          }],
+        }),
+      });
+      expect(rejected.status).toBe(500);
+      const nextChunk = reader === undefined
+        ? undefined
+        : await Promise.race([
+          reader.read().then((chunk) => new TextDecoder().decode(chunk.value)),
+          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 100)),
+        ]);
+      expect(nextChunk).toBeUndefined();
+
+      const replay = await fetch(`${baseUrl}/runs/run-sse-persistence-rejected/events?after=1`);
+      expect(await replay.json()).toMatchObject({ events: [] });
+    } finally {
+      controller.abort();
+    }
+  });
+
+  it("holds new replay and SSE reads at the durable mutation boundary", async () => {
+    let saves = 0;
+    let persistenceStarted: (() => void) | undefined;
+    let rejectPersistence: ((error: Error) => void) | undefined;
+    const pendingPersistence = new Promise<void>((_resolve, reject) => {
+      rejectPersistence = reject;
+    });
+    const baseUrl = await startServer({
+      persistState: async () => {
+        saves += 1;
+        if (saves === 2) {
+          persistenceStarted?.();
+          await pendingPersistence;
+        }
+      },
+    });
+    await fetch(`${baseUrl}/runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runId: "run-concurrent-durable-read" }),
+    });
+
+    const started = new Promise<void>((resolve) => { persistenceStarted = resolve; });
+    const append = fetch(`${baseUrl}/runs/run-concurrent-durable-read/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        runId: "run-concurrent-durable-read",
+        after: 1,
+        events: [{
+          type: "log.appended",
+          runId: "run-concurrent-durable-read",
+          sequence: 2,
+          emittedAt: "2026-07-30T10:00:00+08:00",
+          source: "tool",
+          level: "success",
+          message: "Must remain invisible until persistence commits",
+        }],
+      }),
+    });
+    await started;
+
+    const replay = fetch(`${baseUrl}/runs/run-concurrent-durable-read/events?after=0`);
+    const streamController = new AbortController();
+    const stream = fetch(`${baseUrl}/runs/run-concurrent-durable-read/stream?after=0`, {
+      signal: streamController.signal,
+    });
+    const beforeRollback = await Promise.race([
+      Promise.all([replay, stream]).then(() => "resolved" as const),
+      new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 100)),
+    ]);
+    expect(beforeRollback).toBe("pending");
+
+    rejectPersistence?.(new Error("simulated persistence failure"));
+    expect((await append).status).toBe(500);
+    const replayResponse = await replay;
+    expect(await replayResponse.json()).toMatchObject({
+      events: [expect.objectContaining({ sequence: 1, type: "run.started" })],
+    });
+    const streamResponse = await stream;
+    const streamReader = streamResponse.body?.getReader();
+    let initialText = "";
+    for (let reads = 0; reads < 3 && !initialText.includes('"type":"run.started"'); reads += 1) {
+      const chunk = await streamReader?.read();
+      initialText += new TextDecoder().decode(chunk?.value);
+    }
+    expect(initialText).toContain('"type":"run.started"');
+    expect(initialText).not.toContain("Must remain invisible until persistence commits");
+    streamController.abort();
+  });
+
+  it("holds authoritative Task reads until a durable mutation commits or rolls back", async () => {
+    let saves = 0;
+    let persistenceStarted: (() => void) | undefined;
+    let rejectPersistence: ((error: Error) => void) | undefined;
+    const pendingPersistence = new Promise<void>((_resolve, reject) => {
+      rejectPersistence = reject;
+    });
+    const baseUrl = await startServer({
+      persistState: async () => {
+        saves += 1;
+        if (saves === 2) {
+          persistenceStarted?.();
+          await pendingPersistence;
+        }
+      },
+    });
+    const createdResponse = await fetch(`${baseUrl}/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        runId: "run-concurrent-task-read",
+        prompt: "Create a game whose claim is durably visible.",
+        language: "en-US",
+      }),
+    });
+    const created = createGameTaskResponseSchema.parse(await createdResponse.json());
+
+    const started = new Promise<void>((resolve) => { persistenceStarted = resolve; });
+    const claim = fetch(`${baseUrl}/tasks/${created.task.taskId}/claim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentId: "codearts" }),
+    });
+    await started;
+
+    const read = fetch(`${baseUrl}/tasks/${created.task.taskId}`);
+    expect(await Promise.race([
+      read.then(() => "resolved" as const),
+      new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 100)),
+    ])).toBe("pending");
+
+    rejectPersistence?.(new Error("simulated persistence failure"));
+    expect((await claim).status).toBe(500);
+    expect(await read.then((response) => response.json())).toMatchObject({
+      task: { taskId: created.task.taskId, status: "queued" },
+    });
   });
 
   it("creates, lists, claims, and completes a game task with its run", async () => {
@@ -134,6 +395,187 @@ describe("run relay HTTP server", () => {
       task: { runId: "run-client-task", language: "en-US", status: "queued" },
       event: { type: "run.started", language: "en-US", sequence: 1 },
     });
+  });
+
+  it("creates and reads Projects and Attempts through the shared client", async () => {
+    const baseUrl = await startServer();
+    const client = new RunRelayClient({ baseUrl });
+    const project = await client.createProject();
+    const created = await client.createTask({
+      runId: "run-project-attempt-client",
+      prompt: "Create a browser game with a reachable win condition.",
+      language: "en-US",
+      projectId: project.projectId,
+    });
+    await client.compileTaskAcceptanceContract(created.task.taskId, {
+      contractVersion: 1,
+      criteria: [{
+        criterionId: "win-condition",
+        sourceRequirement: "The game has a reachable win condition.",
+        expected: "Normal player input reaches won state.",
+        verification: { kind: "public-telemetry", path: "$.status" },
+      }],
+    });
+
+    const attempt = await client.startAttempt({
+      taskId: created.task.taskId,
+      projectId: project.projectId,
+    });
+    const recovered = await client.startAttempt({
+      taskId: created.task.taskId,
+      projectId: project.projectId,
+    });
+
+    await expect(client.getProject(project.projectId)).resolves.toEqual(project);
+    await expect(client.getAttempt(attempt.attemptId)).resolves.toEqual(attempt);
+    expect(recovered).toEqual(attempt);
+    expect(attempt).toMatchObject({
+      taskId: created.task.taskId,
+      projectId: project.projectId,
+      state: "running",
+    });
+  });
+
+  it("rejects retrying a running Attempt through the shared client", async () => {
+    const baseUrl = await startServer();
+    const client = new RunRelayClient({ baseUrl });
+    const project = await client.createProject();
+    const created = await client.createTask({
+      runId: "run-attempt-retry-client",
+      prompt: "Create a browser game that can be retried explicitly.",
+      language: "en-US",
+      projectId: project.projectId,
+    });
+    await client.compileTaskAcceptanceContract(created.task.taskId, {
+      contractVersion: 1,
+      criteria: [{
+        criterionId: "retry-proof",
+        sourceRequirement: "The game Attempt can be retried explicitly.",
+        expected: "A retry creates a new immutable Attempt.",
+        verification: { kind: "public-telemetry", path: "$.status" },
+      }],
+    });
+    const first = await client.startAttempt({ taskId: created.task.taskId, projectId: project.projectId });
+    await expect(client.retryAttempt(first.attemptId)).rejects.toMatchObject({ relayCode: "attempt_not_incomplete" });
+    await expect(client.getAttempt(first.attemptId)).resolves.toEqual(first);
+  });
+
+  it("persists bounded incomplete Evidence while rejecting malformed present proof", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "gameforge-large-evidence-"));
+    roots.push(root);
+    const statePath = path.join(root, "relay-state.json");
+    const store = new RunStore();
+    const taskInbox = new TaskInbox(store);
+    const projectAuthority = new ProjectAuthority(taskInbox);
+    const persistence = new RelayStatePersistence(statePath);
+    const baseUrl = await startServer({
+      store,
+      taskInbox,
+      projectAuthority,
+      persistState: () => persistence.save(store, taskInbox, projectAuthority),
+    });
+    const client = new RunRelayClient({ baseUrl });
+    const project = await client.createProject();
+    const prompt = "Create a browser game whose winning state is publicly observable.";
+    const created = await client.createTask({
+      runId: "run-incomplete-evidence-client",
+      prompt,
+      language: "en-US",
+      projectId: project.projectId,
+    });
+    await client.compileTaskAcceptanceContract(created.task.taskId, {
+      contractVersion: 1,
+      criteria: [{
+        criterionId: "winning-state",
+        sourceRequirement: "The winning state is publicly observable.",
+        expected: "Normal player input reaches won state.",
+        verification: { kind: "public-telemetry", path: "$.status" },
+      }],
+    });
+    await client.claimTask(created.task.taskId, { agentId: "codearts" });
+    await expect(client.transitionTask(created.task.taskId, {
+      status: "in-progress",
+      agentId: "codearts",
+    })).resolves.toMatchObject({ outcome: "accepted" });
+    const first = await client.startAttempt({ taskId: created.task.taskId, projectId: project.projectId });
+    const identity = {
+      attemptId: first.attemptId,
+      taskId: first.taskId,
+      runId: created.task.runId,
+      projectId: first.projectId,
+      baseRevisionId: first.baseRevisionId ?? null,
+      revisionId: first.revisionId,
+      acceptanceContractFingerprint: first.acceptanceContractFingerprint,
+      request: {
+        normalized: prompt,
+        fingerprint: createHash("sha256").update(prompt, "utf8").digest("hex"),
+      },
+    };
+
+    const largeEvidence = {
+      ...identity,
+      build: {
+        attemptId: first.attemptId,
+        command: "vite.build",
+        exitCode: 0,
+        report: {
+          metrics: {
+            initial: { raw: 0, gzip: 0 },
+            async: { raw: 0, gzip: 0 },
+            total: { raw: 0, gzip: 0 },
+            files: Array.from({ length: 2_500 }, (_, index) => ({
+              path: `assets/${index}-${"x".repeat(490)}.js`,
+              phase: "async" as const,
+              raw: 0,
+              gzip: 0,
+            })),
+          },
+          limits: webGameBundleLimits,
+          issues: [],
+        },
+      },
+    };
+    const largeEvidenceBody = JSON.stringify(largeEvidence);
+    expect(Buffer.byteLength(largeEvidenceBody)).toBeGreaterThan(1024 * 1024);
+    const largeEvidenceResponse = await fetch(`${baseUrl}/attempts/${first.attemptId}/evidence`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: largeEvidenceBody,
+    });
+    expect(largeEvidenceResponse.status).toBe(200);
+    await expect(largeEvidenceResponse.json()).resolves.toEqual({
+      status: "incomplete",
+      reasonCode: "evidence.missing-required-proof.v1",
+      attemptId: first.attemptId,
+    });
+    await expect(client.getAttempt(first.attemptId)).resolves.toMatchObject({
+      state: "incomplete",
+      incompleteReasonCode: "evidence.missing-required-proof.v1",
+      incompleteEvidence: largeEvidence,
+    });
+    const restored = await new RelayStatePersistence(statePath).load();
+    expect(restored.projectAuthority.getAttempt(first.attemptId)).toMatchObject({
+      state: "incomplete",
+      incompleteReasonCode: "evidence.missing-required-proof.v1",
+      incompleteEvidence: largeEvidence,
+    });
+
+    const retry = await client.retryAttempt(first.attemptId);
+    const retryTask = await client.getTask(retry.taskId);
+    await expect(client.submitAttemptEvidence(retry.attemptId, {
+      ...identity,
+      attemptId: retry.attemptId,
+      runId: retryTask.runId,
+      revisionId: retry.revisionId,
+      codeArts: {
+        attemptId: first.attemptId,
+        target: "deepseek-v3.2",
+        clientVersion: "1.0.0",
+        durationMs: 1,
+        interventions: [],
+      },
+    })).rejects.toThrow("Evidence records must belong to the same Attempt");
+    await expect(client.getAttempt(retry.attemptId)).resolves.toMatchObject({ state: "running" });
   });
 
   it("freezes directly traceable acceptance criteria through the public Authority operation", async () => {
@@ -356,6 +798,34 @@ describe("run relay HTTP server", () => {
       after: 1,
       events: [{ sequence: 2, type: "log.appended" }],
     });
+  });
+
+  it("recovers complete authoritative history after the live replay suffix expires", async () => {
+    const baseUrl = await startServer({ maxEventsPerRun: 10 });
+    const client = new RunRelayClient({ baseUrl });
+    await client.createRun("run-authoritative-recovery");
+    await client.publishEvents({
+      runId: "run-authoritative-recovery",
+      after: 1,
+      events: Array.from({ length: 10 }, (_, index) => ({
+        type: "log.appended" as const,
+        runId: "run-authoritative-recovery",
+        sequence: index + 2,
+        emittedAt: "2026-07-30T10:00:00+08:00",
+        source: "tool" as const,
+        level: "success" as const,
+        message: `Authoritative event ${index + 2}`,
+      })),
+    });
+
+    await expect(client.replayEvents({ runId: "run-authoritative-recovery", after: 0 }))
+      .resolves.toMatchObject({
+        after: 0,
+        events: Array.from({ length: 11 }, (_, index) => ({ sequence: index + 1 })),
+      });
+    const ahead = await fetch(`${baseUrl}/runs/run-authoritative-recovery/events?after=12`);
+    expect(ahead.status).toBe(409);
+    await expect(ahead.json()).resolves.toMatchObject({ error: "cursor_ahead" });
   });
 
   it("streams retained events over SSE", async () => {

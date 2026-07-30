@@ -1,4 +1,6 @@
 export * from "./assets.js";
+export * from "./bundle-budget.js";
+export * from "./evidence.js";
 export * from "./capabilities.js";
 export * from "./game-spec.js";
 export * from "./game-tasks.js";

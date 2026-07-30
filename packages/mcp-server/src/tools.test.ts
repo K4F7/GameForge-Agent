@@ -1,4 +1,4 @@
-import { defaultProviderConfig } from "@gameforge/contracts";
+import { defaultProviderConfig, runEventSchema, webGameBundleLimits } from "@gameforge/contracts";
 import { describe, expect, it } from "vitest";
 import type { SoundSearchProvider } from "@gameforge/contracts";
 import type { FreesoundSearchRequest, FreesoundSearchResult } from "@gameforge/providers";
@@ -191,6 +191,53 @@ describe("validation tool handlers", () => {
     expect(readJsonResult(result)).toMatchObject({
       mode: "dry-run",
       plan: { projectId: "safety-sprint", files: [{ path: "src/main.ts" }] },
+    });
+  });
+
+  it("returns an Attempt-bound authoritative generation event for an applied candidate", async () => {
+    const attemptId = "attempt-00000000-0000-4000-8000-000000000065";
+    const revisionId = "revision-00000000-0000-4000-8000-000000000065";
+    const candidate = {
+      schemaVersion: 1 as const,
+      projectId: "safety-sprint",
+      attemptId,
+      revisionId,
+      totalBytes: 100,
+      aggregateSha256: "d".repeat(64),
+      files: [{ path: "src/main.ts", bytes: 100, sha256: "c".repeat(64) }],
+    };
+    const generated: ProjectGenerationResult = {
+      mode: "apply",
+      operation: "create",
+      plan: {
+        generatorVersion: "0.1.0",
+        projectId: "safety-sprint",
+        target: "web",
+        specSha256: "a".repeat(64),
+        planSha256: "b".repeat(64),
+        files: [{ path: "src/main.ts", bytes: 100, sha256: "c".repeat(64) }],
+      },
+      candidate,
+    };
+
+    const result = await generateGameProjectTool({ execute: async () => generated }, {
+      projectId: "safety-sprint",
+      attemptId,
+      revisionId,
+      mode: "apply",
+      spec: {
+        title: "Safety Sprint",
+        genre: "arcade",
+        objective: "Collect all safety equipment before time expires.",
+        controls: ["Arrow keys"],
+        winCondition: "Collect every item.",
+        loseCondition: "The timer reaches zero.",
+        targetDurationSeconds: 90,
+      },
+    });
+
+    expect(readJsonResult(result)).toMatchObject({
+      generationEvent: { type: "project.generated", attemptId, revisionId, candidate },
     });
   });
 
@@ -724,10 +771,33 @@ describe("validation tool handlers", () => {
           state: { status: "running" as const, score: 0, lives: 3, remainingSeconds: 89 },
           screenshotPath: "D:\\projects\\safety-sprint\\.gameforge\\verification\\proof.png",
           evidencePath: ".gameforge/verification/proof.png",
+          evidenceSha256: "e".repeat(64),
           canvas: { width: 960, height: 540 },
           consoleErrors: ["runtime error"],
           pageErrors: [],
           failedRequests: [],
+          actions: ["press:ArrowRight"],
+          criteria: [{ criterionId: "winning-state", passed: false }],
+          build: {
+            attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+            command: "vite.build" as const,
+            exitCode: 0 as const,
+            report: {
+              metrics: {
+                initial: { raw: 1, gzip: 1 },
+                async: { raw: 0, gzip: 0 },
+                total: { raw: 1, gzip: 1 },
+                files: [{ path: "assets/index.js", phase: "initial" as const, raw: 1, gzip: 1 }],
+              },
+              limits: webGameBundleLimits,
+              issues: [],
+            },
+          },
+          versions: {
+            attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+            contractVersion: 1,
+            templateVersion: "0.13.0",
+          },
           actionsExecuted: request.actions?.length ?? 0,
           durationMs: 250,
         };
@@ -735,11 +805,156 @@ describe("validation tool handlers", () => {
     };
     const result = await verifyGameProjectTool(verifier, {
       projectId: "safety-sprint",
+      attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+      revisionId: "revision-00000000-0000-4000-8000-000000000065",
+      contractVersion: 1,
       actions: [{ type: "press", key: "ArrowRight" }],
       expectedOutcome: "won",
+    }, {
+      async getAttempt() {
+        return {
+          attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+          taskId: "task-00000000-0000-4000-8000-000000000065",
+          runId: "run-authoritative-criteria",
+          projectId: "safety-sprint",
+          revisionId: "revision-00000000-0000-4000-8000-000000000065",
+          acceptanceContractFingerprint: "a".repeat(64),
+          state: "running",
+        };
+      },
+      async getTask() {
+        return {
+          taskId: "task-00000000-0000-4000-8000-000000000065",
+          runId: "run-authoritative-criteria",
+          projectId: "safety-sprint",
+          prompt: "Create a browser game with an observable winning state.",
+          language: "en-US",
+          status: "claimed",
+          createdAt: "2026-07-30T00:00:00.000Z",
+          claimedAt: "2026-07-30T00:00:01.000Z",
+          claimedBy: "codearts",
+          acceptanceContract: {
+            schemaVersion: "1.0",
+            contractVersion: 1,
+            criteria: [{
+              criterionId: "winning-state",
+              sourceRequirement: "The player can win.",
+              expected: "The public state reports won.",
+              verification: {
+                kind: "public-telemetry",
+                path: "game.status",
+                assertion: { schemaVersion: 1, comparator: "equals", value: "won" },
+              },
+            }],
+            fingerprint: "a".repeat(64),
+          },
+        };
+      },
     });
     expect(result.isError).toBe(true);
     expect(calls).toEqual(["safety-sprint"]);
-    expect(readJsonResult(result)).toMatchObject({ passed: false, consoleErrors: ["runtime error"] });
+    expect(readJsonResult(result)).toMatchObject({
+      passed: false,
+      consoleErrors: ["runtime error"],
+      verificationEvent: {
+        type: "verification.ready",
+        attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+        revisionId: "revision-00000000-0000-4000-8000-000000000065",
+        projectId: "safety-sprint",
+        passed: false,
+        outcome: "running",
+        diagnostics: { consoleErrors: 1, pageErrors: 0, failedRequests: 0 },
+        actions: ["press:ArrowRight"],
+        criteria: [{ criterionId: "winning-state", passed: false }],
+        diagnosticMessages: ["runtime error"],
+        evidencePaths: [".gameforge/verification/proof.png"],
+        evidenceSha256: "e".repeat(64),
+        build: {
+          attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+          command: "vite.build",
+          exitCode: 0,
+        },
+        versions: {
+          attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+          contractVersion: 1,
+          templateVersion: "0.13.0",
+        },
+      },
+    });
+  });
+
+  it("emits a schema-valid verification event when all diagnostic categories reach their limits", async () => {
+    const diagnosticRange = Array.from({ length: 100 }, (_, index) => index);
+    const result = await verifyGameProjectTool({
+      async verify(request: VerifyGameRequest) {
+        return {
+          projectId: request.projectId,
+          passed: false,
+          state: { status: "running" as const, score: 0, lives: 3, remainingSeconds: 89 },
+          screenshotPath: "D:\\projects\\noisy-game\\.gameforge\\verification\\proof.png",
+          evidencePath: ".gameforge/verification/proof.png",
+          evidenceSha256: "e".repeat(64),
+          canvas: { width: 960, height: 540 },
+          consoleErrors: diagnosticRange.map((index) => `console-${index}`),
+          pageErrors: diagnosticRange.map((index) => `page-${index}`),
+          failedRequests: diagnosticRange.map((index) => `request-${index}`),
+          actionsExecuted: 0,
+          durationMs: 250,
+        };
+      },
+    }, {
+      projectId: "noisy-game",
+      attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+      revisionId: "revision-00000000-0000-4000-8000-000000000065",
+      contractVersion: 1,
+    });
+    const payload = readJsonResult(result) as { verificationEvent: Record<string, unknown> };
+    const event = runEventSchema.parse({
+      runId: "run-noisy-game",
+      sequence: 1,
+      emittedAt: "2026-07-30T00:00:00.000Z",
+      ...payload.verificationEvent,
+    });
+
+    expect(event).toMatchObject({
+      type: "verification.ready",
+      diagnostics: { consoleErrors: 100, pageErrors: 100, failedRequests: 100 },
+    });
+    if (event.type !== "verification.ready") throw new Error("Expected a verification.ready event.");
+    expect(event.diagnosticMessages).toHaveLength(256);
+    expect(event.diagnosticMessages?.at(-1)).toBe("request-55");
+  });
+
+  it("fails closed when Attempt-bound criteria have no Authority resolver", async () => {
+    const result = await verifyGameProjectTool({
+      async verify(request: VerifyGameRequest) {
+        return {
+          projectId: request.projectId,
+          passed: true,
+          state: { status: "won" as const, score: 1, lives: 1, remainingSeconds: 1 },
+          screenshotPath: "D:\\projects\\proof.png",
+          evidencePath: ".gameforge/verification/proof.png",
+          evidenceSha256: "e".repeat(64),
+          canvas: { width: 960, height: 540 },
+          consoleErrors: [],
+          pageErrors: [],
+          failedRequests: [],
+          criteria: [{ criterionId: "caller-supplied", passed: true }],
+          actionsExecuted: 1,
+          durationMs: 1,
+        };
+      },
+    }, {
+      projectId: "authority-required",
+      attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+      revisionId: "revision-00000000-0000-4000-8000-000000000065",
+      contractVersion: 1,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(readJsonResult(result)).toMatchObject({
+      error: "game_verification_failed",
+      message: "Attempt-bound criterion evaluation requires Authority.",
+    });
   });
 });

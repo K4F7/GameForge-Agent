@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { gameSpecSchema } from "./game-spec.js";
 import {
+  candidateContentManifestSchema,
   generatedProjectPlanSchema,
   projectIdSchema,
   projectUpdateSummarySchema,
@@ -9,6 +10,8 @@ import { runtimeAssetEntrySchema } from "./runtime-assets.js";
 import { assetIdSchema } from "./assets.js";
 import { signedJobHandleSchema } from "./providers.js";
 import { gameforgeCapabilitySnapshotSchema } from "./capabilities.js";
+import { attemptIdSchema, revisionIdSchema } from "./project-identifiers.js";
+import { bundleBudgetReportSchema } from "./bundle-budget.js";
 
 export const runIdSchema = z
   .string()
@@ -58,11 +61,41 @@ export const verificationEvidencePathSchema = z.string().regex(
   /^\.gameforge\/verification\/[a-zA-Z0-9._-]+\.png$/,
   "Verification evidence must be a project-relative PNG path.",
 );
+export const verificationDiagnosticMessageLimit = 256;
+
+export const attemptBuildEvidenceSchema = z.strictObject({
+  attemptId: attemptIdSchema,
+  command: z.literal("vite.build"),
+  exitCode: z.literal(0),
+  report: bundleBudgetReportSchema,
+});
+
+export const attemptVersionEvidenceSchema = z.strictObject({
+  attemptId: attemptIdSchema,
+  contractVersion: z.number().int().positive().max(1_000_000),
+  templateVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
+});
+export type AttemptBuildEvidence = z.infer<typeof attemptBuildEvidenceSchema>;
+export type AttemptVersionEvidence = z.infer<typeof attemptVersionEvidenceSchema>;
 
 const verificationDiagnosticCountsSchema = z.strictObject({
   consoleErrors: z.number().int().min(0).max(100),
   pageErrors: z.number().int().min(0).max(100),
   failedRequests: z.number().int().min(0).max(100),
+});
+
+const verificationCriterionResultSchema = z.strictObject({
+  criterionId: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(120),
+  passed: z.boolean(),
+});
+const verificationCriteriaSchema = z.array(verificationCriterionResultSchema).max(100).superRefine((criteria, context) => {
+  const seen = new Set<string>();
+  criteria.forEach((criterion, index) => {
+    if (seen.has(criterion.criterionId)) {
+      context.addIssue({ code: "custom", path: [index, "criterionId"], message: "Criterion IDs must be unique." });
+    }
+    seen.add(criterion.criterionId);
+  });
 });
 
 const mcpAuditCallSummarySchema = z.strictObject({
@@ -71,6 +104,7 @@ const mcpAuditCallSummarySchema = z.strictObject({
   durationMs: z.number().int().nonnegative().max(86_400_000),
   outcome: z.enum(["success", "error"]),
 });
+const sha256DigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
 
 const eventBaseShape = {
   runId: runIdSchema,
@@ -78,7 +112,7 @@ const eventBaseShape = {
   emittedAt: z.string().datetime({ offset: true }),
 };
 
-export const runEventSchema = z.discriminatedUnion("type", [
+const runEventSchemaBase = z.discriminatedUnion("type", [
   z.strictObject({
     ...eventBaseShape,
     type: z.literal("run.started"),
@@ -106,17 +140,22 @@ export const runEventSchema = z.discriminatedUnion("type", [
   z.strictObject({
     ...eventBaseShape,
     type: z.literal("project.generated"),
+    attemptId: attemptIdSchema.optional(),
+    revisionId: revisionIdSchema.optional(),
     mode: z.enum(["dry-run", "apply"]),
     operation: z.enum(["create", "update"]),
     plan: generatedProjectPlanSchema,
     update: projectUpdateSummarySchema.optional(),
+    candidate: candidateContentManifestSchema.optional(),
   }),
   z.strictObject({
     ...eventBaseShape,
     type: z.literal("mcp.audit.ready"),
+    attemptId: attemptIdSchema.optional(),
+    auditDigest: sha256DigestSchema.optional(),
     truncated: z.boolean(),
     totalCalls: z.number().int().nonnegative().max(10_000),
-    calls: z.array(mcpAuditCallSummarySchema).max(200),
+    calls: z.array(mcpAuditCallSummarySchema).max(10_000),
   }),
   z.strictObject({
     ...eventBaseShape,
@@ -127,6 +166,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
   z.strictObject({
     ...eventBaseShape,
     type: z.literal("verification.ready"),
+    attemptId: attemptIdSchema.optional(),
+    revisionId: revisionIdSchema.optional(),
     projectId: projectIdSchema,
     passed: z.boolean(),
     outcome: z.enum(["running", "won", "lost"]),
@@ -134,6 +175,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
     lives: z.number().int(),
     remainingSeconds: z.number().nonnegative(),
     evidencePath: verificationEvidencePathSchema,
+    evidenceSha256: sha256DigestSchema,
     canvas: z.strictObject({
       width: z.number().int().positive().max(16_384),
       height: z.number().int().positive().max(16_384),
@@ -141,6 +183,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
     diagnostics: verificationDiagnosticCountsSchema,
     actionsExecuted: z.number().int().min(0).max(100),
     durationMs: z.number().int().nonnegative().max(300_000),
+    actions: z.array(z.string().trim().min(1).max(2_000)).max(100).optional(),
+    diagnosticMessages: z.array(z.string().trim().min(1).max(4_096)).max(verificationDiagnosticMessageLimit).optional(),
+    evidencePaths: z.array(verificationEvidencePathSchema).max(1).optional(),
+    criteria: verificationCriteriaSchema.optional(),
+    build: attemptBuildEvidenceSchema.optional(),
+    versions: attemptVersionEvidenceSchema.optional(),
   }),
   z.strictObject({
     ...eventBaseShape,
@@ -177,6 +225,17 @@ export const runEventSchema = z.discriminatedUnion("type", [
     message: z.string().trim().min(1).max(4_000),
   }),
 ]);
+export const runEventSchema = runEventSchemaBase.superRefine((event, context) => {
+  if (event.type !== "verification.ready" || !event.passed) return;
+  if (event.diagnostics.consoleErrors > 0 || event.diagnostics.pageErrors > 0 ||
+      event.diagnostics.failedRequests > 0 || (event.diagnosticMessages?.length ?? 0) > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["passed"],
+      message: "Successful verification cannot report diagnostic failures.",
+    });
+  }
+});
 
 export type WireRunEvent = z.infer<typeof runEventSchema>;
 export type RunEvent = WireRunEvent extends infer Event

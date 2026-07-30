@@ -1,12 +1,20 @@
 import {
   claimGameTaskRequestSchema,
+  attemptIdSchema,
+  attemptSchema,
   compileTaskAcceptanceContractInputSchema,
   createGameTaskRequestSchema,
   createGameTaskResponseSchema,
+  createProjectInputSchema,
+  evidenceSealResultSchema,
+  evidenceSubmissionSchema,
   gameTaskIdSchema,
   gameTaskSchema,
   gameTaskAcceptanceCompileResultSchema,
   gameTaskTransitionResultSchema,
+  projectIdSchema,
+  projectSchema,
+  startAttemptInputSchema,
   listGameTasksRequestSchema,
   listGameTasksResponseSchema,
   runEventBatchSchema,
@@ -16,9 +24,14 @@ import {
   type RunEventBatch,
   type ReplayRunEventsRequest,
   type ClaimGameTaskRequest,
+  type Attempt,
   type CompileTaskAcceptanceContractInput,
   type CreateGameTaskRequest,
   type CreateGameTaskResponse,
+  type EvidenceSealResult,
+  type EvidenceSubmission,
+  type Project,
+  type StartAttemptInput,
   type GameTask,
   type GameTaskAcceptanceCompileResult,
   type GameTaskTransitionResult,
@@ -34,6 +47,8 @@ const publishResponseSchema = z.strictObject({
 });
 const relayErrorSchema = z.object({ error: z.string().min(1).max(100) });
 const taskResponseSchema = z.strictObject({ task: gameTaskSchema });
+const projectResponseSchema = z.strictObject({ project: projectSchema });
+const attemptResponseSchema = z.strictObject({ attempt: attemptSchema });
 
 export type RelayFetch = (
   input: string | URL | Request,
@@ -98,6 +113,81 @@ export class RunRelayClient {
       throw new RunRelayClientError("protocol", "Run relay returned an invalid create response.");
     }
     return parsed.data.event;
+  }
+
+  async createProject(): Promise<Project> {
+    const response = await this.#request("projects", {
+      method: "POST",
+      body: JSON.stringify(createProjectInputSchema.parse({})),
+    });
+    const parsed = projectResponseSchema.safeParse(response);
+    if (!parsed.success) throw new RunRelayClientError("protocol", "Run relay returned an invalid Project response.");
+    return parsed.data.project;
+  }
+
+  async getProject(projectIdInput: string): Promise<Project> {
+    const projectId = projectIdSchema.parse(projectIdInput);
+    const response = await this.#request(`projects/${encodeURIComponent(projectId)}`, { method: "GET" });
+    const parsed = projectResponseSchema.safeParse(response);
+    if (!parsed.success || parsed.data.project.projectId !== projectId) {
+      throw new RunRelayClientError("protocol", "Run relay returned an invalid Project response.");
+    }
+    return parsed.data.project;
+  }
+
+  async startAttempt(input: StartAttemptInput): Promise<Attempt> {
+    const request = startAttemptInputSchema.parse(input);
+    const response = await this.#request("attempts", { method: "POST", body: JSON.stringify(request) });
+    const parsed = attemptResponseSchema.safeParse(response);
+    if (!parsed.success || parsed.data.attempt.taskId !== request.taskId ||
+        parsed.data.attempt.projectId !== request.projectId) {
+      throw new RunRelayClientError("protocol", "Run relay returned an invalid Attempt response.");
+    }
+    return parsed.data.attempt;
+  }
+
+  async getAttempt(attemptIdInput: string): Promise<Attempt> {
+    const attemptId = attemptIdSchema.parse(attemptIdInput);
+    const response = await this.#request(`attempts/${encodeURIComponent(attemptId)}`, { method: "GET" });
+    const parsed = attemptResponseSchema.safeParse(response);
+    if (!parsed.success || parsed.data.attempt.attemptId !== attemptId) {
+      throw new RunRelayClientError("protocol", "Run relay returned an invalid Attempt response.");
+    }
+    return parsed.data.attempt;
+  }
+
+  async retryAttempt(attemptIdInput: string): Promise<Attempt> {
+    const attemptId = attemptIdSchema.parse(attemptIdInput);
+    const response = await this.#request(`attempts/${encodeURIComponent(attemptId)}/retry`, {
+      method: "POST",
+      body: "{}",
+    });
+    const parsed = attemptResponseSchema.safeParse(response);
+    if (!parsed.success || parsed.data.attempt.attemptId === attemptId) {
+      throw new RunRelayClientError("protocol", "Run relay returned an invalid Attempt retry response.");
+    }
+    return parsed.data.attempt;
+  }
+
+  async submitAttemptEvidence(
+    attemptIdInput: string,
+    input: EvidenceSubmission,
+  ): Promise<EvidenceSealResult> {
+    const attemptId = attemptIdSchema.parse(attemptIdInput);
+    const request = evidenceSubmissionSchema.parse(input);
+    if (request.attemptId !== attemptId) {
+      throw new Error("Route and Evidence Attempt IDs must match.");
+    }
+    const response = await this.#request(`attempts/${encodeURIComponent(attemptId)}/evidence`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+    const parsed = evidenceSealResultSchema.safeParse(response);
+    if (!parsed.success || (parsed.data.status === "incomplete" && parsed.data.attemptId !== attemptId) ||
+        (parsed.data.status === "sealed" && parsed.data.evidence.attemptId !== attemptId)) {
+      throw new RunRelayClientError("protocol", "Run relay returned an invalid Evidence result.");
+    }
+    return parsed.data as EvidenceSealResult;
   }
 
   async createTask(input: CreateGameTaskRequest): Promise<CreateGameTaskResponse> {

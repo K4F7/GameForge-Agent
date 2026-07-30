@@ -2,6 +2,7 @@ import {
   assetManifestSchema,
   gameSpecSchema,
   providerConfigSchema,
+  verificationDiagnosticMessageLimit,
 } from "@gameforge/contracts";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type {
@@ -46,6 +47,12 @@ import type {
   WireRunEvent,
   GameforgeCapabilitySnapshot,
   RunEvent,
+  Attempt,
+  EvidenceSealResult,
+  EvidenceSubmission,
+  Project,
+  StartAttemptInput,
+  TaskAcceptanceContract,
 } from "@gameforge/contracts";
 import type { ZodType } from "zod";
 
@@ -407,15 +414,51 @@ export type ProjectVerifier = {
   verify(request: VerifyGameRequest): Promise<VerificationReport>;
 };
 
+export type VerificationCriterionAuthority = {
+  getAttempt(attemptId: string): Promise<Attempt>;
+  getTask(taskId: string): Promise<GameTask>;
+};
+
 export async function verifyGameProjectTool(
   verifier: ProjectVerifier,
   request: VerifyGameRequest,
+  criterionAuthority?: VerificationCriterionAuthority,
 ): Promise<CallToolResult> {
   try {
     const result = await verifier.verify(request);
+    const criteria = await authoritativeCriterionResults(criterionAuthority, request, result);
+    const diagnosticMessages = [...result.consoleErrors, ...result.pageErrors, ...result.failedRequests]
+      .slice(0, verificationDiagnosticMessageLimit);
+    const verificationEvent: Omit<Extract<RunEvent, { type: "verification.ready" }>, "runId" | "sequence" | "emittedAt"> = {
+      type: "verification.ready",
+      ...(request.attemptId === undefined ? {} : { attemptId: request.attemptId }),
+      ...(request.revisionId === undefined ? {} : { revisionId: request.revisionId }),
+      projectId: result.projectId,
+      passed: result.passed,
+      outcome: result.state.status,
+      score: result.state.score,
+      lives: result.state.lives,
+      remainingSeconds: result.state.remainingSeconds,
+      evidencePath: result.evidencePath,
+      evidenceSha256: result.evidenceSha256,
+      canvas: result.canvas,
+      diagnostics: {
+        consoleErrors: result.consoleErrors.length,
+        pageErrors: result.pageErrors.length,
+        failedRequests: result.failedRequests.length,
+      },
+      actionsExecuted: result.actionsExecuted,
+      durationMs: result.durationMs,
+      ...(result.actions === undefined ? {} : { actions: [...result.actions] }),
+      ...(criteria === undefined ? {} : { criteria: [...criteria] }),
+      ...(result.build === undefined ? {} : { build: result.build }),
+      ...(result.versions === undefined ? {} : { versions: result.versions }),
+      diagnosticMessages,
+      evidencePaths: [result.evidencePath],
+    };
     return {
       ...(result.passed ? {} : { isError: true }),
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify({ ...result, verificationEvent }, null, 2) }],
     };
   } catch (error) {
     return {
@@ -429,6 +472,65 @@ export async function verifyGameProjectTool(
       }],
     };
   }
+}
+
+async function authoritativeCriterionResults(
+  authority: VerificationCriterionAuthority | undefined,
+  request: VerifyGameRequest,
+  result: VerificationReport,
+): Promise<ReadonlyArray<{ criterionId: string; passed: boolean }> | undefined> {
+  if (request.attemptId === undefined) return result.criteria;
+  if (authority === undefined) {
+    if (result.criteria === undefined) return undefined;
+    throw new Error("Attempt-bound criterion evaluation requires Authority.");
+  }
+  if (request.revisionId === undefined || request.contractVersion === undefined) {
+    throw new Error("Authoritative criterion evaluation requires Attempt, Revision, and contract version.");
+  }
+  const attempt = await authority.getAttempt(request.attemptId);
+  const task = await authority.getTask(attempt.taskId);
+  const contract = task.acceptanceContract;
+  if (contract === undefined ||
+      attempt.attemptId !== request.attemptId || task.taskId !== attempt.taskId ||
+      attempt.projectId !== request.projectId || attempt.projectId !== result.projectId ||
+      attempt.revisionId !== request.revisionId ||
+      attempt.acceptanceContractFingerprint !== contract.fingerprint ||
+      contract.contractVersion !== request.contractVersion ||
+      task.projectId !== attempt.projectId) {
+    throw new Error("Verification request does not match the authoritative Attempt contract.");
+  }
+  return evaluateCriteria(contract, result);
+}
+
+function evaluateCriteria(
+  contract: TaskAcceptanceContract,
+  report: VerificationReport,
+): ReadonlyArray<{ criterionId: string; passed: boolean }> {
+  return contract.criteria.map((criterion) => {
+    const verification = criterion.verification;
+    if (verification.kind !== "public-telemetry" || verification.assertion === undefined) {
+      return { criterionId: criterion.criterionId, passed: false };
+    }
+    const actual = readVerificationValue(report.state, verification.path);
+    const assertion = verification.assertion;
+    const passed = assertion.comparator === "includes"
+      ? typeof actual === "string" && typeof assertion.value === "string" && actual.includes(assertion.value)
+      : Object.is(actual, assertion.value);
+    return { criterionId: criterion.criterionId, passed };
+  });
+}
+
+function readVerificationValue(state: VerificationReport["state"], pathInput: string): unknown {
+  const normalized = pathInput.trim() === "game.status" ? "status" : pathInput.trim().replace(/^\$\.?/, "");
+  const segments = normalized.split(".").filter(Boolean);
+  let value: unknown = state;
+  for (const segment of segments) {
+    if (typeof value !== "object" || value === null || !Object.prototype.hasOwnProperty.call(value, segment)) {
+      return undefined;
+    }
+    value = (value as Record<string, unknown>)[segment];
+  }
+  return value;
 }
 
 export type ProjectPreviewManager = {
@@ -480,10 +582,13 @@ export async function generateGameProjectTool(
     const result = await generator.execute(request);
     const generationEvent: Omit<Extract<RunEvent, { type: "project.generated" }>, "runId" | "sequence" | "emittedAt"> = {
       type: "project.generated",
+      attemptId: request.attemptId,
+      revisionId: request.revisionId,
       mode: result.mode,
       operation: result.operation,
       plan: result.plan,
       ...(result.update === undefined ? {} : { update: result.update }),
+      ...(result.candidate === undefined ? {} : { candidate: result.candidate }),
     };
     const { outputPath: _outputPath, ...safeResult } = result;
     return {
@@ -536,6 +641,54 @@ export type TaskRelayToolClient = {
   compileTaskAcceptanceContract(taskId: string, input: CompileTaskAcceptanceContractInput): Promise<GameTaskAcceptanceCompileResult>;
   transitionTask(taskId: string, input: GameTaskTransitionRequest): Promise<GameTaskTransitionResult>;
 };
+
+export type ProjectRelayToolClient = {
+  createProject(): Promise<Project>;
+  getProject(projectId: string): Promise<Project>;
+  startAttempt(input: StartAttemptInput): Promise<Attempt>;
+  getAttempt(attemptId: string): Promise<Attempt>;
+  retryAttempt(attemptId: string): Promise<Attempt>;
+  submitAttemptEvidence(attemptId: string, input: EvidenceSubmission): Promise<EvidenceSealResult>;
+};
+
+export async function createGameProjectRecordTool(client: ProjectRelayToolClient): Promise<CallToolResult> {
+  return relayResult(async () => ({ project: await client.createProject() }));
+}
+
+export async function getGameProjectRecordTool(
+  client: ProjectRelayToolClient,
+  projectId: string,
+): Promise<CallToolResult> {
+  return relayResult(async () => ({ project: await client.getProject(projectId) }));
+}
+
+export async function startGameAttemptTool(
+  client: ProjectRelayToolClient,
+  input: StartAttemptInput,
+): Promise<CallToolResult> {
+  return relayResult(async () => ({ attempt: await client.startAttempt(input) }));
+}
+
+export async function getGameAttemptTool(
+  client: ProjectRelayToolClient,
+  attemptId: string,
+): Promise<CallToolResult> {
+  return relayResult(async () => ({ attempt: await client.getAttempt(attemptId) }));
+}
+
+export async function retryGameAttemptTool(
+  client: ProjectRelayToolClient,
+  attemptId: string,
+): Promise<CallToolResult> {
+  return relayResult(async () => ({ attempt: await client.retryAttempt(attemptId) }));
+}
+
+export async function submitGameAttemptEvidenceTool(
+  client: ProjectRelayToolClient,
+  input: EvidenceSubmission,
+): Promise<CallToolResult> {
+  return relayResult(() => client.submitAttemptEvidence(input.attemptId, input));
+}
 
 export async function createGameTaskTool(
   client: TaskRelayToolClient,

@@ -2,11 +2,12 @@
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { webGameBundleLimits } from "@gameforge/contracts";
 import { budgetIssues, measureBundle, type BundleLimits, type ViteManifest } from "./budget.js";
 
 const root = process.cwd();
 const targets: Array<{ name: string; dist: string; limits: BundleLimits }> = [
-  { name: "game", dist: "apps/game/dist", limits: { initialRaw: 10_000, initialGzip: 5_000, asyncRaw: 1_450_000, asyncGzip: 380_000, totalRaw: 1_460_000, totalGzip: 385_000 } },
+  { name: "game", dist: "apps/game/dist", limits: webGameBundleLimits },
 ];
 const report: Record<string, unknown> = { generatedAt: new Date().toISOString(), targets: {} };
 let failed = false;

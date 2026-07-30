@@ -1,5 +1,10 @@
 import {
+  attemptIdSchema,
+  attemptSchema,
+  candidateRevisionSchema,
+  evidenceSubmissionMaxBytes,
   gameTaskSchema,
+  projectSchema,
   runEventSchema,
   runIdSchema,
   runStatusSchema,
@@ -10,8 +15,11 @@ import path from "node:path";
 import { z } from "zod";
 import { RunStore, type RunStoreOptions, type RunStoreSnapshot } from "./store.js";
 import { TaskInbox, type TaskInboxOptions, type TaskInboxSnapshot } from "./tasks.js";
+import { ProjectAuthority, type ProjectAuthoritySnapshot } from "./projects.js";
 
-const MAX_STATE_BYTES = 32 * 1024 * 1024;
+// A sealed Attempt duplicates its submitted Run history by design. Reserve two
+// additional submission envelopes for Projects, Tasks, revisions, and retries.
+const MAX_STATE_BYTES = evidenceSubmissionMaxBytes * 4;
 const runRecordSchema = z.strictObject({
   runId: runIdSchema,
   status: runStatusSchema,
@@ -20,6 +28,7 @@ const runRecordSchema = z.strictObject({
     "Stored start event must be run.started.",
   ).optional(),
   events: z.array(runEventSchema).min(1).max(100_000),
+  authoritativeEvents: z.array(runEventSchema).min(1).max(100_000).optional(),
 }).superRefine((record, context) => {
   if (record.started !== undefined && (record.started.runId !== record.runId || record.started.sequence !== 1)) {
     context.addIssue({ code: "custom", path: ["started"], message: "Stored start event must match the run." });
@@ -33,12 +42,28 @@ const runRecordSchema = z.strictObject({
       context.addIssue({ code: "custom", path: ["events", index, "sequence"], message: "Events must be contiguous." });
     }
   });
+  record.authoritativeEvents?.forEach((event, index) => {
+    if (event.runId !== record.runId) {
+      context.addIssue({ code: "custom", path: ["authoritativeEvents", index, "runId"], message: "Authoritative event run ID must match." });
+    }
+    const previous = record.authoritativeEvents?.[index - 1];
+    if (previous !== undefined && event.sequence !== previous.sequence + 1) {
+      context.addIssue({ code: "custom", path: ["authoritativeEvents", index, "sequence"], message: "Authoritative events must be contiguous." });
+    }
+  });
 });
 const relayStateSchema = z.strictObject({
   schemaVersion: z.literal("1.0"),
+  runStoreSchemaVersion: z.literal(2).optional(),
   savedAt: z.string().datetime({ offset: true }),
   runs: z.array(runRecordSchema).max(10_000),
   tasks: z.array(gameTaskSchema).max(10_000),
+  projectAuthority: z.strictObject({
+    projects: z.array(projectSchema).max(10_000),
+    revisions: z.array(candidateRevisionSchema).max(100_000),
+    attempts: z.array(attemptSchema).max(100_000),
+    retriedAttemptIds: z.array(attemptIdSchema).max(100_000),
+  }).optional(),
 }).superRefine((state, context) => {
   const runs = new Map(state.runs.map((run) => [run.runId, run]));
   state.tasks.forEach((task, index) => {
@@ -60,40 +85,62 @@ export class RelayStatePersistence {
     this.#filePath = statePath(filePath);
   }
 
-  async load(options: RelayStateOptions = {}): Promise<{ store: RunStore; taskInbox: TaskInbox }> {
+  async load(options: RelayStateOptions = {}): Promise<{
+    store: RunStore;
+    taskInbox: TaskInbox;
+    projectAuthority: ProjectAuthority;
+  }> {
     const store = new RunStore(options);
     const taskInbox = new TaskInbox(store, options);
+    const projectAuthority = new ProjectAuthority(taskInbox);
     const info = await lstat(this.#filePath).catch((error: unknown) => {
       if (isNodeError(error, "ENOENT")) return undefined;
       throw error;
     });
-    if (info === undefined) return { store, taskInbox };
+    if (info === undefined) return { store, taskInbox, projectAuthority };
     if (!info.isFile() || info.isSymbolicLink()) throw new Error("Relay state path must be a regular file.");
     if (info.size > MAX_STATE_BYTES) throw new Error("Relay state file exceeds the byte limit.");
     const parsed = relayStateLoadSchema.parse(JSON.parse(await readFile(this.#filePath, "utf8")) as unknown);
     const runSnapshot: RunStoreSnapshot = {
-      runs: parsed.runs.map(({ started, ...run }) => (
-        started === undefined ? run : { ...run, started }
-      )),
+      ...(parsed.runStoreSchemaVersion === undefined ? {} : { schemaVersion: parsed.runStoreSchemaVersion }),
+      runs: parsed.runs.map(({ started, authoritativeEvents, ...run }) => ({
+        ...run,
+        ...(started === undefined ? {} : { started }),
+        ...(authoritativeEvents === undefined ? {} : { authoritativeEvents }),
+      })),
     };
     const taskSnapshot: TaskInboxSnapshot = { tasks: parsed.tasks };
     store.restore(runSnapshot);
     taskInbox.restore(taskSnapshot);
-    return { store, taskInbox };
+    projectAuthority.restore(parsed.projectAuthority ?? legacyProjectAuthoritySnapshot(parsed.tasks));
+    return { store, taskInbox, projectAuthority };
   }
 
-  save(store: RunStore, taskInbox: TaskInbox): Promise<void> {
-    const operation = this.#saveQueue.then(() => this.#write(store.snapshot(), taskInbox.snapshot()));
+  save(store: RunStore, taskInbox: TaskInbox, projectAuthority: ProjectAuthority): Promise<void> {
+    if (projectAuthority === undefined) {
+      return Promise.reject(new Error("ProjectAuthority is required to save Relay state."));
+    }
+    const operation = this.#saveQueue.then(() => this.#write(
+      store.snapshot(),
+      taskInbox.snapshot(),
+      projectAuthority.snapshot(),
+    ));
     this.#saveQueue = operation.catch(() => undefined);
     return operation;
   }
 
-  async #write(runs: RunStoreSnapshot, tasks: TaskInboxSnapshot): Promise<void> {
+  async #write(
+    runs: RunStoreSnapshot,
+    tasks: TaskInboxSnapshot,
+    projectAuthority: ProjectAuthoritySnapshot,
+  ): Promise<void> {
     const value = relayStateSchema.parse({
       schemaVersion: "1.0",
+      runStoreSchemaVersion: runs.schemaVersion,
       savedAt: new Date().toISOString(),
       runs: runs.runs,
       tasks: tasks.tasks,
+      projectAuthority,
     });
     const bytes = Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8");
     if (bytes.byteLength > MAX_STATE_BYTES) throw new Error("Relay state exceeds the byte limit.");
@@ -120,6 +167,16 @@ export class RelayStatePersistence {
       throw error;
     }
   }
+}
+
+function legacyProjectAuthoritySnapshot(tasks: TaskInboxSnapshot["tasks"]): ProjectAuthoritySnapshot {
+  const projectIds = new Set(tasks.flatMap((task) => task.projectId === undefined ? [] : [task.projectId]));
+  return {
+    projects: [...projectIds].map((projectId) => ({ projectId, currentRevisionId: null })),
+    revisions: [],
+    attempts: [],
+    retriedAttemptIds: [],
+  };
 }
 
 function statePath(value: string): string {

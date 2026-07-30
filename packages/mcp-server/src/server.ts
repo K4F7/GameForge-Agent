@@ -7,8 +7,11 @@ import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/
 import {
   projectGenerationRequestSchema,
   projectIdSchema,
+  evidenceSubmissionSchema,
+  startAttemptInputSchema,
   createGameTaskRequestSchema,
   claimGameTaskRequestSchema,
+  attemptIdSchema,
   compileTaskAcceptanceContractInputSchema,
   gameTaskIdSchema,
   gameTaskTransitionRequestSchema,
@@ -70,6 +73,12 @@ import {
   stopGameRunTool,
   transitionGameTaskTool,
   freezeTaskAcceptanceContractTool,
+  createGameProjectRecordTool,
+  getGameProjectRecordTool,
+  startGameAttemptTool,
+  getGameAttemptTool,
+  retryGameAttemptTool,
+  submitGameAttemptEvidenceTool,
   startGamePreviewTool,
   stopGamePreviewTool,
   verifyGameProjectTool,
@@ -83,10 +92,11 @@ import {
   type AsyncTtsToolProvider,
   type RunRelayToolClient,
   type TaskRelayToolClient,
+  type ProjectRelayToolClient,
   type ProjectVerifier,
   type ProjectPreviewManager,
 } from "./tools.js";
-import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditSummaryProvider } from "./tool-audit.js";
+import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditSummaryProvider, ToolAuditToken } from "./tool-audit.js";
 
 export type CreateServerOptions = {
   gameSpecDraftProvider?: GameSpecDraftProvider;
@@ -100,6 +110,7 @@ export type CreateServerOptions = {
   projectGenerator?: ProjectGenerator;
   runRelayClient?: RunRelayToolClient;
   taskRelayClient?: TaskRelayToolClient;
+  projectRelayClient?: ProjectRelayToolClient;
   soundSearchProvider?: SoundSearchProvider<FreesoundSearchRequest, FreesoundSearchResult>;
   toolAudit?: ToolAuditRecorder & Partial<ToolAuditContextBinder & ToolAuditSummaryProvider>;
   modelRoutingPolicy?: ModelRoutingPolicy;
@@ -114,14 +125,17 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     name: string,
     config: { title?: string; description?: string; inputSchema: InputArgs; annotations?: ToolAnnotations },
     callback: (args: z.infer<z.ZodObject<InputArgs>>) => CallToolResult | Promise<CallToolResult>,
+    auditAfterCallback = false,
   ): RegisteredTool => {
     const auditedCallback = (async (args: unknown) => {
-      const token = options.toolAudit?.begin(name);
+      let token: ToolAuditToken | undefined = auditAfterCallback ? undefined : options.toolAudit?.begin(name);
       try {
         const result = await callback(args as z.infer<z.ZodObject<InputArgs>>);
+        token ??= options.toolAudit?.begin(name);
         if (token !== undefined) await options.toolAudit?.finish(token, result.isError === true ? "error" : "success");
         return result;
       } catch (error) {
+        token ??= options.toolAudit?.begin(name);
         if (token !== undefined) await options.toolAudit?.finish(token, "error");
         throw error;
       }
@@ -187,13 +201,13 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     registerTool(
       "bind_mcp_audit_context",
       {
-        title: "Bind this MCP audit session to one Task and Run",
-        description: "Persist one immutable Task/Run association in the active secret-free MCP audit session.",
-        inputSchema: { taskId: gameTaskIdSchema, runId: runIdSchema },
+        title: "Bind this MCP audit session to one Task, Run, and optional Attempt",
+        description: "Persist one Task/Run association, optionally enriched with the Attempt required for sealable Evidence.",
+        inputSchema: { taskId: gameTaskIdSchema, runId: runIdSchema, attemptId: attemptIdSchema.optional() },
       },
-      async ({ taskId, runId }) => {
+      async ({ taskId, runId, attemptId }) => {
         try {
-          const context = await options.toolAudit!.bindContext!(taskId, runId);
+          const context = await options.toolAudit!.bindContext!(taskId, runId, attemptId);
           return { content: [{ type: "text", text: JSON.stringify(context, null, 2) }] };
         } catch {
           return {
@@ -202,6 +216,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
           };
         }
       },
+      true,
     );
   }
 
@@ -209,8 +224,8 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     registerTool(
       "get_mcp_audit_summary",
       {
-        title: "Read the redacted MCP audit summary",
-        description: "Return a bounded Task/Run-bound audit projection containing only tool order, name, outcome, and duration. Arguments, results, paths, timestamps, session IDs, prompts, URLs, and credentials are excluded.",
+        title: "Read the bounded MCP audit evidence",
+        description: "Return the complete bounded Task/Run/Attempt-bound audit metadata and its digest together with a redacted RunEvent projection. Tool arguments, results, paths, prompts, URLs, and credentials are excluded.",
         inputSchema: {},
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       },
@@ -219,11 +234,16 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
           const summary = await options.toolAudit!.getSummary!();
           const auditEvent: Omit<Extract<RunEvent, { type: "mcp.audit.ready" }>, "runId" | "sequence" | "emittedAt"> = {
             type: "mcp.audit.ready",
+            attemptId: summary.attemptId,
+            auditDigest: summary.auditDigest,
             truncated: summary.truncated,
             totalCalls: summary.totalCalls,
             calls: [...summary.calls],
           };
-          return { content: [{ type: "text", text: JSON.stringify({ auditEvent }, null, 2) }] };
+          return { content: [{
+            type: "text",
+            text: JSON.stringify({ audit: summary.audit, auditDigest: summary.auditDigest, auditEvent }, null, 2),
+          }] };
         } catch {
           return { isError: true, content: [{ type: "text", text: "MCP audit summary is unavailable until the audit is bound to a Task and Run." }] };
         }
@@ -451,6 +471,64 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     );
   }
 
+  if (options.projectRelayClient !== undefined) {
+    const projectRelayClient = options.projectRelayClient;
+    registerTool(
+      "create_game_project_record",
+      {
+        title: "Create one game Project record",
+        description: "Create one stable Project identity without changing any accepted Revision.",
+        inputSchema: {},
+      },
+      async () => createGameProjectRecordTool(projectRelayClient),
+    );
+    registerTool(
+      "get_game_project_record",
+      {
+        title: "Read one game Project record",
+        description: "Read one authoritative Project and its current accepted Revision identity.",
+        inputSchema: { projectId: projectIdSchema },
+      },
+      async ({ projectId }) => getGameProjectRecordTool(projectRelayClient, projectId),
+    );
+    registerTool(
+      "start_game_attempt",
+      {
+        title: "Start one game Attempt",
+        description: "Create one immutable Attempt from authoritative Task and Project state.",
+        inputSchema: startAttemptInputSchema.shape,
+      },
+      async (input) => startGameAttemptTool(projectRelayClient, input),
+    );
+    registerTool(
+      "get_game_attempt",
+      {
+        title: "Read one game Attempt",
+        description: "Read one authoritative Attempt and its immutable terminal evidence when present.",
+        inputSchema: { attemptId: attemptIdSchema },
+      },
+      async ({ attemptId }) => getGameAttemptTool(projectRelayClient, attemptId),
+    );
+    registerTool(
+      "retry_game_attempt",
+      {
+        title: "Retry one game Attempt",
+        description: "Create one fresh Attempt and Run while preserving the prior Attempt unchanged.",
+        inputSchema: { attemptId: attemptIdSchema },
+      },
+      async ({ attemptId }) => retryGameAttemptTool(projectRelayClient, attemptId),
+    );
+    registerTool(
+      "submit_game_attempt_evidence",
+      {
+        title: "Submit one game Attempt evidence set",
+        description: "Submit one bounded Evidence projection for Authority sealing or immutable incomplete classification.",
+        inputSchema: evidenceSubmissionSchema.shape,
+      },
+      async (input) => submitGameAttemptEvidenceTool(projectRelayClient, input),
+    );
+  }
+
 
   if (options.gameSpecDraftProvider !== undefined) {
     const gameSpecDraftProvider = options.gameSpecDraftProvider;
@@ -591,7 +669,16 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
           "Start one managed generated project locally and execute a bounded deterministic input script in system Chrome. Pass inline actions for small probes, or scenario=won|lost to load that named script from .gameforge/verification-scenarios.json without embedding a long tool argument. Captures browser diagnostics and a screenshot, then returns the explicit game outcome. No repair or Agent loop runs inside this tool.",
         inputSchema: verifyGameRequestSchema.shape,
       },
-      async (request) => verifyGameProjectTool(projectVerifier, request),
+      async (request) => verifyGameProjectTool(
+        projectVerifier,
+        request,
+        options.taskRelayClient === undefined || options.projectRelayClient === undefined
+          ? undefined
+          : {
+              getAttempt: (attemptId) => options.projectRelayClient!.getAttempt(attemptId),
+              getTask: (taskId) => options.taskRelayClient!.getTask(taskId),
+            },
+      ),
     );
   }
 

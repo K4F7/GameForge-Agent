@@ -1,10 +1,20 @@
-import { attemptIdSchema, candidateContentManifestSchema, projectIdSchema, revisionIdSchema } from "@gameforge/contracts";
+import {
+  attemptIdSchema,
+  candidateContentManifestSchema,
+  managedGeneratedProjectManifestSchema,
+  projectIdSchema,
+  revisionIdSchema,
+  webGameBundleLimits,
+  type AttemptBuildEvidence,
+  type AttemptVersionEvidence,
+} from "@gameforge/contracts";
+import { budgetIssues, measureBundle, type ViteManifest } from "@gameforge/bundle-budget";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { access, lstat, mkdir, readFile, readdir, realpath } from "node:fs/promises";
+import { access, lstat, mkdir, readFile, readdir, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
-import { createServer, type ViteDevServer } from "vite";
+import { build as viteBuild, createServer, type ViteDevServer } from "vite";
 import { z } from "zod";
 
 const MAX_DIAGNOSTICS = 100;
@@ -42,6 +52,7 @@ export const verifyGameRequestSchema = z.strictObject({
   projectId: projectIdSchema,
   attemptId: attemptIdSchema.optional(),
   revisionId: revisionIdSchema.optional(),
+  contractVersion: z.number().int().positive().max(1_000_000).optional(),
   actions: z.array(verificationActionSchema).max(100).default([]),
   scenario: verificationScenarioSchema.optional(),
   expectedOutcome: z.enum(["running", "won", "lost"]).optional(),
@@ -74,10 +85,15 @@ export type VerificationReport = {
   state: VerificationState;
   screenshotPath: string;
   evidencePath: string;
+  evidenceSha256: string;
   canvas: { width: number; height: number };
   consoleErrors: ReadonlyArray<string>;
   pageErrors: ReadonlyArray<string>;
   failedRequests: ReadonlyArray<string>;
+  actions?: ReadonlyArray<string>;
+  criteria?: ReadonlyArray<{ criterionId: string; passed: boolean }>;
+  build?: AttemptBuildEvidence;
+  versions?: AttemptVersionEvidence;
   actionsExecuted: number;
   durationMs: number;
 };
@@ -123,6 +139,12 @@ export class GameVerifier {
     if ((input.attemptId === undefined) !== (input.revisionId === undefined)) {
       throw new Error("Verifier candidate selection requires both Attempt and Revision identity.");
     }
+    if (input.attemptId !== undefined && input.contractVersion === undefined) {
+      throw new Error("Verifier candidate selection requires the frozen contract version.");
+    }
+    if (input.attemptId === undefined && input.contractVersion !== undefined) {
+      throw new Error("Verifier contract version requires Attempt and Revision identity.");
+    }
     const startedAt = Date.now();
     const projectPath = input.attemptId === undefined
       ? await verifiedManagedProject(this.#projectsRoot, input.projectId)
@@ -144,6 +166,9 @@ export class GameVerifier {
       if (value <= 0) throw new Error(`Verifier ${stage} exceeded the total timeout.`);
       return value;
     };
+    const provenance = input.attemptId === undefined
+      ? undefined
+      : await this.#buildCandidateProvenance(projectPath, input.attemptId, input.contractVersion!, remaining);
     let server: Awaited<ReturnType<VerificationRuntime["startServer"]>> | undefined;
     let session: VerificationSession | undefined;
     try {
@@ -174,6 +199,7 @@ export class GameVerifier {
         throw new Error("Generated game did not expose a visible canvas.");
       }
       await withTimeout(session.screenshot(screenshotPath), remaining("screenshot"), "Verifier screenshot timed out.");
+      const evidenceSha256 = createHash("sha256").update(await readFile(screenshotPath)).digest("hex");
       const passed = consoleErrors.length === 0 && pageErrors.length === 0 && failedRequests.length === 0 &&
         (expectedOutcome === undefined || state.status === expectedOutcome);
       return {
@@ -182,10 +208,13 @@ export class GameVerifier {
         state,
         screenshotPath,
         evidencePath: `.gameforge/verification/${path.basename(screenshotPath)}`,
+        evidenceSha256,
         canvas,
         consoleErrors,
         pageErrors,
         failedRequests,
+        actions: actions.map(describeVerificationAction),
+        ...(provenance === undefined ? {} : provenance),
         actionsExecuted: actions.length,
         durationMs: Date.now() - startedAt,
       };
@@ -208,6 +237,77 @@ export class GameVerifier {
     const info = await lstat(directory);
     if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Verifier screenshot directory is unsafe.");
     return path.join(directory, `${randomUUID()}.png`);
+  }
+
+  async #buildCandidateProvenance(
+    projectPath: string,
+    attemptId: string,
+    contractVersion: number,
+    remaining: (stage: string) => number,
+  ): Promise<{ build: AttemptBuildEvidence; versions: AttemptVersionEvidence }> {
+    const metadata = await verifiedDirectory(path.join(projectPath, ".gameforge"), "Verifier metadata directory");
+    const verificationDirectory = path.join(metadata, "verification");
+    await mkdir(verificationDirectory).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    });
+    const verificationInfo = await lstat(verificationDirectory);
+    if (!verificationInfo.isDirectory() || verificationInfo.isSymbolicLink()) {
+      throw new Error("Verifier build directory is unsafe.");
+    }
+    const outputPath = path.join(verificationDirectory, `build-${randomUUID()}`);
+    let metrics;
+    try {
+      const buildOperation = viteBuild({
+        root: projectPath,
+        configFile: false,
+        logLevel: "silent",
+        resolve: { alias: { phaser: PHASER_ENTRY } },
+        build: { outDir: outputPath, emptyOutDir: true, manifest: true },
+      }).then(() => undefined);
+      try {
+        await withTimeout(buildOperation, remaining("candidate build"), "Verifier candidate build timed out.");
+      } catch (error) {
+        void buildOperation.then(
+          () => rm(outputPath, { recursive: true, force: true }),
+          () => rm(outputPath, { recursive: true, force: true }),
+        );
+        throw error;
+      }
+      const manifestPath = path.join(outputPath, ".vite", "manifest.json");
+      const manifestInfo = await lstat(manifestPath).catch(() => undefined);
+      if (manifestInfo === undefined || !manifestInfo.isFile() || manifestInfo.isSymbolicLink() || manifestInfo.size > 2 * 1024 * 1024) {
+        throw new Error("Verifier Vite manifest must be a bounded regular file.");
+      }
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as ViteManifest;
+      metrics = await withTimeout(measureBundle(outputPath, manifest), remaining("bundle measurement"), "Verifier bundle measurement timed out.");
+    } finally {
+      await rm(outputPath, { recursive: true, force: true });
+    }
+
+    const manifestPath = path.join(metadata, "manifest.json");
+    const manifestInfo = await lstat(manifestPath).catch(() => undefined);
+    if (manifestInfo === undefined || !manifestInfo.isFile() || manifestInfo.isSymbolicLink() || manifestInfo.size > 2 * 1024 * 1024) {
+      throw new Error("Verifier generated project manifest must be a bounded regular file.");
+    }
+    const generated = managedGeneratedProjectManifestSchema.parse(JSON.parse(await readFile(manifestPath, "utf8")) as unknown);
+    return {
+      build: {
+        attemptId,
+        command: "vite.build",
+        exitCode: 0,
+        report: { metrics, limits: webGameBundleLimits, issues: budgetIssues(metrics, webGameBundleLimits) },
+      },
+      versions: { attemptId, contractVersion, templateVersion: generated.generatorVersion },
+    };
+  }
+}
+
+function describeVerificationAction(action: VerificationAction): string {
+  switch (action.type) {
+    case "press": return `press:${action.key}`;
+    case "hold": return `hold:${action.key}:${action.durationMs}`;
+    case "click": return `click:${action.x},${action.y}`;
+    case "wait": return `wait:${action.durationMs}`;
   }
 }
 

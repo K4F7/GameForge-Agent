@@ -63,6 +63,49 @@ describe("GameForge public discovery", () => {
     expect(instructions).not.toContain("build.ready");
   });
 
+  it("keeps CodeArts event publication bound to producer-owned Attempt records", async () => {
+    const instructions = await readFile(
+      path.join(repositoryRoot, ".codeartsdoer", "skills", "gameforge-build", "SKILL.md"),
+      "utf8",
+    );
+
+    expect(instructions).toContain("attemptId");
+    expect(instructions).toContain("generationEvent");
+    expect(instructions).toContain("verificationEvent");
+    expect(instructions).toContain("auditEvent");
+  });
+
+  it("freezes acceptance before starting implementation or an Attempt", async () => {
+    const instructions = await readFile(
+      path.join(repositoryRoot, ".codeartsdoer", "skills", "gameforge-build", "SKILL.md"),
+      "utf8",
+    );
+    const freeze = instructions.indexOf("freeze_task_acceptance_contract");
+    const inProgress = instructions.indexOf("进入 `in-progress`");
+    const attempt = instructions.indexOf("start_game_attempt");
+
+    expect(freeze).toBeGreaterThan(-1);
+    expect(inProgress).toBeGreaterThan(freeze);
+    expect(attempt).toBeGreaterThan(inProgress);
+  });
+
+  it("requires bounded Attempt Evidence submission before terminal completion", async () => {
+    const instructions = await readFile(
+      path.join(repositoryRoot, ".codeartsdoer", "skills", "gameforge-build", "SKILL.md"),
+      "utf8",
+    );
+    const submission = instructions.indexOf("submit_game_attempt_evidence");
+    const completion = instructions.indexOf("complete_game_run");
+
+    expect(submission).toBeGreaterThan(-1);
+    expect(completion).toBeGreaterThan(submission);
+    expect(instructions).toContain("最多 10,000");
+    expect(instructions).toContain("最多 100,000");
+    expect(instructions).toContain("evidence.missing-required-proof.v1");
+    expect(instructions).toMatch(/incomplete[\s\S]*不得调用 `complete_game_run`/);
+    expect(instructions).toMatch(/Attempt 保持 `running`/);
+  });
+
   it("does not advertise withdrawn mini-game entry points in current user documentation", async () => {
     const documents = await Promise.all(
       publicDocumentation.map(async (relativePath) => ({

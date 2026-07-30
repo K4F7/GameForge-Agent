@@ -1,5 +1,5 @@
 import { mkdtemp, mkdir, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GameProjectGenerator } from "@gameforge/generator";
@@ -53,7 +53,7 @@ class FakeSession implements VerificationSession {
   async perform(action: VerificationAction): Promise<void> { this.actions.push(action); }
   async readState(): Promise<unknown> { return this.state; }
   async readCanvas(): Promise<{ width: number; height: number } | null> { return this.canvas; }
-  async screenshot(): Promise<void> { return undefined; }
+  async screenshot(target: string): Promise<void> { await writeFile(target, "fixed screenshot bytes"); }
   async close(): Promise<void> { this.closed = true; }
 }
 
@@ -119,7 +119,22 @@ describe("GameVerifier", () => {
       projectId: "candidate-game",
       attemptId: `attempt-${id}`,
       revisionId: `revision-${id}`,
-    })).resolves.toMatchObject({ projectId: "candidate-game", passed: true });
+      contractVersion: 1,
+    })).resolves.toMatchObject({
+      projectId: "candidate-game",
+      passed: true,
+      build: {
+        attemptId: `attempt-${id}`,
+        command: "vite.build",
+        exitCode: 0,
+        report: { metrics: { files: expect.any(Array) }, issues: [] },
+      },
+      versions: {
+        attemptId: `attempt-${id}`,
+        contractVersion: 1,
+        templateVersion: expect.stringMatching(/^\d+\.\d+\.\d+$/),
+      },
+    });
     expect(runtime.serverPath).toContain(`${path.sep}.gameforge${path.sep}candidates${path.sep}attempt-${id}`);
   });
 
@@ -139,6 +154,7 @@ describe("GameVerifier", () => {
       projectId: "tampered-game",
       attemptId: `attempt-${id}`,
       revisionId: `revision-${id}`,
+      contractVersion: 1,
     })).rejects.toThrow("content does not match its manifest");
   });
   it("rejects Bun before starting system Chrome", async () => {
@@ -198,6 +214,9 @@ describe("GameVerifier", () => {
     });
     expect(result.screenshotPath).toMatch(/[\\/]\.gameforge[\\/]verification[\\/].+\.png$/);
     expect(result.evidencePath).toMatch(/^\.gameforge\/verification\/.+\.png$/);
+    expect((result as { evidenceSha256?: string }).evidenceSha256).toBe(
+      createHash("sha256").update("fixed screenshot bytes").digest("hex"),
+    );
     expect(runtime.session.actions).toEqual(actions);
     expect(runtime.session.closed).toBe(true);
     expect(runtime.serverClosed).toBe(true);

@@ -6,8 +6,11 @@ import type { SoundSearchProvider } from "@gameforge/contracts";
 import type { FreesoundSearchRequest, FreesoundSearchResult } from "@gameforge/providers";
 import { createServer } from "./server.js";
 import type { ProjectGenerationResult } from "@gameforge/contracts";
+import { McpToolAuditRecorder } from "./tool-audit.js";
 import type { ToolAuditContextBinder, ToolAuditRecorder, ToolAuditSummaryProvider, ToolAuditToken } from "./tool-audit.js";
 import path from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { loadModelRoutingPolicy } from "./model-routing.js";
 
 describe("GameForge MCP server", () => {
@@ -47,24 +50,44 @@ describe("GameForge MCP server", () => {
   it("audits executed tool callbacks without inspecting arguments or results", async () => {
     const completed: Array<{ token: ToolAuditToken; outcome: "success" | "error" }> = [];
     let sequence = 0;
-    let auditContext: { taskId: string; runId: string; boundAt: string } | undefined;
+    let auditContext: { taskId: string; runId: string; attemptId: string; boundAt: string } | undefined;
     const toolAudit: ToolAuditRecorder & ToolAuditContextBinder & ToolAuditSummaryProvider = {
       begin(tool) {
         sequence += 1;
         return { sequence, tool, startedAt: new Date().toISOString(), monotonicStart: performance.now() };
       },
       async finish(token, outcome) { completed.push({ token, outcome }); },
-      async bindContext(taskId, runId) {
-        if (auditContext !== undefined && (auditContext.taskId !== taskId || auditContext.runId !== runId)) {
+      async bindContext(taskId, runId, attemptId) {
+        if (attemptId === undefined) throw new Error("Attempt is required by this fixture.");
+        if (auditContext !== undefined && (
+          auditContext.taskId !== taskId || auditContext.runId !== runId || auditContext.attemptId !== attemptId
+        )) {
           throw new Error("conflict");
         }
-        auditContext ??= { taskId, runId, boundAt: new Date().toISOString() };
+        auditContext ??= { taskId, runId, attemptId, boundAt: new Date().toISOString() };
         return auditContext;
       },
       async getSummary() {
         if (auditContext === undefined) throw new Error("not bound");
+        const audit = {
+          schemaVersion: 1 as const,
+          sessionId: "11111111-1111-4111-8111-111111111111",
+          startedAt: "2026-07-30T00:00:00.000Z",
+          truncated: false,
+          context: auditContext,
+          calls: completed.map(({ token, outcome }) => ({
+            sequence: token.sequence,
+            tool: token.tool,
+            startedAt: token.startedAt,
+            durationMs: 1,
+            outcome,
+          })),
+        };
         return {
           runId: auditContext.runId,
+          attemptId: auditContext.attemptId,
+          audit,
+          auditDigest: "a".repeat(64),
           truncated: false,
           totalCalls: completed.length,
           calls: completed.map(({ token, outcome }) => ({
@@ -88,21 +111,38 @@ describe("GameForge MCP server", () => {
       ]));
       const bound = await client.callTool({
         name: "bind_mcp_audit_context",
-        arguments: { taskId: "task-00000000-0000-0000-0000-000000000000", runId: "audit-run" },
+        arguments: {
+          taskId: "task-00000000-0000-0000-0000-000000000000",
+          runId: "audit-run",
+          attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+        },
       });
       expect(bound.isError).not.toBe(true);
       const conflict = await client.callTool({
         name: "bind_mcp_audit_context",
-        arguments: { taskId: "task-00000000-0000-0000-0000-000000000000", runId: "other-run" },
+        arguments: {
+          taskId: "task-00000000-0000-0000-0000-000000000000",
+          runId: "other-run",
+          attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+        },
       });
       expect(conflict.isError).toBe(true);
       await client.callTool({ name: "get_gameforge_capabilities", arguments: {} });
       const summary = await client.callTool({ name: "get_mcp_audit_summary", arguments: {} });
       expect(summary.isError).not.toBe(true);
       if (!Array.isArray(summary.content) || summary.content[0]?.type !== "text") throw new Error("Expected audit summary text.");
-      expect(JSON.parse(summary.content[0].text)).toMatchObject({
+      const summaryPayload = JSON.parse(summary.content[0].text) as {
+        audit: { calls: Array<{ startedAt: string }> };
+      };
+      expect(summaryPayload).toMatchObject({
+        audit: {
+          sessionId: "11111111-1111-4111-8111-111111111111",
+          context: { runId: "audit-run", attemptId: "attempt-00000000-0000-4000-8000-000000000065" },
+        },
         auditEvent: {
           type: "mcp.audit.ready",
+          attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+          auditDigest: "a".repeat(64),
           truncated: false,
           calls: [
             { sequence: 1, tool: "bind_mcp_audit_context", outcome: "success" },
@@ -111,8 +151,10 @@ describe("GameForge MCP server", () => {
           ],
         },
       });
-      expect(summary.content[0].text).not.toContain("audit-run");
-      expect(summary.content[0].text).not.toContain("boundAt");
+      expect(Array.isArray(summaryPayload.audit.calls)).toBe(true);
+      expect(summaryPayload.audit.calls[0]).toMatchObject({ startedAt: expect.any(String) });
+      expect(summary.content[0].text).not.toContain("arguments");
+      expect(summary.content[0].text).not.toContain("result");
       expect(completed).toMatchObject([
         { token: { sequence: 1, tool: "bind_mcp_audit_context" }, outcome: "success" },
         { token: { sequence: 2, tool: "bind_mcp_audit_context" }, outcome: "error" },
@@ -124,6 +166,94 @@ describe("GameForge MCP server", () => {
     } finally {
       await client.close();
       await server.close();
+    }
+  });
+
+  it("accepts the previous Task and Run audit binding without claiming Attempt evidence", async () => {
+    const toolAudit: ToolAuditRecorder & ToolAuditContextBinder = {
+      begin(tool) {
+        return { sequence: 1, tool, startedAt: new Date().toISOString(), monotonicStart: performance.now() };
+      },
+      async finish() {},
+      async bindContext(taskId, runId, attemptId) {
+        return {
+          taskId,
+          runId,
+          ...(attemptId === undefined ? {} : { attemptId }),
+          boundAt: new Date().toISOString(),
+        };
+      },
+    };
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer({ toolAudit });
+    const client = new Client({ name: "previous-audit-client", version: "0.12.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const result = await client.callTool({
+        name: "bind_mcp_audit_context",
+        arguments: { taskId: "task-00000000-0000-0000-0000-000000000000", runId: "legacy-audit-run" },
+      });
+      expect(result.isError).not.toBe(true);
+      expect(result.content).toEqual([expect.objectContaining({
+        type: "text",
+        text: expect.not.stringContaining("attemptId"),
+      })]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("starts a fresh audited epoch after rebinding a finalized retry Attempt", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "gameforge-mcp-retry-audit-"));
+    const recorder = await McpToolAuditRecorder.create(path.join(root, "session.json"));
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer({ toolAudit: recorder });
+    const client = new Client({ name: "gameforge-retry-audit-test", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    const taskId = "task-00000000-0000-0000-0000-000000000000";
+    try {
+      await client.callTool({
+        name: "bind_mcp_audit_context",
+        arguments: {
+          taskId,
+          runId: "audit-run-first",
+          attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+        },
+      });
+      await client.callTool({ name: "get_gameforge_capabilities", arguments: {} });
+      expect((await client.callTool({ name: "get_mcp_audit_summary", arguments: {} })).isError).not.toBe(true);
+
+      const rebound = await client.callTool({
+        name: "bind_mcp_audit_context",
+        arguments: {
+          taskId,
+          runId: "audit-run-retry",
+          attemptId: "attempt-00000000-0000-4000-8000-000000000066",
+        },
+      });
+      expect(rebound.isError).not.toBe(true);
+      await client.callTool({ name: "get_gameforge_capabilities", arguments: {} });
+      const summary = await client.callTool({ name: "get_mcp_audit_summary", arguments: {} });
+      expect(summary.isError).not.toBe(true);
+      if (!Array.isArray(summary.content) || summary.content[0]?.type !== "text") {
+        throw new Error("Expected retry audit summary text.");
+      }
+      expect(JSON.parse(summary.content[0].text)).toMatchObject({
+        auditEvent: {
+          attemptId: "attempt-00000000-0000-4000-8000-000000000066",
+          calls: [
+            { sequence: 1, tool: "bind_mcp_audit_context", outcome: "success" },
+            { sequence: 2, tool: "get_gameforge_capabilities", outcome: "success" },
+          ],
+        },
+      });
+    } finally {
+      await client.close();
+      await server.close();
+      await rm(root, { recursive: true, force: true });
     }
   });
 
@@ -527,6 +657,59 @@ describe("GameForge MCP server", () => {
     }
   });
 
+  it("registers deterministic Project and Attempt tools only when Project Authority is configured", async () => {
+    const project = { projectId: "project-00000000-0000-4000-8000-000000000065", currentRevisionId: null } as const;
+    const attempt = {
+      attemptId: "attempt-00000000-0000-4000-8000-000000000065",
+      taskId: "task-00000000-0000-4000-8000-000000000065",
+      runId: "run-project-authority-tools",
+      projectId: project.projectId,
+      revisionId: "revision-00000000-0000-4000-8000-000000000065",
+      acceptanceContractFingerprint: "a".repeat(64),
+      state: "running" as const,
+    };
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer({
+      projectRelayClient: {
+        async createProject() { return project; },
+        async getProject() { return project; },
+        async startAttempt() { return attempt; },
+        async getAttempt() { return attempt; },
+        async retryAttempt() { return { ...attempt, attemptId: "attempt-00000000-0000-4000-8000-000000000066" }; },
+        async submitAttemptEvidence() {
+          return {
+            status: "incomplete" as const,
+            reasonCode: "evidence.missing-required-proof.v1" as const,
+            attemptId: attempt.attemptId,
+          };
+        },
+      },
+    });
+    const client = new Client({ name: "gameforge-project-test", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const names = (await client.listTools()).tools.map((tool) => tool.name);
+      expect(names).toEqual(expect.arrayContaining([
+        "create_game_project_record",
+        "get_game_project_record",
+        "start_game_attempt",
+        "get_game_attempt",
+        "retry_game_attempt",
+        "submit_game_attempt_evidence",
+      ]));
+      const created = await client.callTool({ name: "create_game_project_record", arguments: {} });
+      expect(created.isError).not.toBe(true);
+      expect(created.content).toEqual([expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining(project.projectId),
+      })]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("registers music generation only when provider and store are both configured", async () => {
     const calls: string[] = [];
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -741,6 +924,7 @@ describe("GameForge MCP server", () => {
             state: { status: "running", score: 0, lives: 3, remainingSeconds: 90 },
             screenshotPath: "D:\\proof.png",
             evidencePath: ".gameforge/verification/proof.png",
+            evidenceSha256: "e".repeat(64),
             canvas: { width: 960, height: 540 },
             consoleErrors: [],
             pageErrors: [],
